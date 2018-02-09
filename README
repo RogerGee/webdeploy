@@ -1,0 +1,13 @@
+webdeploy
+--------------------------------------------------------------------------------
+This project provides a command-line tool for deploying a website on a web
+server. It employs NodeJS and libgit2. Configuration for the deployments is kept
+in the bare repository's 'config' file.
+
+This project is based off of `gitsync`. See https://git.rserver.us/utils/gitsync.
+
+Primary authors:
+
+    Roger Gee <roger.gee@tulsalibrary.org>
+
+--------------------------------------------------------------------------------
