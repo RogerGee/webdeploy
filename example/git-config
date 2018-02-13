@@ -1,0 +1,30 @@
+# git-config
+#
+#
+
+[webdeploy]
+	# This defaults to the root tree in the repository. Only specify this if the
+	# webdeploy.config.js file is in a non-standard subtree. All operations will
+	# be relative to this target tree.
+	target-tree = "/"
+
+    # Defines the branch whose head tree is to be deployed.
+    deploy-branch = "master"
+
+    # Defines the base path
+    deploy-path = "/path/to/deployment"
+
+    # These config keys are used to cache deployment information. Do not touch
+    # or modify these unless you know what you are doing.
+
+    deploy-oid = "61bc47e00b3653a26a50e4c380f8dfbe322d529d"
+
+# Custom plugins may require configuration that is under "webdeploy".
+[webdeploy.custom_plugin_1]
+    key = "value"
+
+#
+# Local Variables:
+# indent-tabs-mode:t
+# End:
+#

@@ -11,3 +11,35 @@ Primary authors:
     Roger Gee <roger.gee@tulsalibrary.org>
 
 --------------------------------------------------------------------------------
+Methodology
+
+This is a lightweight tool that implements a deployment pipeline. The pipeline
+operates on the filesystem OR a git repository tree (This is collectively called
+the "target tree"). The pipeline's job is to map certain targets within the
+target tree to their respective output varients. This can be as simple as
+copying a file to an output directory, or converting the content's of the
+specified file to a usable/convenient format.
+
+The pipeline process contains two primary steps: build and copy. The build phase
+is optional as it involves transforming a target into one or more output targets.
+
+A more granular description of the pipeline follows:
+
+    0.1 Find a webdeploy.config.js file in the target tree. This file is used to
+        specify how the project is to be built for deployment. This file should
+        be committed into the repository. It is only needed for files that need
+        to be built.
+
+    0.2 Load configuration from the repository's config file. If the target tree
+        is not a git repository, then this step does nothing.
+
+    1.  Search the target tree recursively for targets matching rules defined by
+        the configuration gathered in step 0.
+
+    2.  Execute the handlers for each target.
+
+    3.  Execute the deployment for each target.
+
+--------------------------------------------------------------------------------
+Plugins
+
