@@ -1,21 +1,18 @@
 /**
- * config.example.js
+ * webdeploy.config.js
  *
  * This file details all available configuration schema for the
- * config.example.js file. Not all configuration is available through this
- * file. This file is designed to be committed into the git-repository, and
- * therefore it doesn't contain configuration related to a specific
- * deployment. See git-config for the deployment configuration.
+ * webdeploy.config.js file. Not all webdeploy configuration is available
+ * through this file. See git-config for the other deployment configuration
+ * parameters. The intent of this config file is to provide the build
+ * configuration for a webdeploy project, not the deployment configuration.
+ *
+ * If you provide a webdeploy.config.js file, then you should commit it into the
+ * git-repository. This is because the build configuration should follow the
+ * project whereas the deployment configuration is specific to a deployment.
  */
 
 const CONFIG = {
-    /**
-     * This is the base subtree of the target tree for all targets processed by
-     * the webdeploy pipeline. This can usually be omitted if the entire target
-     * tree is to be considered.
-     */
-    basetree: "/path/to/targets",
-
     /**
      * Rules define how targets are mapped to their deployment variants.
      */
