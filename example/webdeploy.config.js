@@ -14,30 +14,35 @@
 
 const CONFIG = {
     /**
-     * Specifies which deployment plugin is to be loaded. You should specify
-     * something here since the default plugin is "exclude" (which excludes
-     * everything).
+     * Specifies which deployment plugin is to be utilized for the build
+     * command.
      */
-    deployment: "write",
+    build: "build",
 
     /**
-     * Specifies which handler plugins are to be loaded for the build
+     * Specifies which deployment plugin is to be utilized for deployment. You
+     * should specify something here since the default plugin is "exclude"
+     * (which excludes everything).
+     */
+    deploy: "deploy",
+
+    /**
+     * Specifies which build plugins are to be loaded for the build
      * process. This list may be empty if nothing is to be built.
 
-     * Handlers operate on targets and produce the transformed
-     * outputs. They are invoked in sequence. This may be a custom
-     * handler function or a string denoting an installed handler
-     * plugin.
+     * Build plugins transform targets into their output representation. They
+     * are invoked in sequence. This may be a custom handler function or a
+     * string denoting an installed handler plugin.
      *
      * By default, a handler is not made available during a development
      * run. If this is required, then set "dev" to true.
      */
-    handlers: [
+    builders: [
         {
-            // The name ID of the handler plugin. If the handler is inline, then
-            // this name is used to register the inline handler. An inline
-            // handler takes precendence over any external handler plugins.
-            plugin: "handler-name",
+            // The name ID of the build plugin. If the plugin is inline, then
+            // this name is used to register the inline plugin. An inline
+            // plugin takes precendence over any external build plugins.
+            plugin: "plugin-name",
 
             // Determines if the handler is considered during a development
             // run. The default is false.

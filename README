@@ -38,50 +38,51 @@ A more granular description of the pipeline follows:
     1.  Search the target tree recursively for targets matching rules defined by
         the configuration gathered in step 0.
 
-    2.  Execute the handlers for each target.
+    2.  Build each target.
 
-        All handlers are executed before any deployment is executed. A handler
-        gets to decide which target(s) it handles based on some criteria
+        All build operations are executed before any deployment is executed. A
+        build gets to decide which target(s) it handles based on some criteria
         (e.g. file name pattern match, file content, ETC.)
 
     3.  Execute the deployment for the set of targets.
 
         A deployment is executed once to handle all targets. It decides how
-        targets are written to the deployment environment.
+        targets are written to the deployment environment. Deployments may
+        chain.
 
 --------------------------------------------------------------------------------
 Plugins
 
 Plugins are external bits of code that add functionality to webdeploy. They come
-in two flavors: handler plugins and deployment plugins.
+in two flavors: build plugins and deployment plugins.
 
-A handler plugin transforms a target into one or more output targets. It
+A build plugin transforms a target into one or more output targets. It
 receives a "target" object that has the following structure:
 
     {
         in: Stream, // Stream for reading target content
         targetName: String, // Name of target (i.e. file/blob name)
-        sourcePath: String, // Path to target relative to source tree
+        sourcePath: String, // Relative path to target
         makeOutputTarget: Function // Generates an output target
     }
 
-The handler reads the contents of the target from "target.in" and calls
+The plugin reads the contents of the target from "target.in" and calls
 "target.makeOutputTarget() one or more times to produce the output targets. The
 call to makeOutputTarget() returns a Stream to which the content of the output
 target is written and it takes two optional arguments:
 
-    makeOutputTarget(newTargetName, recursive) -> Stream
+    makeOutputTarget(newTargetPath, recursive) -> Stream
 
-If a "newTargetName" is specified, then the output target gets that new
-name. Otherwise it keeps the same name as the input target. The "recursive"
-parameter determines whether or not the output target is recursively processed
-by the handler plugins again. The default is false, so output targets are not
-processed.
+If a "newTargetPath" is specified, then the output target is
+repositioned/renamed; note, this string is always a relative path. Otherwise it
+keeps the same path and name as the input target. The "recursive" parameter
+determines whether or not the output target is recursively processed by the
+build plugins again. The default is false, so output targets are not processed.
 
 A deployment plugin performs operations on output targets, which may include
 transforming the set of output targets in some way. One deployment plugin is
-loaded for a deployment; however multiple deployment plugins can chain together
-if needed. A deployment plugin receives a "context" object that has the
+initiated for a single run; however multiple deployment plugins can chain
+together if needed. A deployment plugin receives a "context" object that has the
 following structure:
 
     {
@@ -101,10 +102,10 @@ The deployment plugin context contains a list of output targets that are ready
 to be processed. However a plugin may choose to transform this set of targets by
 splicing the array and creating new output targets. The function
 "makeOutputTarget" takes a required parameter indicating the new target
-name. The "chain" function takes the plugin ID for the next deployment plugin in
+path. The "chain" function takes the plugin ID for the next deployment plugin in
 the chain:
 
-    makeOutputTarget(newTargetName)
+    makeOutputTarget(newTargetPath)
     chain(pluginName)
 
 These functions can be used, for example, to combine all output targets into
@@ -132,12 +133,13 @@ one:
 The webdeploy core code (i.e. this repository) comes with several core plugins
 already built-in:
 
-    [handler]
-    default     - does absolutely nothing to the target blob
+    [build]
+    default     - does absolutely nothing to the target
 
     [deployment]
     exclude     - does absolutely nothing (i.e. excludes all targets from deployment)
-    write       - writes output targets to the filesystem
+    deploy      - writes output targets to the filesystem relative to the deploy path
+    build       - writes output targets to the filesystem relative to the build path
 
 The built-in plugins cannot be removed. They perform core operations.
 
