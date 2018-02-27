@@ -11,7 +11,7 @@
     # Defines the branch whose head tree is to be deployed.
     deploy-branch = "master"
 
-    # Defines the base path
+    # Defines the base path of the deployment directory.
     deploy-path = "/path/to/deployment"
 
     # These config keys are used to cache deployment information. Do not touch
