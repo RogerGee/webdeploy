@@ -60,13 +60,13 @@ A build plugin transforms a target into one or more output targets. It
 receives a "target" object that has the following structure:
 
     {
-        in: Stream, // Stream for reading target content
+        input: Stream, // Stream for reading target content
         targetName: String, // Name of target (i.e. file/blob name)
         sourcePath: String, // Relative path to target
         makeOutputTarget: Function // Generates an output target
     }
 
-The plugin reads the contents of the target from "target.in" and calls
+The plugin reads the contents of the target from "target.input" and calls
 "target.makeOutputTarget() one or more times to produce the output targets. The
 call to makeOutputTarget() returns a Stream to which the content of the output
 target is written and it takes two optional arguments:
@@ -123,12 +123,12 @@ one:
             context.chain("write");
         }
         else {
-            removed[i].in.on("data",combine);
-            removed[i].in.on("end",end);
+            removed[i].input.on("data",combine);
+            removed[i].input.on("end",end);
         }
     }
-    removed[0].in.on("data",combine);
-    removed[0].in.on("end",end);
+    removed[0].input.on("data",combine);
+    removed[0].input.on("end",end);
 
 The webdeploy core code (i.e. this repository) comes with several core plugins
 already built-in:
@@ -141,6 +141,16 @@ already built-in:
     deploy      - writes output targets to the filesystem relative to the deploy path
     build       - writes output targets to the filesystem relative to the build path
 
-The built-in plugins cannot be removed. They perform core operations.
+The built-in plugins cannot be removed; they perform core operations.
+
+A plugin is implemented as a NodeJS module. It must provide the following object
+in its module.exports:
+
+    {
+        exec(target | context): Function
+    }
+
+The exec() function takes either "target" or "context" objects for build and
+deployment plugins respectively.
 
 --------------------------------------------------------------------------------
