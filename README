@@ -134,7 +134,7 @@ The webdeploy core code (i.e. this repository) comes with several core plugins
 already built-in:
 
     [build]
-    default     - does absolutely nothing to the target
+    pass        - does absolutely nothing to the target
 
     [deployment]
     exclude     - does absolutely nothing (i.e. excludes all targets from deployment)
@@ -151,6 +151,7 @@ in its module.exports:
     }
 
 The exec() function takes either "target" or "context" objects for build and
-deployment plugins respectively.
+deployment plugins respectively. It should return true if the target was
+processed in some way.
 
 --------------------------------------------------------------------------------

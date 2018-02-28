@@ -13,6 +13,7 @@
   "author": "Roger Gee",
   "license": "MIT",
   "dependencies": {
+    "colors": "^1.1.2",
     "commander": "^2.14.1",
     "nodegit": "^0.20.3",
     "require-from-string": "^2.0.1"

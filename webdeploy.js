@@ -5,10 +5,12 @@
 var commander = require("commander");
 var nodegit = require("nodegit");
 var path = require("path");
+var logger = require("./lib/logger");
 var deployer = require("./lib/deployer");
 
 function reject(err) {
-    console.log("[FAIL] " + String(err));
+    logger.error("*[FAIL]* " + String(err));
+    logger.resetIndent();
 }
 
 commander.version("0.0.0","-v, --version");
@@ -21,8 +23,14 @@ commander.command("deploy")
             type: deployer.types.TYPE_DEPLOY
         };
 
-        deployer.deployLocal(path.resolve("."),options).then(() => {
-            console.log("DONE");
+        var localPath = path.resolve(".");
+
+        logger.log("*[DEPLOY]* _local_: exec " + localPath);
+        logger.pushIndent();
+
+        deployer.deployLocal(localPath,options).then(() => {
+            logger.popIndent();
+            logger.log("*DONE*");
         }, reject);
     });
 
@@ -34,8 +42,12 @@ commander.command("deploy <repo>")
             type: deployer.types.TYPE_DEPLOY
         };
 
+        logger.log("*[DEPLOY]* _git_: exec " + repo);
+        logger.pushIndent();
+
         deployer.deployRepository(repo,options).then(() => {
-            console.log("DONE");
+            logger.popIndent();
+            logger.log("*DONE*");
         }, reject);
     });
 
@@ -47,8 +59,14 @@ commander.command("build")
             type: deployer.types.TYPE_BUILD
         };
 
-        deployer.deployLocal(path.resolve("."),options).then(() => {
-            console.log("DONE");
+        var localPath = path.resolve(".");
+
+        logger.log("*[BUILD]* _local_: exec " + localPath);
+        logger.pushIndent();
+
+        deployer.deployLocal(localPath,options).then(() => {
+            logger.popIndent();
+            logger.log("*DONE*");
         }, reject);
     });
 
