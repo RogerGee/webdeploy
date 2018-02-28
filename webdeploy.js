@@ -15,28 +15,33 @@ function reject(err) {
 
 commander.version("0.0.0","-v, --version");
 
-commander.command("deploy")
+commander.command("deploy [path]")
     .option("-d, --dry-run","Perform dry run")
-    .action((cmd) => {
+    .action((sourcePath,cmd) => {
         var options = {
             dryRun: cmd.dryRun ? true : false,
             type: deployer.types.TYPE_DEPLOY
         };
 
-        var localPath = path.resolve(".");
+        if (sourcePath) {
+            var localPath = path.resolve(sourcePath);
+        }
+        else {
+            var localPath = path.resolve(".");
+        }
 
         logger.log("*[DEPLOY]* _local_: exec " + localPath);
         logger.pushIndent();
 
         deployer.deployLocal(localPath,options).then(() => {
             logger.popIndent();
-            logger.log("*DONE*");
+            logger.log("*[DONE]*");
         }, reject);
     });
 
-commander.command("deploy <repo>")
+commander.command("deploy-repo [path]")
     .option("-d, --dry-run","Perform dry run")
-    .action((repo,cmd) => {
+    .action((repo) => {
         var options = {
             dryRun: cmd.dryRun ? true : false,
             type: deployer.types.TYPE_DEPLOY
@@ -47,7 +52,7 @@ commander.command("deploy <repo>")
 
         deployer.deployRepository(repo,options).then(() => {
             logger.popIndent();
-            logger.log("*DONE*");
+            logger.log("*[DONE]*");
         }, reject);
     });
 
@@ -66,7 +71,7 @@ commander.command("build")
 
         deployer.deployLocal(localPath,options).then(() => {
             logger.popIndent();
-            logger.log("*DONE*");
+            logger.log("*[DONE]*");
         }, reject);
     });
 

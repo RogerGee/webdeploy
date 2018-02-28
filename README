@@ -151,7 +151,8 @@ in its module.exports:
     }
 
 The exec() function takes either "target" or "context" objects for build and
-deployment plugins respectively. It should return true if the target was
-processed in some way.
+deployment plugins respectively. It should return an array of strings denoting
+the created target names. In the case of a singleton, it may return a
+scalar. Otherwise an empty value should be returned (e.g. [], null, ETC.).
 
 --------------------------------------------------------------------------------
