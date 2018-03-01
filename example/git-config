@@ -6,13 +6,13 @@
 	# This defaults to the root tree in the repository. Only specify this if the
 	# webdeploy.config.js file is in a non-standard subtree. All operations will
 	# be relative to this target tree.
-	target-tree = "/"
+	targetTree = "/"
 
     # Defines the branch whose head tree is to be deployed.
-    deploy-branch = "master"
+    deployBranch = "master"
 
     # Defines the base path of the deployment directory.
-    deploy-path = "/path/to/deployment"
+    deployPath = "/path/to/deployment"
 
     # These config keys are used to cache deployment information. Do not touch
     # or modify these unless you know what you are doing.

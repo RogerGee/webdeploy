@@ -17,14 +17,14 @@ const CONFIG = {
      * Specifies which deployment plugin is to be utilized for the build
      * command.
      */
-    build: "build",
+    build: "write",
 
     /**
      * Specifies which deployment plugin is to be utilized for deployment. You
      * should specify something here since the default plugin is "exclude"
      * (which excludes everything).
      */
-    deploy: "deploy",
+    deploy: "write",
 
     /**
      * Specifies which build plugins are to be loaded for the build
