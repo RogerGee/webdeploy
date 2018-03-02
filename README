@@ -161,8 +161,8 @@ in its module.exports:
     }
 
 The exec() function takes either "target" or "context" objects for build and
-deployment plugins respectively. It should return an array of strings denoting
-the created target names. In the case of a singleton, it may return a
-scalar. Otherwise an empty value should be returned (e.g. [], null, ETC.).
+deployment plugins respectively. It should return a Promise that passes the
+created target name(s) to its resolve callback. This can be a scalar or an
+array.
 
 --------------------------------------------------------------------------------
