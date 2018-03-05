@@ -67,7 +67,7 @@ const DEFAULT_DEPLOY_PLUGINS = {
                     // Write data to file.
                     var outPath = target.getDeployTargetPath();
                     var outStream = fs.createWriteStream(outPath);
-                    target.inputStream.pipe(outStream);
+                    target.stream.pipe(outStream);
                     context.logger.log("Writing _" + outPath + "_");
                 }
 

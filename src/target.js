@@ -13,20 +13,23 @@ function makeOutputTarget(newTargetPath,newTargetName) {
         newTargetName = parsed.base;
     }
 
+    // Create a duplex, Transform stream for storing the target data. Currently
+    // this just keeps the data in main memory.
     var memoryStream = new stream.PassThrough();
     var newTarget = new Target(newTargetPath,newTargetName,memoryStream);
 
     return newTarget;
 }
 
-function Target(sourcePath,targetName,inputStream) {
+function Target(sourcePath,targetName,stream) {
     // Ensure the sourcePath is never an absolute path.
     if (pathModule.isAbsolute(sourcePath)) {
         throw Error("Target sourcePath cannot be an absolute path");
     }
 
-    // The input stream is available for reading the target's content.
-    this.inputStream = inputStream;
+    // The stream is available for reading/writing the target's content.
+    stream.setEncoding("utf8");
+    this.stream = stream;
 
     // The sourcePath is a relative path under the source tree to the target,
     // excluding the target name.
@@ -38,6 +41,9 @@ function Target(sourcePath,targetName,inputStream) {
 
     // The target name serves as the identifier for the target.
     this.targetName = targetName;
+
+    // The target will be recursively cycled through the build system.
+    this.recursive = false;
 }
 
 // Gets the path to the target relative to the target's source tree. This
@@ -67,7 +73,7 @@ Target.prototype.setDeployPath = function(basePath) {
     this.deployPath = pathModule.join(basePath,this.sourcePath);
 };
 
-// Creates a new Target ready to receive output.
+// Creates an output target that inherits from the parent target.
 Target.prototype.makeOutputTarget = function(newTargetName,newTargetPath,recursive) {
     if (!newTargetName) {
         newTargetName = this.targetName;
@@ -79,22 +85,16 @@ Target.prototype.makeOutputTarget = function(newTargetName,newTargetPath,recursi
 
     var newTarget = makeOutputTarget(newTargetPath,newTargetName);
 
-    // If the object has a push function, invoke it to inform the underlying
-    // functionality of the new output target.
-    if (this.pushOutputTarget) {
-        this.pushOutputTarget(this,newTarget,recursive);
-    }
+    this.recursive = recursive;
 
-    return newTarget.inputStream;
+    return newTarget;
 };
 
 // Moves the target through the pipeline unchanged.
 Target.prototype.pass = function() {
-    var newTarget = new Target(this.sourcePath,this.targetName,this.inputStream);
+    var newTarget = new Target(this.sourcePath,this.targetName,this.stream);
 
-    if (this.pushOutputTarget) {
-        this.pushOutputTarget(this,newTarget,false);
-    }
+    this.recursive = false;
 
     return newTarget;
 };

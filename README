@@ -105,10 +105,10 @@ The plugin reads the contents of the target from "target.inputStream" and calls
 call to makeOutputTarget() returns a Stream to which the content of the output
 target is written and it takes three optional arguments:
 
-    makeOutputTarget(newTargetPath, newTargetName, recursive) -> Stream
+    makeOutputTarget(newTargetName, newTargetPath, recursive) -> Stream
 
-        newTargetPath: the path to the new target; inherits if omitted
         newTargetName: the name for the new target; inherits if omitted
+        newTargetPath: the path to the new target; inherits if omitted
         recursive: if true, then the target is recursively processed by the build system
 
 A deployment plugin performs operations on output targets, which may include

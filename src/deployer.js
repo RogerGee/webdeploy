@@ -51,14 +51,72 @@ function deployDeployStep(tree,options,targets) {
 }
 
 function deployBuildStep(tree,options) {
+    var includes;           // include rules for target analysis (to be set later)
     var plugins = {};       // plugins available for build
     var targets = [];       // targets processed by build plugins
     var outputTargets = []; // targets to be processed by deploy plugin
 
-    return tree.getConfigParameter("includes").then((includes) => {
+    // Create a function for adding output targets to the global arrays.
+    function pushOutputTarget(parentTarget,newTarget,initial) {
+        if (typeof initial == "undefined") {
+            // Treat recursive targets as initial targets.
+            initial = newTarget.recursive;
+        }
+
+        // If the push is for an initial target, then determine if the target is
+        // included in the set of processed targets.
+
+        if (initial) {
+            var i = 0;
+            var candidate = newTarget.getSourceTargetPath();
+            while (i < includes.length) {
+                if (candidate.match(includes[i].pattern)) {
+                    newTarget.level = 1;
+                    newTarget.handlers = includes[i].handlers.slice(0);
+
+                    logger.log("add _" + candidate + "_");
+                    break;
+                }
+
+                i += 1;
+            }
+
+            if (i < includes.length) {
+                // Set the target in the original list so it is processed again.
+                targets.push(newTarget);
+            }
+
+            return;
+        }
+
+        // If a parentTarget was specified with a non-empty list of handlers,
+        // then let the newTarget reference the list of remaining
+
+        if (parentTarget && parentTarget.handlers.length > 0) {
+            // Let the newTarget inherit the remaining handlers from the parent
+            // target. This allows for chaining handlers from the parent to the
+            // child.
+            newTarget.level = parentTarget.level + 1;
+            if (newTarget !== parentTarget) {
+                newTarget.handlers = parentTarget.handlers;
+                delete parentTarget.handlers;
+            }
+
+            targets.push(newTarget);
+            return;
+        }
+
+        // Otherwise the newTarget is an output target and is not processed by
+        // the build system anymore.
+
+        outputTargets.push(newTarget);
+    }
+
+    return tree.getConfigParameter("includes").then((_includes) => {
         // Load build plugins required by this deployment.
 
         var n = 0;
+        includes = _includes; // set outer-scoped variable
 
         for (var i = 0;i < includes.length;++i) {
             for (var j = 0;j < includes[i].handlers.length;++j) {
@@ -91,63 +149,9 @@ function deployBuildStep(tree,options) {
         return tree.walk((path,name,input) => {
             var relativePath = pathModule.relative(options.buildPath,path);
 
-            function pushOutputTarget(parentTarget,newTarget,initial) {
-                // If the push is for an initial target, then determine if the
-                // target is included in the set of processed targets.
-
-                if (initial) {
-                    var i = 0;
-                    var candidate = newTarget.getSourceTargetPath();
-                    while (i < includes.length) {
-                        if (candidate.match(includes[i].pattern)) {
-                            newTarget.level = 1;
-                            newTarget.handlers = includes[i].handlers.slice(0);
-                            newTarget.pushOutputTarget = pushOutputTarget;
-
-                            logger.log("add _" + candidate + "_");
-                            break;
-                        }
-
-                        i += 1;
-                    }
-
-                    if (i < includes.length) {
-                        // Set the target in the original list so it is
-                        // processed again.
-                        targets.push(newTarget);
-                    }
-
-                    return;
-                }
-
-                // If a parentTarget was specified with a non-empty list of
-                // handlers, then let the newTarget reference the list of remaining
-
-                if (parentTarget && parentTarget.handlers.length > 0) {
-                    // Let the newTarget inherit the remaining handlers from the
-                    // parent target. This allows for chaining handlers from the
-                    // parent to the child.
-                    newTarget.level = parentTarget.level + 1;
-                    if (newTarget !== parentTarget) {
-                        newTarget.handlers = parentTarget.handlers;
-                        delete parentTarget.handlers;
-                        newTarget.pushOutputTarget = pushOutputTarget;
-                    }
-
-                    targets.push(newTarget);
-                    return;
-                }
-
-                // Otherwise the newTarget is an output target and is not
-                // processed by the build system anymore.
-
-                outputTargets.push(newTarget);
-            }
-
             // Create a candidate target and attempt to add it.
             var target = new targetModule.Target(relativePath,name,input);
-            pushOutputTarget.call({},null,target,true);
-
+            pushOutputTarget(null,target,true);
         }, (path) => {
             // Ignore any hidden paths.
             if (path[0] == ".") {
@@ -168,47 +172,48 @@ function deployBuildStep(tree,options) {
             function execTargets() {
                 // Execute all available targets. Only execute the first
                 // specified handler. Any remaining handlers are executed
-                // recursively by child targets.
+                // recursively by child targets if at all.
 
                 while (targets.length > 0) {
-                    let nextTarget = targets.pop();
+                    let target = targets.pop();
 
-                    if (!nextTarget.handlers || nextTarget.handlers.length == 0) {
-                        console.log(nextTarget);
+                    // Ignore the target if it has no more handlers.
+                    if (!target.handlers || target.handlers.length == 0) {
                         continue;
                     }
 
-                    let plugin = nextTarget.handlers.shift();
+                    let plugin = target.handlers.shift();
 
                     recursion += 1;
-                    plugins[plugin.id].exec(nextTarget).then((newTargetNames) => {
-                        if (newTargetNames) {
-                            // Normalize newTargetNames into an array.
-                            if (newTargetNames && !Array.isArray(newTargetNames)) {
-                                newTargetNames = [newTargetNames];
+                    plugins[plugin.id].exec(target).then((newTargets) => {
+                        if (newTargets) {
+                            // Normalize newTargets into an array.
+                            if (newTargets && !Array.isArray(newTargets)) {
+                                newTargets = [newTargets];
                             }
-                            else if (newTargetNames.length == 0) {
-                                newTargetNames = null;
+                            else if (newTargets.length == 0) {
+                                newTargets = null;
+                            }
+
+                            // Push targets into output lists.
+                            for (var i = 0;i < newTargets.length;++i) {
+                                pushOutputTarget(target,newTargets[i]);
                             }
 
                             // Print logging messages.
-
-                            logger.pushIndent(nextTarget.level);
-
-                            if (newTargetNames) {
-                                var prefix = "exec _" + nextTarget.targetName + "_"
+                            logger.pushIndent(target.level);
+                            if (newTargets) {
+                                var prefix = "exec _" + target.targetName + "_"
                                     + " -> *" + plugin.id + "* -> ";
 
-                                newTargetNames = newTargetNames.map((x) => { return x.targetName; });
-
+                                newTargetNames = newTargets.map((x) => { return x.targetName; });
                                 logger.log(prefix + "_" + newTargetNames[0] + "_");
                                 for (var j = 1;j < newTargetNames.length;++j) {
                                     logger.log(" ".repeat(prefix.length - 7) + "-> _"
                                                + newTargetNames[j] + "_");
                                 }
                             }
-
-                            logger.popIndent(nextTarget.level);
+                            logger.popIndent(target.level);
                         }
 
                         recursion -= 1;
