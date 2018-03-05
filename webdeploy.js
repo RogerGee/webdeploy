@@ -2,10 +2,10 @@
 
 // webdeploy.js
 
-var commander = require("commander");
-var path = require("path");
-var logger = require("./src/logger");
-var deployer = require("./src/deployer");
+const commander = require("commander");
+const path = require("path");
+const logger = require("./src/logger");
+const deployer = require("./src/deployer");
 
 function reject(err) {
     logger.error("*[FAIL]* " + String(err));

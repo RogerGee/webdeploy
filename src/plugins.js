@@ -28,6 +28,30 @@ function mkdirParents(path,base) {
     }
 }
 
+function requirePlugin(pluginId) {
+    // There is nothing special about a plugin - it's just a NodeJS module that
+    // we "require" like any other. There are two possible ways we require a
+    // plugin: 1) from this repository's "plugins" subdirectory or 2) globally
+    // from modules made available to NodeJS.
+
+    try {
+        var plugin = require(pathModule.join("../plugins",pluginId));
+    } catch (err1) {
+        try {
+            plugin = require(pluginId);
+        } catch (err2) {
+            throw err1;
+        }
+    }
+
+    // Make sure it has an exec() function.
+    if (typeof plugin.exec != "function") {
+        throw Error("Plugin '" + pluginId + "' does not provide exec() entry point.");
+    }
+
+    return plugin;
+}
+
 const DEFAULT_BUILD_PLUGINS = {
     pass: {
         exec: (target) => {
@@ -84,17 +108,7 @@ module.exports = {
             return DEFAULT_BUILD_PLUGINS[pluginId];
         }
 
-        // There is nothing special about a build plugin - it's just a NodeJS
-        // module that we "require" like any other.
-
-        var plugin = require(pluginId);
-
-        // Make sure it has an exec() function.
-        if (typeof plugin.exec != "function") {
-            throw Error("Plugin '" + pluginId + "' does not provide exec() entry point.");
-        }
-
-        return plugin;
+        return requirePlugin(pluginId);
     },
 
     // Loads a deploy plugin object.
@@ -103,16 +117,6 @@ module.exports = {
             return DEFAULT_DEPLOY_PLUGINS[pluginId];
         }
 
-        // There is nothing special about a deploy plugin - it's just a NodeJS
-        // module that we "require" like any other.
-
-        var plugin = require(pluginId);
-
-        // Make sure it has an exec() function.
-        if (typeof plugin.exec != "function") {
-            throw Error("Plugin '" + pluginId + "' does not provide exec() entry point.");
-        }
-
-        return plugin;
+        return requirePlugin(pluginId);
     }
 };

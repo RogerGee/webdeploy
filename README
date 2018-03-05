@@ -164,3 +164,14 @@ created target name(s) to its resolve callback. This can be a scalar or an
 array.
 
 --------------------------------------------------------------------------------
+Standard plugins
+
+This repository provides several standard plugins that aim to be universal in
+application. They are located under the "plugins" subdirectory and take
+precedence over any external plugins. However these plugins can be removed
+(unlike the build plugins).
+
+Provided plugins:
+
+    minify - minifies JS and CSS
+    babel - leverages Babel
