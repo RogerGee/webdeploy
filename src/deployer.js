@@ -185,7 +185,7 @@ function deployBuildStep(tree,options) {
                     let plugin = target.handlers.shift();
 
                     recursion += 1;
-                    plugins[plugin.id].exec(target).then((newTargets) => {
+                    plugins[plugin.id].exec(target,plugin).then((newTargets) => {
                         if (newTargets) {
                             // Normalize newTargets into an array.
                             if (newTargets && !Array.isArray(newTargets)) {

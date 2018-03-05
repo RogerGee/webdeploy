@@ -155,13 +155,17 @@ A plugin is implemented as a NodeJS module. It must provide the following object
 in its module.exports:
 
     {
-        exec(target | context): Function
+        exec(target | context, plugin): Function
     }
 
 The exec() function takes either "target" or "context" objects for build and
 deployment plugins respectively. It should return a Promise that passes the
 created target name(s) to its resolve callback. This can be a scalar or an
 array.
+
+The second parameter is sent for build plugins to pass in the plugin handler
+object defined in webdeploy.config.js. For deploy plugins this is currently
+undefined.
 
 --------------------------------------------------------------------------------
 Standard plugins
