@@ -42,7 +42,8 @@ function Target(sourcePath,targetName,stream) {
     // The target name serves as the identifier for the target.
     this.targetName = targetName;
 
-    // The target will be recursively cycled through the build system.
+    // Determines whether the target will be recursively cycled through the
+    // build system.
     this.recursive = false;
 }
 
@@ -84,8 +85,7 @@ Target.prototype.makeOutputTarget = function(newTargetName,newTargetPath,recursi
     }
 
     var newTarget = makeOutputTarget(newTargetPath,newTargetName);
-
-    this.recursive = recursive;
+    newTarget.recursive = recursive;
 
     return newTarget;
 };
@@ -93,8 +93,7 @@ Target.prototype.makeOutputTarget = function(newTargetName,newTargetPath,recursi
 // Moves the target through the pipeline unchanged.
 Target.prototype.pass = function() {
     var newTarget = new Target(this.sourcePath,this.targetName,this.stream);
-
-    this.recursive = false;
+    newTarget.recursive = false;
 
     return newTarget;
 };

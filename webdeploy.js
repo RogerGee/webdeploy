@@ -10,8 +10,10 @@ const deployer = require("./src/deployer");
 function reject(err) {
     logger.error("*[FAIL]* " + String(err));
     logger.resetIndent();
-    console.error("");
-    console.error(err.stack);
+    if (err.stack) {
+        console.error("");
+        console.error(err.stack);
+    }
 }
 
 commander.version("0.0.0","-v, --version");

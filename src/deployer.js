@@ -112,7 +112,10 @@ function deployBuildStep(tree,options) {
         outputTargets.push(newTarget);
     }
 
-    return tree.getConfigParameter("includes").then((_includes) => {
+    return tree.getConfigParameter("info").then((configInfo) => {
+        logger.log("Loaded build config from _" + configInfo.file + "_");
+        return tree.getConfigParameter("includes");
+    }).then((_includes) => {
         // Load build plugins required by this deployment.
 
         var n = 0;
