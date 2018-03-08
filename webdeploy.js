@@ -44,10 +44,18 @@ commander.command("deploy [path]")
     });
 
 commander.command("build [path]")
-    .option("-d, --dry-run","Perform dry run")
+    .option("-r, --dry-run","Perform dry run")
+    .option("-p, --prod","Perform production build")
+    .option("-d, --dev","Perform development build (default)")
     .action((sourcePath,cmd) => {
+        if (cmd.prod && cmd.dev) {
+            logger.error("webdeploy: build: Please specify one of _prod_ or _dev_.".bold);
+            return;
+        }
+
         var options = {
             dryRun: cmd.dryRun ? true : false,
+            dev: cmd.dev || !cmd.prod,
             type: deployer.types.TYPE_BUILD
         };
 

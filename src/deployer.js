@@ -130,6 +130,11 @@ function deployBuildStep(tree,options) {
                     continue;
                 }
 
+                // Skip if in dev mode and plugin is not for dev.
+                if (!plugin.dev && options.dev) {
+                    continue;
+                }
+
                 n += 1;
 
                 if (plugin.handler) {
@@ -185,7 +190,20 @@ function deployBuildStep(tree,options) {
                         continue;
                     }
 
-                    let plugin = target.handlers.shift();
+                    // Lookup next plugin to execute. Make sure it is included
+                    // in the set of loaded plugins before continuing. We ignore
+                    // unloaded plugins.
+                    let plugin;
+                    while (target.handlers.length > 0) {
+                        var cand = target.handlers.shift();
+                        if (cand.id in plugins) {
+                            plugin = cand;
+                            break;
+                        }
+                    }
+                    if (!plugin) {
+                        continue;
+                    }
 
                     recursion += 1;
                     plugins[plugin.id].exec(target,plugin).then((newTargets) => {

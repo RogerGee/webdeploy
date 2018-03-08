@@ -13,7 +13,7 @@ function makeIndent() {
 
 function parseMessage(message) {
     // Log syntax provides a simple, Markdown-inspired format.
-    const REGEX = /(^|[\s]+[^\w\s]*)(\*[^\s*]\*|\*[^\s*].*?[^\s*]\*|_[^\s_]_|_[^\s_].*?[^\s_]_)($|(?=[^\w\s]*[\s]+))/g;
+    const REGEX = /(^|[^\w]+)(\*[^\s*]\*|\*[^\s*].*?[^\s*]\*|_[^\s_]_|_[^\s_].*?[^\s_]_)($|(?=[^\w]+))/g;
     const UNDERLINE_TOKEN = '_';
     const BOLD_TOKEN = '*';
 
