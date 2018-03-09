@@ -1,10 +1,10 @@
-// minify.js - webdeploy plugin
+// minify.js - webdeploy build plugin
 
 const uglifyjs = require("uglify-js");
 const uglifycss = require("uglifycss");
 
 module.exports = {
-    exec: (target) => {
+    exec: (target,settings) => {
         return new Promise((resolve,reject) => {
             var code = "";
 
@@ -29,6 +29,10 @@ module.exports = {
                 else if (matchCss) {
                     var newName = matchCss[1] + ".min.css";
                     var newCode = uglifycss.processString(code,{});
+                }
+                else {
+                    var newName = target.targetName;
+                    var newCode = code;
                 }
 
                 var newTarget = target.makeOutputTarget(newName);

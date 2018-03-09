@@ -37,7 +37,7 @@ function repoTreeGetConfig($this,param,useLocalConfig) {
         else if (!$this.gitConfig) {
             $this.repo.config().then((config) => {
                 $this.gitConfig = config;
-                repoTreeGetConfig($this,param,useLocalConfig).then(resolve,reject);
+                repoTreeGetConfig($this,param,false).then(resolve,reject);
             }, (err) => {
                 reject(err + ": " + config);
             });
@@ -56,7 +56,7 @@ function repoTreeGetConfig($this,param,useLocalConfig) {
 function repoTreeGetDeployCommit($this) {
     return new Promise((resolve,reject) => {
         if ($this.deployCommit) {
-            return $this.deployCommit;
+            resolve($this.deployCommit);
         }
 
         repoTreeGetConfig($this,"deployBranch",false).then((deployBranch) => {
@@ -71,23 +71,20 @@ function repoTreeGetDeployCommit($this) {
 }
 
 function repoTreeGetTree($this,treePath) {
-    return new Promise((resolve,reject) => {
-        repoTreeGetDeployCommit($this).then((commit) => {
-            return commit.getTree();
-        }).then((tree) => {
-            if (treePath == "") {
-                resolve(tree);
-            }
-            else {
-                tree.getEntry(treePath).then((entry) => {
-                    if (!entry.isTree()) {
-                        return Promise.reject(new Error("Path does not refer to tree"));
-                    }
+    return repoTreeGetDeployCommit($this).then((commit) => {
+        return commit.getTree();
+    }).then((tree) => {
+        if (treePath == "") {
+            return tree;
+        }
 
-                    entry.getTree().then(resolve);
-                });
+        return tree.getEntry(treePath).then((entry) => {
+            if (!entry.isTree()) {
+                return Promise.reject(new Error("Path does not refer to tree"));
             }
-        }).catch(reject);
+
+            return entry.getTree();
+        });
     });
 }
 
@@ -133,7 +130,7 @@ function repoTreeWalkImpl($this,prefix,tree,callback,filter) {
             if (ent.isBlob()) {
                 outstanding += 1;
                 $this.repo.getBlob(ent.oid()).then((blob) => {
-                    callback(prefix,ent.path(),makeBlobStream);
+                    callback(prefix,ent.path(),() => { return makeBlobStream(blob); });
                     attemptResolution();
                 }, reject);
             }
@@ -257,7 +254,7 @@ PathTree.prototype.walk = function(callback,filter) {
                     var filePath = path.join(basePath,files[i]);
                     var stat = fs.lstatSync(filePath);
                     if (stat.isFile()) {
-                        callback(basePath,files[i],fs.createReadStream(filePath));
+                        callback(basePath,files[i],() => { return fs.createReadStream(filePath); });
                     }
                     else if (stat.isDirectory()) {
                         if (!filter || filter(filePath)) {

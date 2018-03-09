@@ -164,8 +164,8 @@ filesystem:
 
     chain(pluginName)
 
-The webdeploy core code (i.e. this repository) comes with several core plugins
-already built-in:
+The webdeploy core code (i.e. this repository) comes with several core, built-in
+plugins:
 
     [build]
     pass        - does absolutely nothing to the target
@@ -193,12 +193,34 @@ object defined in webdeploy.config.js. For deploy plugins this is currently
 undefined.
 
 --------------------------------------------------------------------------------
+Plugin handlers
+
+The webdeploy specifies a list of plugin handlers for each target. The plugin
+handlers denote which plugins to load and execute; additionally they contain
+configuration related to the plugin.
+
+Each handler is an object of at least the form:
+
+    {
+        id: "plugin-id"
+    }
+
+The following extra configuration options are supported for any plugin:
+
+    {
+        dev: true,    // denotes if the handler is invoked in a development build
+        path: "dist"  // an alternate base path for the resulting output target
+    }
+
+Any other configuration options are plugin-specific.
+
+--------------------------------------------------------------------------------
 Standard plugins
 
 This repository provides several standard plugins that aim to be universal in
 application. They are located under the "plugins" subdirectory and take
 precedence over any external plugins. However these plugins can be removed
-(unlike the build plugins).
+(unlike the core, built-in plugins).
 
 Provided plugins:
 

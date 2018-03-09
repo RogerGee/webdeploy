@@ -98,6 +98,13 @@ Target.prototype.pass = function() {
     return newTarget;
 };
 
+// Applies the default plugin settings to the target.
+Target.prototype.applySettings = function(pluginSettings) {
+    if (pluginSettings.path) {
+        this.sourcePath = pluginSettings.path;
+    }
+};
+
 module.exports = {
     Target: Target,
     makeOutputTarget: makeOutputTarget

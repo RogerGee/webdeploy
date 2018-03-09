@@ -5,7 +5,8 @@ const pathModule = require("path");
 
 function mkdirParents(path,base) {
     var parsed = pathModule.parse(path);
-    var parts = parsed.dir.split(pathModule.sep).filter((x) => { return Boolean(x); });
+    var parts = pathModule.join(parsed.dir,parsed.base).split(pathModule.sep)
+        .filter((x) => { return Boolean(x); });
 
     if (!base) {
         path = parsed.root;

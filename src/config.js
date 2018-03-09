@@ -46,7 +46,7 @@ function loadFromTree(tree) {
                                 resolve(config);
                             }
                             else {
-                                reject(Error("Config in file '" + blobName + "' failed verification"));
+                                reject(new Error("Config in file '" + blobName + "' failed verification"));
                             }
                         });
                     });
@@ -78,23 +78,23 @@ function loadFromTree(tree) {
                                     resolve(toplevel.webdeploy);
                                 }
                                 else {
-                                    reject(Error("Config in JSON file '" + blobName + "' failed verification"));
+                                    reject(new Error("Config in JSON file '" + blobName + "' failed verification"));
                                 }
                             }
                             else {
-                                reject(Error("JSON in file '" + blobName + "' did not contain webdeploy config object"));
+                                reject(new Error("JSON in file '" + blobName + "' did not contain webdeploy config object"));
                             }
                         });
                     });
                 };
             }
             else {
-                reject(Error("No blob was found that contained suitable configuration."));
+                reject(Error("No blob was found that contained a suitable configuration."));
+                return;
             }
 
-            tree.getBlob(blobName).then(callback,(err) => { nextAttempt(); })
-                .then(resolve,(err) => { nextAttempt(); })
-                .catch(reject);
+            tree.getBlob(blobName).then(callback).then(resolve)
+                .catch((err) => { nextAttempt(); });
         }
 
         nextAttempt();

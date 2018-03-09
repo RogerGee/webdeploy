@@ -1,9 +1,9 @@
-// babel.js - webdeploy plugin
+// babel.js - webdeploy build plugin
 
 const babel = require("babel-core");
 
 module.exports = {
-    exec: (target) => {
+    exec: (target,settings) => {
         return new Promise((resolve,reject) => {
             var code = "";
 
@@ -20,4 +20,4 @@ module.exports = {
             });
         });
     }
-}
+};

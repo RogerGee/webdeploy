@@ -56,6 +56,18 @@ function deployBuildStep(tree,options) {
     var targets = [];       // targets processed by build plugins
     var outputTargets = []; // targets to be processed by deploy plugin
 
+    function findTargetInclude(candidate) {
+        var i = 0;
+        while (i < includes.length) {
+            if (candidate.match(includes[i].pattern)) {
+                return includes[i];
+            }
+            i += 1;
+        }
+
+        return false;
+    }
+
     // Create a function for adding output targets to the global arrays.
     function pushOutputTarget(parentTarget,newTarget,initial) {
         if (typeof initial == "undefined") {
@@ -67,23 +79,30 @@ function deployBuildStep(tree,options) {
         // included in the set of processed targets.
 
         if (initial) {
-            var i = 0;
-            var candidate = newTarget.getSourceTargetPath();
-            while (i < includes.length) {
-                if (candidate.match(includes[i].pattern)) {
-                    newTarget.level = 1;
-                    newTarget.handlers = includes[i].handlers.slice(0);
+            // The target may only exist in a delayed state if 'newTarget' is
+            // not set, in that case the required information exists in
+            // "initial".
+            if (!newTarget) {
+                assert(typeof initial == "object" && "path" in initial
+                       && "name" in initial && 'createStream' in initial);
 
-                    logger.log("add _" + candidate + "_");
-                    break;
-                }
-
-                i += 1;
+                var candidate = pathModule.join(initial.path,initial.name);
+            }
+            else {
+                var candidate = newTarget.getSourceTargetPath();
             }
 
-            if (i < includes.length) {
-                // Set the target in the original list so it is processed again.
+            var include = findTargetInclude(candidate);
+            if (include) {
+                if (!newTarget) {
+                    // Resolve the delayed target information into a Target object.
+                    newTarget = new targetModule.Target(initial.path,initial.name,initial.createStream());
+                }
+                newTarget.level = 1;
+                newTarget.handlers = include.handlers.slice(0);
                 targets.push(newTarget);
+
+                logger.log("add _" + candidate + "_");
             }
 
             return;
@@ -154,12 +173,17 @@ function deployBuildStep(tree,options) {
         logger.log("Adding targets:");
         logger.pushIndent();
 
-        return tree.walk((path,name,input) => {
+        return tree.walk((path,name,createInputStream) => {
             var relativePath = pathModule.relative(options.buildPath,path);
 
             // Create a candidate target and attempt to add it.
-            var target = new targetModule.Target(relativePath,name,input);
-            pushOutputTarget(null,target,true);
+            var delayedTarget = {
+                path: relativePath,
+                name: name,
+                createStream: createInputStream
+            };
+
+            pushOutputTarget(null,null,delayedTarget);
         }, (path) => {
             // Ignore any hidden paths.
             if (path[0] == ".") {
@@ -187,6 +211,7 @@ function deployBuildStep(tree,options) {
 
                     // Ignore the target if it has no more handlers.
                     if (!target.handlers || target.handlers.length == 0) {
+                        outputTargets.push(target);
                         continue;
                     }
 
@@ -202,8 +227,12 @@ function deployBuildStep(tree,options) {
                         }
                     }
                     if (!plugin) {
+                        outputTargets.push(target);
                         continue;
                     }
+
+                    // Apply any settings from the plugin handler to the target.
+                    target.applySettings(plugin);
 
                     recursion += 1;
                     plugins[plugin.id].exec(target,plugin).then((newTargets) => {
@@ -262,6 +291,9 @@ function deployStartStep(tree,options) {
     return tree.getConfigParameter(options.type).then((deployPlugin) => {
         options.deployPlugin = deployPlugin;
         options.buildPath = tree.getPath();
+        if (!options.buildPath) {
+            options.buildPath = "";
+        }
 
         // Obtain the deploy path. For TYPE_BUILD deployments, this is always
         // the same as the build path. For TYPE_DEPLOY deployments, this is
