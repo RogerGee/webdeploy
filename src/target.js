@@ -35,6 +35,10 @@ function Target(sourcePath,targetName,stream) {
     // excluding the target name.
     this.sourcePath = sourcePath;
 
+    // The source path to use under the deploy path. This is used by the
+    // implementation.
+    this.deploySourcePath = sourcePath;
+
     // The deployPath is initially not set. It can be set later to an absolute
     // path for an output target.
     this.deployPath = null;
@@ -71,7 +75,7 @@ Target.prototype.setDeployPath = function(basePath) {
         throw Error("Target deploy path must be an absolute path");
     }
 
-    this.deployPath = pathModule.join(basePath,this.sourcePath);
+    this.deployPath = pathModule.join(basePath,this.deploySourcePath);
 };
 
 // Creates an output target that inherits from the parent target.
@@ -81,7 +85,7 @@ Target.prototype.makeOutputTarget = function(newTargetName,newTargetPath,recursi
     }
 
     if (!newTargetPath) {
-        newTargetPath = this.sourcePath;
+        newTargetPath = this.deploySourcePath;
     }
 
     var newTarget = makeOutputTarget(newTargetPath,newTargetName);
@@ -101,7 +105,7 @@ Target.prototype.pass = function() {
 // Applies the default plugin settings to the target.
 Target.prototype.applySettings = function(pluginSettings) {
     if (pluginSettings.path) {
-        this.sourcePath = pluginSettings.path;
+        this.deploySourcePath = pluginSettings.path;
     }
 };
 

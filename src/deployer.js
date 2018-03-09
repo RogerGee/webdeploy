@@ -3,11 +3,12 @@
 const assert = require("assert");
 const pathModule = require("path");
 const git = require("nodegit");
-const treeLoader = require("./tree.js");
-const pluginLoader = require("./plugins.js");
-const targetModule = require("./target.js");
-const contextModule = require("./context.js");
-const logger = require("./logger.js");
+const treeLoader = require("./tree");
+const pluginLoader = require("./plugins");
+const targetModule = require("./target");
+const contextModule = require("./context");
+const depends = require("./depends");
+const logger = require("./logger");
 
 const DEPLOY_TYPES = {
     // Uses the config's "build" deployment.
@@ -108,10 +109,17 @@ function deployBuildStep(tree,options) {
             return;
         }
 
-        // If a parentTarget was specified with a non-empty list of handlers,
-        // then let the newTarget reference the list of remaining
+        // If the parentTarget has a non-empty list of handlers, then let the
+        // newTarget reference the list of remaining handlers.
 
-        if (parentTarget && parentTarget.handlers.length > 0) {
+        assert(parentTarget);
+
+        if (options.graph) {
+            options.graph.addConnection(parentTarget.getSourceTargetPath(),
+                                        newTarget.getSourceTargetPath());
+        }
+
+        if (parentTarget.handlers.length > 0) {
             // Let the newTarget inherit the remaining handlers from the parent
             // target. This allows for chaining handlers from the parent to the
             // child.
@@ -295,6 +303,12 @@ function deployStartStep(tree,options) {
             options.buildPath = "";
         }
 
+        // Load up dependency graph if in build mode.
+
+        if (options.type == DEPLOY_TYPES.TYPE_BUILD) {
+            options.graph = depends.loadFromFile(options.buildPath);
+        }
+
         // Obtain the deploy path. For TYPE_BUILD deployments, this is always
         // the same as the build path. For TYPE_DEPLOY deployments, this is
         // obtained from the configuration.
@@ -312,6 +326,13 @@ function deployStartStep(tree,options) {
                 },reject).then(resolve,reject);
             }
         });
+    }).then((val) => {
+        // Save 
+        if (options.graph) {
+            depends.saveToFile(options.buildPath,options.graph);
+        }
+
+        return val;
     });
 }
 
