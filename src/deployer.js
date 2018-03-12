@@ -52,10 +52,10 @@ function deployDeployStep(tree,options,targets) {
 }
 
 function deployBuildStep(tree,options) {
-    var includes;           // include rules for target analysis (to be set later)
-    var plugins = {};       // plugins available for build
-    var targets = [];       // targets processed by build plugins
-    var outputTargets = []; // targets to be processed by deploy plugin
+    var includes;             // include rules for target analysis (to be set later)
+    var plugins = {};         // plugins available for build
+    var targets = [];         // targets processed by build plugins
+    var outputTargets = [];   // targets to be processed by deploy plugin
 
     function findTargetInclude(candidate) {
         var i = 0;
@@ -327,7 +327,7 @@ function deployStartStep(tree,options) {
             }
         });
     }).then((val) => {
-        // Save 
+        // Save the dependency graph if available.
         if (options.graph) {
             depends.saveToFile(options.buildPath,options.graph);
         }

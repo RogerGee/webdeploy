@@ -37,6 +37,36 @@ function saveToFile(path,graph) {
     }
 }
 
+class StatCache {
+    constructor(basePath) {
+        this.basePath = basePath;
+        this.cache = {};
+    }
+
+    // Promise -> Number || Boolean
+    lookup(path) {
+        if (path in this.cache) {
+            return this.cache[path];
+        }
+
+        return this.cache[path] = new Promise((resolve,reject) => {
+            fs.lstat(pathModule.join(this.basePath,path),(err,stats) => {
+                if (err) {
+                    if (err.code == 'ENOENT') {
+                        resolve(false);
+                    }
+                    else {
+                        reject(err);
+                    }
+                }
+                else {
+                    resolve(stats.mtime);
+                }
+            });
+        });
+    }
+}
+
 class DependencyGraph {
     constructor() {
         this.connections = {};
@@ -59,13 +89,66 @@ class DependencyGraph {
         return Array.from(required);
     }
 
+    isLoaded() {
+        return Boolean(this.forwardMappings && this.reverseMappings);
+    }
+
+    getProducts() {
+        assert(this.isLoaded());
+        return Object.keys(this.reverseMappings);
+    }
+
+    // Promise -> Array of { product, sources }
+    getModifiedProducts(buildPath) {
+        var stats = new StatCache(buildPath);
+        var products = this.getProducts();
+        var promises = [];
+
+        products.forEach((product) => {
+            var sources = this.lookupReverse(product);
+            var innerPromises = [stats.lookup(product)];
+
+            // Stat each file's last modified time.
+            sources.forEach((source) => {
+                innerPromises.push(stats.lookup(source));
+            });
+
+            var promise = Promise.all(innerPromises)
+                .then((modifs) => {
+                    var productMTime = modifs[0];
+                    for (var i = 1;i < modifs.length;++i) {
+                        if (modifs[i] === false || modifs[i] > productMTime) {
+                            return sources;
+                        }
+                    }
+
+                    return false;
+                });
+
+            promises.push(promise);
+        });
+
+        return Promise.all(promises)
+            .then((results) => {
+                var changes = [];
+
+                for (var i = 0;i < results.length;++i) {
+                    if (results[i]) {
+                        changes.push({ product: products[i], sources: results[i] });
+                    }
+                }
+
+                return changes;
+            });
+    }
+
     lookupForward(a) {
-        assert(this.forwardMappings);
+        assert(this.isLoaded());
         return this.forwardMappings[a];
     }
 
     lookupReverse(b) {
-        assert(this.reverseMappings);
+        assert(this.isLoaded());
         return this.reverseMappings[b];
     }
 
