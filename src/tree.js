@@ -1,7 +1,7 @@
 // tree.js - webdeploy
 
 const fs = require("fs");
-const path = require("path");
+const path = require("path").posix;
 const git = require("nodegit");
 const stream = require("stream");
 const configuration = require("./config.js");
@@ -53,39 +53,87 @@ function repoTreeGetConfig($this,param,useLocalConfig) {
     });
 }
 
-function repoTreeGetDeployCommit($this) {
-    return new Promise((resolve,reject) => {
-        if ($this.deployCommit) {
-            resolve($this.deployCommit);
-        }
+function repoTreeGetCommit($this) {
+    var commitId = commit.id().tostrS();
 
-        repoTreeGetConfig($this,"deployBranch",false).then((deployBranch) => {
+    
+}
+
+function repoTreeGetDeployCommit($this) {
+    const COMMIT_ID = "HEAD";
+
+    if (COMMIT_ID in $this.deployCommits) {
+        return $this.deployCommits[COMMIT_ID];
+    }
+
+    return $this.deployCommits[COMMIT_ID] = repoTreeGetConfig($this,"deployBranch",false)
+        .then((deployBranch) => {
             return $this.repo.getReference(deployBranch);
         }).then((reference) => {
             return git.Commit.lookup($this.repo, reference.target());
-        }).then((commit) => {
-            $this.deployCommit = commit;
-            resolve($this.deployCommit);
-        }).catch(reject);
-    });
+        });
 }
 
-function repoTreeGetTree($this,treePath) {
-    return repoTreeGetDeployCommit($this).then((commit) => {
-        return commit.getTree();
-    }).then((tree) => {
-        if (treePath == "") {
-            return tree;
-        }
+function repoTreeGetPreviousCommit($this) {
+    // NOTE: The promise resolves to null if the commit was not found. Rejection
+    // occurs on any other, unanticipated error.
 
-        return tree.getEntry(treePath).then((entry) => {
-            if (!entry.isTree()) {
-                return Promise.reject(new Error("Path does not refer to tree"));
-            }
+    const COMMIT_ID = "PREV";
 
-            return entry.getTree();
+    if (COMMIT_ID in $this.deployCommits) {
+        return $this.deployCommits[COMMIT_ID];
+    }
+
+    return $this.deployCommits[COMMIT_ID] = repoTreeGetConfig($this,"cache.lastDeploy",false)
+        .then((previousCommitOid) => {
+            return $this.repo.getCommit(previousCommitOid);
+        }, (err) => { return Promise.resolve(null); });
+}
+
+function repoTreeGetTree($this,treePath,commit) {
+    function callback(commit) {
+        return commit.getTree()
+            .then((tree) => {
+                if (treePath == "") {
+                    return tree;
+                }
+
+                return tree.getEntry(treePath).then((entry) => {
+                    if (!entry.isTree()) {
+                        return Promise.reject(new Error("Path does not refer to tree"));
+                    }
+
+                    return entry.getTree();
+                });
+            });
+    }
+
+    if (!commit) {
+        // Default to current deploy commit.
+        return repoTreeGetDeployCommit($this).then(callback);
+    }
+
+    return callback(commit);
+}
+
+function repoTreeGetTargetTree($this,commit) {
+    if (commit) {
+        var commitId = commit.id().tostrS();
+    }
+    else {
+        var commitId = 'target';
+    }
+
+    if ($this.targetTrees[commitId]) {
+        return $this.targetTrees[commitId];
+    }
+
+    return $this.targetTrees[commitId] = repoTreeGetConfig($this,'targetTree',false)
+        .then((targetTreePath) => {
+            return repoTreeGetTree($this,normalizeTargetTree(targetTreePath),commit);
+        },(err) => {
+            return repoTreeGetTree($this,normalizeTargetTree(),commit);
         });
-    });
 }
 
 function makeBlobStream(blob) {
@@ -99,18 +147,15 @@ function makeBlobStream(blob) {
     return bufferStream;
 }
 
-function repoTreeGetBlob($this,blobPath,targetTree) {
-    targetTree = normalizeTargetTree(targetTree);
+function repoTreeGetBlob($this,blobPath,tree) {
+    return tree.getEntry(blobPath)
+        .then((entry) => {
+            if (!entry.isBlob()) {
+                return Promise.reject(new Error("Path does not refer to a blob"));
+            }
 
-    return repoTreeGetTree($this,targetTree).then((tree) => {
-        return tree.getEntry(blobPath);
-    }).then((entry) => {
-        if (!entry.isBlob()) {
-            return Promise.reject(new Error("Path does not refer to a blob"));
-        }
-
-        return entry.getBlob();
-    }).then(makeBlobStream);
+            return entry.getBlob();
+        }).then(makeBlobStream);
 }
 
 function repoTreeWalkImpl($this,prefix,tree,callback,filter) {
@@ -149,17 +194,17 @@ function repoTreeWalkImpl($this,prefix,tree,callback,filter) {
     });
 }
 
-function repoTreeWalk($this,callback,filter,targetTree) {
-    targetTree = normalizeTargetTree(targetTree);
-
-    return repoTreeGetTree($this,targetTree).then((tree) => {
-        return repoTreeWalkImpl($this,targetTree,tree,callback,filter);
-    });
+function repoTreeWalk($this,callback,filter,tree) {
+    return repoTreeWalkImpl($this,tree.path(),tree,callback,filter);
 }
 
 function RepoTree(repo) {
     this.repo = repo;
     this.config = {}; // cache git-config entries here
+
+    // Cache Promises to certain, often-accessed resources.
+    this.deployCommits = {};
+    this.targetTrees = {};
 }
 
 // Gets a String. Gets the path to the tree. Since this is a git-repository,
@@ -177,17 +222,54 @@ RepoTree.prototype.getConfigParameter = function(param) {
 // Gets a Promise -> Stream. The blobPath is relative to the configured target
 // tree.
 RepoTree.prototype.getBlob = function(blobPath) {
-    return repoTreeGetConfig(this,'targetTree',false)
-        .then((targetTree) => { return repoTreeGetBlob(this,blobPath,targetTree); },
-              (err) => { return repoTreeGetBlob(this,blobPath); });
+    return repoTreeGetTargetTree(this)
+        .then((targetTree) => { return repoTreeGetBlob(this,blobPath,targetTree); });
 };
 
-// Gets a Promise. Walks the tree and calls callback(path,name,stream) for each
-// blob. If specified, filter(path) -> false heads off a particular path branch.
+// Gets a Promise. Walks the tree recursively and calls
+// callback(path,name,streamFunc) for each blob. The "streamFunc" parameter is a
+// function that creates a stream for the blob entry. If specified, filter(path)
+// -> false heads off a particular path branch. The Promise is resolved once all
+// entries have been walked.
 RepoTree.prototype.walk = function(callback,filter) {
-    return repoTreeGetConfig(this,'targetTree',false)
-        .then((targetTree) => { return repoTreeWalk(this,callback,filter,targetTree); },
-              (err) => { return repoTreeWalk(this,callback,filter); });
+    return repoTreeGetTargetTree(this)
+        .then((targetTree) => { return repoTreeWalk(this,callback,filter,targetTree); });
+};
+
+// Gets a Promise -> Boolean. Determines if the specified blob has been modified
+// since its last deployment (i.e. the last commit we deployed). The blob is
+// relative to the configured target tree.
+RepoTree.prototype.isBlobModified = function(blobPath) {
+    return Promise.all([
+        repoTreeGetPreviousCommit(this)
+            .then((commit) => {
+                if (!commit) {
+                    return null;
+                }
+
+                return repoTreeGetTargetTree(this,commit)
+                    .then((tree) => {
+                        return tree.entryByPath(blobPath)
+                            .then((entry) => { return entry; },
+                                  (err) => { return Promise.resolve(null); });
+                    });
+            }),
+
+        repoTreeGetTargetTree(this)
+            .then((targetTree) => {
+                return targetTree.entryByPath(blobPath);
+            })
+
+    ]).then((entries) => {
+        // If the previous entry wasn't found, then report that the blob was
+        // modified.
+        if (!entries[0]) {
+            return true;
+        }
+
+        var ids = entries.map((x) => { return x.id(); });
+        return !ids[0].equal(ids[1]);
+    });
 };
 
 function PathTree(basePath) {
@@ -236,8 +318,10 @@ PathTree.prototype.getBlob = function(blobPath) {
     });
 };
 
-// Gets a Promise. Walks the tree and calls callback(path,name,stream) for each
-// blob. If specified, filter(path) -> false heads off a particular branch path.
+// Gets a Promise. Walks the tree and calls callback(path,name,streamFunc) for
+// each blob. The "streamFunc" parameter can be called to obtain a stream to the
+// blob's contents. If specified, filter(path) -> false heads off a particular
+// branch path.
 PathTree.prototype.walk = function(callback,filter) {
     return new Promise((resolve,reject) => {
         let outstanding = 1;
@@ -270,6 +354,12 @@ PathTree.prototype.walk = function(callback,filter) {
 
         fs.readdir(this.basePath,walkRecursive(this.basePath));
     });
+};
+
+// Gets Promise -> Boolean. For path trees, this will always resolve to true
+// since we have nothing to compare.
+PathTree.prototype.isBlobModified = function(blobPath) {
+    return Promise.resolve(true);
 };
 
 // Gets a Promise -> RepoTree.

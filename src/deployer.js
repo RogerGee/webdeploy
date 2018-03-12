@@ -1,7 +1,7 @@
 // deployer.js
 
 const assert = require("assert");
-const pathModule = require("path");
+const pathModule = require("path").posix;
 const git = require("nodegit");
 const treeLoader = require("./tree");
 const pluginLoader = require("./plugins");

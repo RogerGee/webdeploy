@@ -14,10 +14,10 @@
     # Defines the base path of the deployment directory.
     deployPath = "/path/to/deployment"
 
-    # These config keys are used to cache deployment information. Do not touch
-    # or modify these unless you know what you are doing.
-
-    deploy-oid = "61bc47e00b3653a26a50e4c380f8dfbe322d529d"
+# These config keys are used to cache deployment information. Do not touch
+# or modify these unless you know what you are doing.
+[webdeploy "cache"]
+    lastDeploy = "61bc47e00b3653a26a50e4c380f8dfbe322d529d"
 
 # Custom plugins may require configuration that is under "webdeploy".
 [webdeploy.custom_plugin_1]
