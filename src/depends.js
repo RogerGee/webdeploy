@@ -8,6 +8,14 @@ const tree = require("./tree");
 const SAVE_CONFIG_KEY = "cache.depends";
 const SAVE_FILE_NAME = ".webdeploy.deps";
 
+function loadFromJson(graph,json) {
+    var parsed = JSON.parse(json);
+
+    graph.connections = parsed.map;
+    graph.forwardMappings = Object.assign({},parsed.map);
+    graph._calcReverseMappings();
+}
+
 function loadFromFile(path) {
     var graph = new DependencyGraph();
     var saveFilePath = pathModule.join(path,SAVE_FILE_NAME);
@@ -15,10 +23,7 @@ function loadFromFile(path) {
     return new Promise((resolve,reject) => {
         fs.readFile(saveFilePath,{ encoding:'utf8' },(err,data) => {
             if (!err) {
-                var parsed = JSON.parse(data);
-
-                graph.forwardMappings = parsed.map;
-                graph._calcReverseMappings();
+                loadFromJson(graph,data);
             }
 
             resolve(graph);
@@ -30,10 +35,7 @@ function loadFromConfig(repoTree) {
     var graph = new DependencyGraph();
 
     return repoTree.getConfigParameter(SAVE_CONFIG_KEY).then((text) => {
-        var parsed = JSON.parse(text);
-
-        graph.forwardMappings = parsed.map;
-        graph._calcReverseMappings();
+        loadFromJson(graph,text);
 
         return graph;
     }, (err) => {
@@ -43,10 +45,6 @@ function loadFromConfig(repoTree) {
 
 function saveToFile(path,graph) {
     var saveFilePath = pathModule.join(path,SAVE_FILE_NAME);
-
-    if (!graph.isLoaded()) {
-        graph.resolve();
-    }
 
     var text = JSON.stringify({map: graph.forwardMappings});
     var options = {
@@ -66,10 +64,6 @@ function saveToFile(path,graph) {
 }
 
 function saveToConfig(repoTree,graph) {
-    if (!graph.isLoaded()) {
-        graph.resolve();
-    }
-
     return repoTree.writeConfigParameter(SAVE_CONFIG_KEY,JSON.stringify({map: graph.forwardMappings}));
 }
 
@@ -88,6 +82,8 @@ function loadFromTree(tree) {
 }
 
 function saveToTree(tree,graph) {
+    graph.resolve();
+
     if (tree.name == 'PathTree') {
         return saveToFile(tree.getPath(),graph);
     }
@@ -259,6 +255,8 @@ class DependencyGraph {
 
     reset() {
         this.connections = {};
+        delete this.forwardMappings;
+        delete this.reverseMappings;
     }
 
     _calcReverseMappings() {

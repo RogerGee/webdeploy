@@ -20,10 +20,12 @@ commander.version("0.0.0","-v, --version");
 
 commander.command("deploy [path]")
     .option("-d, --dry-run","Perform dry run")
+    .option("-f, --force","Force full deploy without consulting dependencies")
     .action((sourcePath,cmd) => {
         var options = {
             dryRun: cmd.dryRun ? true : false,
-            type: deployer.types.TYPE_DEPLOY
+            type: deployer.types.TYPE_DEPLOY,
+            force: cmd.force ? true : false
         };
 
         if (sourcePath) {
@@ -47,6 +49,7 @@ commander.command("build [path]")
     .option("-r, --dry-run","Perform dry run")
     .option("-p, --prod","Perform production build")
     .option("-d, --dev","Perform development build (default)")
+    .option("-f, --force","Force full build without consulting dependencies")
     .action((sourcePath,cmd) => {
         if (cmd.prod && cmd.dev) {
             logger.error("webdeploy: build: Please specify one of _prod_ or _dev_.".bold);
@@ -56,7 +59,8 @@ commander.command("build [path]")
         var options = {
             dryRun: cmd.dryRun ? true : false,
             dev: cmd.dev || !cmd.prod,
-            type: deployer.types.TYPE_BUILD
+            type: deployer.types.TYPE_BUILD,
+            force: cmd.force ? true : false
         };
 
         if (sourcePath) {

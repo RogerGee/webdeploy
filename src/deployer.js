@@ -367,6 +367,10 @@ function deployStartStep(tree,options) {
     }).then((graph) => {
         options.graph = graph;
 
+        if (options.force) {
+            options.graph.reset();
+        }
+
         // Obtain the deploy path. For TYPE_BUILD deployments, this is always
         // the same as the build path. For TYPE_DEPLOY deployments, this is
         // obtained from the configuration.
