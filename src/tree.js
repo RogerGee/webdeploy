@@ -6,6 +6,8 @@ const git = require("nodegit");
 const stream = require("stream");
 const configuration = require("./config.js");
 
+const CONFIG_LAST_DEPLOY = "cache.lastDeploy";
+
 function normalizeTargetTree(targetTree) {
     // The path "/" is the root directory of the repo's target tree. This means
     // the prefix should be empty when doing a lookup.
@@ -82,7 +84,7 @@ function repoTreeGetPreviousCommit($this) {
         return $this.deployCommits[COMMIT_ID];
     }
 
-    return $this.deployCommits[COMMIT_ID] = repoTreeGetConfig($this,"cache.lastDeploy",false)
+    return $this.deployCommits[COMMIT_ID] = repoTreeGetConfig($this,CONFIG_LAST_DEPLOY,false)
         .then((previousCommitOid) => {
             return $this.repo.getCommit(previousCommitOid);
         }, (err) => { return Promise.resolve(null); });
@@ -196,6 +198,13 @@ function repoTreeWalk($this,callback,filter,tree) {
     return repoTreeWalkImpl($this,tree.path(),tree,callback,filter);
 }
 
+/**
+ * RepoTree
+ *
+ * Represents a tree of potential deploy targets that are sourced from a git
+ * repository using nodegit. The tree also can read configuration from the
+ * repo's git-config.
+ */
 class RepoTree {
     constructor(repo) {
         this.name = 'RepoTree';
@@ -232,6 +241,14 @@ class RepoTree {
 
         return repoTreeGetConfigObject(this).then((config) => {
             return config.setString(param,value);
+        });
+    }
+
+    // Gets a Promise. This method saves the current deploy commit to the
+    // git-config.
+    saveDeployCommit() {
+        return repoTreeGetDeployCommit(this).then((commit) => {
+            return this.writeConfigParameter(CONFIG_LAST_DEPLOY,commit.id().tostrS());
         });
     }
 
@@ -295,6 +312,12 @@ class RepoTree {
     }
 }
 
+/**
+ * PathTree
+ *
+ * Represents a tree of potential deploy targets that are sourced from the
+ * filesystem (i.e. under a path on disk).
+ */
 class PathTree {
     constructor(basePath) {
         this.name = 'PathTree';
@@ -334,6 +357,11 @@ class PathTree {
 
     // Not provided for PathTree.
     writeConfigParameter(param,value) {
+        assert(false);
+    }
+
+    // Not provided for PathTree.
+    saveDeployCommit() {
         assert(false);
     }
 
@@ -390,9 +418,14 @@ class PathTree {
     }
 
     // Gets Promise -> Boolean. For path trees, an extra mtime parameter must be
-    // provided against which to check for modification.
+    // provided against which to check for modification. Otherwise the promise
+    // will always resolve to true.
     isBlobModified(blobPath,mtime) {
         return this.getMTime(blobPath).then((tm) => {
+            if (typeof mtime === "undefined") {
+                return true;
+            }
+
             return tm > mtime;
         });
     }

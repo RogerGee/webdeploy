@@ -92,6 +92,13 @@ function saveToTree(tree,graph) {
     }
 }
 
+/**
+ * DependencyGraph
+ *
+ * Stores target dependencies such that a set of source targets is associated
+ * with a set of build products. The associations are always non-trivial,
+ * meaning a dependency A -> A is never represented but A -> B is represented.
+ */
 class DependencyGraph {
     constructor() {
         this.connections = {};
@@ -197,6 +204,15 @@ class DependencyGraph {
             });
     }
 
+    // Determines if the specified source is a dependency of any product known
+    // to the DependencyTree.
+    hasProductForSource(source) {
+        if (this.isLoaded()) {
+            return source in this.forwardMappings;
+        }
+        return false;
+    }
+
     lookupForward(a) {
         assert(this.isLoaded());
         return this.forwardMappings[a];
@@ -208,7 +224,8 @@ class DependencyGraph {
     }
 
     addConnection(a,b) {
-        // Collapse connections that are an identity, i.e. A -> A = A.
+        // Collapse connections that are an identity, i.e. A -> A = A. This
+        // avoids having trivial build products in the graph.
         if (a == b) {
             return;
         }

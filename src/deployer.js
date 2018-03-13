@@ -24,7 +24,12 @@ function deployDeployStep(tree,options,targets) {
     if (targets.length == 0) {
         if (options.ignored) {
             logger.pushIndent();
-            logger.log("*All Targets Ignored - Build Up-to-date*");
+            if (options.type == DEPLOY_TYPES.TYPE_BUILD) {
+                logger.log("*All Targets Ignored - Build Up-to-date*");
+            }
+            else {
+                logger.log("*All Targets Ignored - Deployment Up-to-date*");
+            }
             logger.popIndent();
             return Promise.resolve();
         }
@@ -252,23 +257,46 @@ function deployBuildStep(tree,options) {
         // it means to have zero targets.
         options.ignored = false;
 
+        var targetPromises = [];
+
         return tree.walk((path,name,createInputStream) => {
             var relativePath = pathModule.relative(options.buildPath,path);
             var ref = pathModule.join(relativePath,name);
+
+            // Ignore potential targets that were determined to not belong in
+            // the build since they map to build products that are already
+            // up-to-date.
 
             if (ignoreSet.has(ref)) {
                 options.ignored = true;
                 return;
             }
 
-            // Create a candidate target and attempt to add it.
-            var delayedTarget = {
-                path: relativePath,
-                name: name,
-                createStream: createInputStream
-            };
+            function addTarget(isModified) {
+                if (!isModified) {
+                    return;
+                }
 
-            pushOutputTarget(null,null,delayedTarget);
+                // Create a candidate target and attempt to add it.
+                var delayedTarget = {
+                    path: relativePath,
+                    name: name,
+                    createStream: createInputStream
+                };
+
+                pushOutputTarget(null,null,delayedTarget);
+            }
+
+            // If a potential target does not have a build product (i.e. is a
+            // trivial product), then check to see if it is modified and should
+            // be included or not.
+
+            if (options.graph && !options.graph.hasProductForSource(ref)) {
+                targetPromises.push(tree.isBlobModified(ref).then(addTarget));
+            }
+            else {
+                addTarget(true);
+            }
         }, (path) => {
             // Ignore any hidden paths.
             if (path[0] == ".") {
@@ -276,6 +304,8 @@ function deployBuildStep(tree,options) {
             }
 
             return true;
+        }).then(() => {
+            return Promise.all(targetPromises);
         });
     }).then(() => {
         // Send each target through each plugin.
@@ -417,13 +447,15 @@ function deployStartStep(tree,options) {
                 },reject).then(resolve,reject);
             }
         });
-    }).then((val) => {
+    }).then(() => {
         // Save the dependency graph if available.
         if (options.graph) {
-            return depends.saveToTree(tree,options.graph).then(() => { return val; });
+            return depends.saveToTree(tree,options.graph);
         }
-
-        return val;
+    }).then(() => {
+        if (tree.name == 'RepoTree') {
+            return tree.saveDeployCommit();
+        }
     });
 }
 
