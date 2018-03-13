@@ -19,7 +19,16 @@ const DEPLOY_TYPES = {
 };
 
 function deployDeployStep(tree,options,targets) {
+    logger.log("Deploying targets: _" + options.deployPlugin + "_");
+
     if (targets.length == 0) {
+        if (options.ignored) {
+            logger.pushIndent();
+            logger.log("*All Targets Ignored - Build Up-to-date*");
+            logger.popIndent();
+            return Promise.resolve();
+        }
+
         throw new Error("No targets for deploy step!");
     }
 
@@ -43,7 +52,6 @@ function deployDeployStep(tree,options,targets) {
         contextModule.DeployContext.prototype.chain(nextPlugin);
     }
 
-    logger.log("Deploying targets: _" + options.deployPlugin + "_");
     logger.pushIndent();
     var promise = plugin.exec(context);
     logger.popIndent();
@@ -175,14 +183,34 @@ function deployBuildStep(tree,options) {
 
         logger.log("Loaded _" + n + "_ build " + logger.plural(n,"plugin"));
 
+        // Calculate the set of ignored targets given a dependency graph.
+        // Otherwise return an empty set.
+
+        if (options.graph && options.graph.isLoaded()) {
+            return options.graph.getIgnoreSources(options.buildPath);
+        }
+
+        return Promise.resolve(new Set());
+    }).then((ignoreSet) => {
         // Load set of initial targets from tree. Only include the blobs that
-        // match an include object's pattern.
+        // match an include object's pattern and that are not ignored by the
+        // build configuration.
 
         logger.log("Adding targets:");
         logger.pushIndent();
 
+        // Flag whether any targets were ignored so we can later determine what
+        // it means to have zero targets.
+        options.ignored = false;
+
         return tree.walk((path,name,createInputStream) => {
             var relativePath = pathModule.relative(options.buildPath,path);
+            var ref = pathModule.join(relativePath,name);
+
+            if (ignoreSet.has(ref)) {
+                options.ignored = true;
+                return;
+            }
 
             // Create a candidate target and attempt to add it.
             var delayedTarget = {
@@ -203,8 +231,18 @@ function deployBuildStep(tree,options) {
     }).then(() => {
         // Send each target through each plugin.
 
+        if (targets.length == 0) {
+            logger.log("*No Targets*");
+        }
+
         logger.popIndent();
         logger.log("Building targets:");
+
+        if (targets.length == 0) {
+            logger.pushIndent();
+            logger.log("*No Targets*");
+            logger.popIndent();
+        }
 
         return new Promise((resolve,reject) => {
             var recursion = 0;

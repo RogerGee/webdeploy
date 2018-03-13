@@ -99,7 +99,12 @@ class DependencyGraph {
     }
 
     // Promise -> Array of { product, sources }
-    getModifiedProducts(buildPath) {
+    //
+    // Determines the set of build product nodes that are out-of-date based on
+    // file mtime information.
+    getOutOfDateProducts(buildPath) {
+        assert(this.isLoaded());
+
         var stats = new StatCache(buildPath);
         var products = this.getProducts();
         var promises = [];
@@ -139,6 +144,31 @@ class DependencyGraph {
                 }
 
                 return changes;
+            });
+    }
+
+    // Promise -> Set of string
+    //
+    // Determines the set of sources that can safely be ignored since they are
+    // not reachable by any out-of-date build product.
+    getIgnoreSources(buildPath) {
+        assert(this.isLoaded());
+
+        // Compute set of source nodes not reachable by the set of out-of-date
+        // build products.
+        var sourceSet = new Set(Object.keys(this.forwardMappings));
+
+        return this.getOutOfDateProducts(buildPath)
+            .then((products) => {
+                for (var i = 0;i < products.length;++i) {
+                    var entry = products[i];
+
+                    for (var j = 0;j < entry.sources.length;++j) {
+                        sourceSet.delete(entry.sources[j]);
+                    }
+                }
+
+                return sourceSet;
             });
     }
 
