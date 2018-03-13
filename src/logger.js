@@ -95,6 +95,6 @@ module.exports = {
             suffix = "s";
         }
 
-        return n > 1 ? thing + suffix : thing;
+        return n > 1 || n == 0 ? thing + suffix : thing;
     }
 };

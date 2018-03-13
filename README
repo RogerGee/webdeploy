@@ -205,11 +205,14 @@ Each handler is an object of at least the form:
         id: "plugin-id"
     }
 
-The following extra configuration options are supported for any plugin:
+The following extra configuration options are supported for any plugin. Their
+default values listed below are applied when one of these extra configuration
+options is omitted:
 
     {
         dev: true,    // denotes if the handler is invoked in a development build
-        path: "dist"  // an alternate base path for the resulting output target
+        build: true,  // denotes if the handler is invoked in a build at all
+        path: ""      // an alternate base path for the resulting output target(s)
     }
 
 Any other configuration options are plugin-specific.

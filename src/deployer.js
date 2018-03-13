@@ -165,8 +165,21 @@ function deployBuildStep(tree,options) {
                     continue;
                 }
 
-                // Skip if in dev mode and plugin is not for dev.
+                if (typeof plugin.dev === 'undefined') {
+                    plugin.dev = true;
+                }
+                if (typeof plugin.build === 'undefined') {
+                    plugin.build = true;
+                }
+
+                // Skip if in dev mode and plugin is not for dev OR if the
+                // plugin cannot be used in build.
                 if (!plugin.dev && options.dev) {
+                    includes[i].handlers[j] = null;
+                    continue;
+                }
+                if (!plugin.build && options.type == DEPLOY_TYPES.TYPE_BUILD) {
+                    includes[i].handlers[j] = null;
                     continue;
                 }
 
@@ -179,7 +192,14 @@ function deployBuildStep(tree,options) {
                     plugins[plugin.id] = pluginLoader.loadBuildPlugin(plugin.id);
                 }
             }
+
+            includes[i].handlers = includes[i].handlers.filter((x) => { return x !== null; });
+            if (includes[i].handlers.length == 0) {
+                includes[i] = null;
+            }
         }
+
+        includes = includes.filter((x) => { return x !== null; });
 
         logger.log("Loaded _" + n + "_ build " + logger.plural(n,"plugin"));
 
