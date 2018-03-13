@@ -18,6 +18,7 @@
 # or modify these unless you know what you are doing.
 [webdeploy "cache"]
     lastDeploy = "61bc47e00b3653a26a50e4c380f8dfbe322d529d"
+	depends = {\"map\":{\"src/b.js\":[\"dist/b.min.js\"],\"src/a.js\":[\"dist/a.min.js\"]}}
 
 # Custom plugins may require configuration that is under "webdeploy".
 [webdeploy.custom_plugin_1]

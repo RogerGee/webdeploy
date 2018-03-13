@@ -3,67 +3,96 @@
 const fs = require("fs");
 const pathModule = require("path");
 const assert = require("assert");
+const tree = require("./tree");
 
+const SAVE_CONFIG_KEY = "cache.depends";
 const SAVE_FILE_NAME = ".webdeploy.deps";
 
 function loadFromFile(path) {
     var graph = new DependencyGraph();
     var saveFilePath = pathModule.join(path,SAVE_FILE_NAME);
 
-    try {
-        const json = fs.readFileSync(saveFilePath,{ encoding:'utf8' });
-        var parsed = JSON.parse(json);
+    return new Promise((resolve,reject) => {
+        fs.readFile(saveFilePath,{ encoding:'utf8' },(err,data) => {
+            if (!err) {
+                var parsed = JSON.parse(data);
+
+                graph.forwardMappings = parsed.map;
+                graph._calcReverseMappings();
+            }
+
+            resolve(graph);
+        });
+    });
+}
+
+function loadFromConfig(repoTree) {
+    var graph = new DependencyGraph();
+
+    return repoTree.getConfigParameter(SAVE_CONFIG_KEY).then((text) => {
+        var parsed = JSON.parse(text);
 
         graph.forwardMappings = parsed.map;
         graph._calcReverseMappings();
-    } catch (e) {
-        // pass
-    }
 
-    return graph;
+        return graph;
+    }, (err) => {
+        return graph;
+    });
 }
 
 function saveToFile(path,graph) {
     var saveFilePath = pathModule.join(path,SAVE_FILE_NAME);
 
-    if (!graph.forwardMappings) {
+    if (!graph.isLoaded()) {
         graph.resolve();
     }
 
-    try {
-        fs.writeFileSync(saveFilePath,JSON.stringify({map: graph.forwardMappings}));
-    } catch (e) {
-        // pass
+    var text = JSON.stringify({map: graph.forwardMappings});
+    var options = {
+        encoding: 'utf8'
+    };
+
+    return new Promise((resolve,reject) => {
+        fs.writeFile(saveFilePath,text,options,(err) => {
+            if (err) {
+                reject(err);
+            }
+            else {
+                resolve();
+            }
+        });
+    });
+}
+
+function saveToConfig(repoTree,graph) {
+    if (!graph.isLoaded()) {
+        graph.resolve();
+    }
+
+    return repoTree.writeConfigParameter(SAVE_CONFIG_KEY,JSON.stringify({map: graph.forwardMappings}));
+}
+
+// These generic save/load routines detect which type of tree is passed in an
+// operate accordingly. PathTree instances store dependency graphs in a file
+// (i.e. SAVE_FILE_NAME) under the tree. RepoTree instances store dependency
+// graphs in the git-config.
+
+function loadFromTree(tree) {
+    if (tree.name == 'PathTree') {
+        return loadFromFile(tree.getPath());
+    }
+    if (tree.name == 'RepoTree') {
+        return loadFromConfig(tree);
     }
 }
 
-class StatCache {
-    constructor(basePath) {
-        this.basePath = basePath;
-        this.cache = {};
+function saveToTree(tree,graph) {
+    if (tree.name == 'PathTree') {
+        return saveToFile(tree.getPath(),graph);
     }
-
-    // Promise -> Number || Boolean
-    lookup(path) {
-        if (path in this.cache) {
-            return this.cache[path];
-        }
-
-        return this.cache[path] = new Promise((resolve,reject) => {
-            fs.lstat(pathModule.join(this.basePath,path),(err,stats) => {
-                if (err) {
-                    if (err.code == 'ENOENT') {
-                        resolve(false);
-                    }
-                    else {
-                        reject(err);
-                    }
-                }
-                else {
-                    resolve(stats.mtime);
-                }
-            });
-        });
+    if (tree.name == 'RepoTree') {
+        return saveToConfig(tree,graph);
     }
 }
 
@@ -101,34 +130,34 @@ class DependencyGraph {
     // Promise -> Array of { product, sources }
     //
     // Determines the set of build product nodes that are out-of-date based on
-    // file mtime information.
-    getOutOfDateProducts(buildPath) {
+    // information from the tree.
+    getOutOfDateProducts(tree) {
         assert(this.isLoaded());
 
-        var stats = new StatCache(buildPath);
         var products = this.getProducts();
         var promises = [];
 
         products.forEach((product) => {
-            var sources = this.lookupReverse(product);
-            var innerPromises = [stats.lookup(product)];
+            var promise = tree.getMTime(product).then((mtime) => {
+                var sources = this.lookupReverse(product);
+                var innerPromises = [];
 
-            // Stat each file's last modified time.
-            sources.forEach((source) => {
-                innerPromises.push(stats.lookup(source));
-            });
-
-            var promise = Promise.all(innerPromises)
-                .then((modifs) => {
-                    var productMTime = modifs[0];
-                    for (var i = 1;i < modifs.length;++i) {
-                        if (modifs[i] === false || modifs[i] > productMTime) {
-                            return sources;
-                        }
-                    }
-
-                    return false;
+                // Query each source blob's modification status.
+                sources.forEach((source) => {
+                    innerPromises.push(tree.isBlobModified(source,mtime));
                 });
+
+                return Promise.all(innerPromises)
+                    .then((modifs) => {
+                        for (var i = 0;i < modifs.length;++i) {
+                            if (modifs[i]) {
+                                return sources;
+                            }
+                        }
+
+                        return false;
+                    });
+            });
 
             promises.push(promise);
         });
@@ -151,14 +180,14 @@ class DependencyGraph {
     //
     // Determines the set of sources that can safely be ignored since they are
     // not reachable by any out-of-date build product.
-    getIgnoreSources(buildPath) {
+    getIgnoreSources(tree) {
         assert(this.isLoaded());
 
         // Compute set of source nodes not reachable by the set of out-of-date
         // build products.
         var sourceSet = new Set(Object.keys(this.forwardMappings));
 
-        return this.getOutOfDateProducts(buildPath)
+        return this.getOutOfDateProducts(tree)
             .then((products) => {
                 for (var i = 0;i < products.length;++i) {
                     var entry = products[i];
@@ -183,6 +212,11 @@ class DependencyGraph {
     }
 
     addConnection(a,b) {
+        // Collapse connections that are an identity, i.e. A -> A = A.
+        if (a == b) {
+            return;
+        }
+
         if (a in this.connections) {
             this.connections[a].push(b);
         }
@@ -203,13 +237,14 @@ class DependencyGraph {
             while (stk.length > 0) {
                 var next = stk.pop();
 
-                found.add(next);
                 if (next in this.connections) {
                     stk = stk.concat(this.connections[next]);
                 }
                 else {
                     leaves.add(next);
                 }
+
+                found.add(next);
             }
 
             this.forwardMappings[node] = Array.from(leaves);
@@ -244,7 +279,8 @@ class DependencyGraph {
 }
 
 module.exports = {
-    loadFromFile: loadFromFile,
-    saveToFile: saveToFile,
+    loadFromTree: loadFromTree,
+    saveToTree: saveToTree,
+
     DependencyGraph: DependencyGraph
 };

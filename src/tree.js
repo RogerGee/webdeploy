@@ -17,6 +17,18 @@ function normalizeTargetTree(targetTree) {
     return targetTree;
 }
 
+function repoTreeGetConfigObject($this) {
+    if ($this.gitConfig) {
+        return Promise.resolve($this.gitConfig);
+    }
+
+    return $this.repo.config().then((config) => {
+        $this.gitConfig = config;
+
+        return config;
+    });
+}
+
 function repoTreeGetConfig($this,param,useLocalConfig) {
     // RepoTrees look up configuration parameters from the combined git and
     // local file configuration pools.
@@ -34,29 +46,15 @@ function repoTreeGetConfig($this,param,useLocalConfig) {
         else if (useLocalConfig && $this.fileConfig[param]) {
             resolve($this.fileConfig[param]);
         }
-        else if (!$this.gitConfig) {
-            $this.repo.config().then((config) => {
-                $this.gitConfig = config;
-                repoTreeGetConfig($this,param,false).then(resolve,reject);
-            }, (err) => {
-                reject(err + ": " + config);
-            });
-        }
         else {
-            var gitConfigParam = "webdeploy." + param;
-
-            $this.gitConfig.getStringBuf(gitConfigParam).then((buf) => {
+            repoTreeGetConfigObject($this).then((config) => {
+                return config.getStringBuf("webdeploy." + param);
+            }).then((buf) => {
                 $this.config[param] = buf.toString('utf8');
                 resolve($this.config[param]);
-            }, reject);
+            }).catch(reject);
         }
     });
-}
-
-function repoTreeGetCommit($this) {
-    var commitId = commit.id().tostrS();
-
-    
 }
 
 function repoTreeGetDeployCommit($this) {
@@ -198,169 +196,231 @@ function repoTreeWalk($this,callback,filter,tree) {
     return repoTreeWalkImpl($this,tree.path(),tree,callback,filter);
 }
 
-function RepoTree(repo) {
-    this.repo = repo;
-    this.config = {}; // cache git-config entries here
+class RepoTree {
+    constructor(repo) {
+        this.name = 'RepoTree';
+        this.repo = repo;
+        this.config = {}; // cache git-config entries here
 
-    // Cache Promises to certain, often-accessed resources.
-    this.deployCommits = {};
-    this.targetTrees = {};
-}
+        // Cache Promises to certain, often-accessed resources.
+        this.deployCommits = {};
+        this.targetTrees = {};
+    }
 
-// Gets a String. Gets the path to the tree. Since this is a git-repository,
-// this is always null.
-RepoTree.prototype.getPath = function() {
-    return null;
-};
+    // Gets a String. Gets the path to the tree. Since this is a git-repository,
+    // this is always null.
+    getPath() {
+        return null;
+    }
 
-// Gets a Promise -> String. The function automatically qualifies the parameter
-// name with "webdeploy" when searching through git-config.
-RepoTree.prototype.getConfigParameter = function(param) {
-    return repoTreeGetConfig(this,param,true);
-};
+    // Gets a Promise -> String. The function automatically qualifies the
+    // parameter name with "webdeploy" when searching through git-config.
+    getConfigParameter(param) {
+        return repoTreeGetConfig(this,param,true);
+    }
 
-// Gets a Promise -> Stream. The blobPath is relative to the configured target
-// tree.
-RepoTree.prototype.getBlob = function(blobPath) {
-    return repoTreeGetTargetTree(this)
-        .then((targetTree) => { return repoTreeGetBlob(this,blobPath,targetTree); });
-};
+    // Gets a Promise. The Promise resolves when the operation is finished.
+    writeConfigParameter(param,value) {
+        // Force param key under webdeploy section.
+        param = "webdeploy." + param;
 
-// Gets a Promise. Walks the tree recursively and calls
-// callback(path,name,streamFunc) for each blob. The "streamFunc" parameter is a
-// function that creates a stream for the blob entry. If specified, filter(path)
-// -> false heads off a particular path branch. The Promise is resolved once all
-// entries have been walked.
-RepoTree.prototype.walk = function(callback,filter) {
-    return repoTreeGetTargetTree(this)
-        .then((targetTree) => { return repoTreeWalk(this,callback,filter,targetTree); });
-};
-
-// Gets a Promise -> Boolean. Determines if the specified blob has been modified
-// since its last deployment (i.e. the last commit we deployed). The blob is
-// relative to the configured target tree.
-RepoTree.prototype.isBlobModified = function(blobPath) {
-    return Promise.all([
-        repoTreeGetPreviousCommit(this)
-            .then((commit) => {
-                if (!commit) {
-                    return null;
-                }
-
-                return repoTreeGetTargetTree(this,commit)
-                    .then((tree) => {
-                        return tree.entryByPath(blobPath)
-                            .then((entry) => { return entry; },
-                                  (err) => { return Promise.resolve(null); });
-                    });
-            }),
-
-        repoTreeGetTargetTree(this)
-            .then((targetTree) => {
-                return targetTree.entryByPath(blobPath);
-            })
-
-    ]).then((entries) => {
-        // If the previous entry wasn't found, then report that the blob was
-        // modified.
-        if (!entries[0]) {
-            return true;
+        if (typeof value == 'Number') {
+            return repoTreeGetConfigObject(this).then((config) => {
+                config.setInt64(param,value);
+            });
         }
 
-        var ids = entries.map((x) => { return x.id(); });
-        return !ids[0].equal(ids[1]);
-    });
-};
+        return repoTreeGetConfigObject(this).then((config) => {
+            return config.setString(param,value);
+        });
+    }
 
-function PathTree(basePath) {
-    this.basePath = basePath;
-}
+    // Gets a Promise -> Stream. The blobPath is relative to the configured
+    // target tree.
+    getBlob(blobPath) {
+        return repoTreeGetTargetTree(this)
+            .then((targetTree) => { return repoTreeGetBlob(this,blobPath,targetTree); });
+    }
 
-// Gets a String. Gets the path to the tree.
-PathTree.prototype.getPath = function() {
-    return this.basePath;
-};
+    // Gets a Promise. Walks the tree recursively and calls
+    // callback(path,name,streamFunc) for each blob. The "streamFunc" parameter
+    // is a function that creates a stream for the blob entry. If specified,
+    // filter(path) -> false heads off a particular path branch. The Promise is
+    // resolved once all entries have been walked.
+    walk(callback,filter) {
+        return repoTreeGetTargetTree(this)
+            .then((targetTree) => { return repoTreeWalk(this,callback,filter,targetTree); });
+    }
 
-// Gets a Promise -> String.
-PathTree.prototype.getConfigParameter = function(param) {
-    var $this = this;
-
-    // PathTrees lookup configuration parameters from the local file
-    // configuration only.
-
-    return new Promise((resolve,reject) => {
-        if (!$this.fileConfig) {
-            configuration.loadFromTree($this).then((config) => {
-                $this.fileConfig = config;
-                $this.getConfigParameter(param).then(resolve,reject);
-            }, reject);
-        }
-        else if ($this.fileConfig[param]) {
-            resolve($this.fileConfig[param]);
-        }
-        else {
-            reject(new Error("No such configuration parameter: '" + param + "'"));
-        }
-    });
-};
-
-// Gets a Promise -> Stream.
-PathTree.prototype.getBlob = function(blobPath) {
-    // Qualify the blobPath with the tree's base path.
-    var blobPathQualified = path.join(this.basePath,blobPath);
-
-    return new Promise((resolve,reject) => {
-        try {
-            resolve(fs.createReadStream(blobPathQualified));
-        } catch (err) {
-            reject(err);
-        }
-    });
-};
-
-// Gets a Promise. Walks the tree and calls callback(path,name,streamFunc) for
-// each blob. The "streamFunc" parameter can be called to obtain a stream to the
-// blob's contents. If specified, filter(path) -> false heads off a particular
-// branch path.
-PathTree.prototype.walk = function(callback,filter) {
-    return new Promise((resolve,reject) => {
-        let outstanding = 1;
-
-        function attemptResolution() {
-            if (--outstanding <= 0) {
-                resolve();
-            }
-        }
-
-        function walkRecursive(basePath) {
-            return (err,files) => {
-                for (let i = 0;i < files.length;++i) {
-                    var filePath = path.join(basePath,files[i]);
-                    var stat = fs.lstatSync(filePath);
-                    if (stat.isFile()) {
-                        callback(basePath,files[i],() => { return fs.createReadStream(filePath); });
+    // Gets a Promise -> Boolean. Determines if the specified blob has been
+    // modified since its last deployment (i.e. the last commit we
+    // deployed). The blob is relative to the configured target tree.
+    isBlobModified(blobPath) {
+        return Promise.all([
+            repoTreeGetPreviousCommit(this)
+                .then((commit) => {
+                    if (!commit) {
+                        return null;
                     }
-                    else if (stat.isDirectory()) {
-                        if (!filter || filter(filePath)) {
-                            outstanding += 1;
-                            fs.readdir(filePath,walkRecursive(filePath));
+
+                    return repoTreeGetTargetTree(this,commit)
+                        .then((tree) => {
+                            return tree.entryByPath(blobPath)
+                                .then((entry) => { return entry; },
+                                      (err) => { return Promise.resolve(null); });
+                        });
+                }),
+
+            repoTreeGetTargetTree(this)
+                .then((targetTree) => {
+                    return targetTree.entryByPath(blobPath);
+                })
+
+        ]).then((entries) => {
+            // If the previous entry wasn't found, then report that the blob was
+            // modified.
+            if (!entries[0]) {
+                return true;
+            }
+
+            var ids = entries.map((x) => { return x.id(); });
+            return !ids[0].equal(ids[1]);
+        });
+    }
+
+    // Gets a Promise -> Number. Currently this doesn't do anything since it is
+    // not required by the implementation.
+    getMTime(blobPath) {
+        return Promise.resolve(0);
+    }
+}
+
+class PathTree {
+    constructor(basePath) {
+        this.name = 'PathTree';
+        this.basePath = basePath;
+
+        // Caches Promise -> Number representing the mtime for a blob.
+        this.mtimeCache = {};
+    }
+
+    // Gets a String. Gets the path to the tree.
+    getPath() {
+        return this.basePath;
+    }
+
+    // Gets a Promise -> String.
+    getConfigParameter(param) {
+        var $this = this;
+
+        // PathTrees lookup configuration parameters from the local file
+        // configuration only.
+
+        return new Promise((resolve,reject) => {
+            if (!$this.fileConfig) {
+                configuration.loadFromTree($this).then((config) => {
+                    $this.fileConfig = config;
+                    $this.getConfigParameter(param).then(resolve,reject);
+                }, reject);
+            }
+            else if ($this.fileConfig[param]) {
+                resolve($this.fileConfig[param]);
+            }
+            else {
+                reject(new Error("No such configuration parameter: '" + param + "'"));
+            }
+        });
+    }
+
+    // Not provided for PathTree.
+    writeConfigParameter(param,value) {
+        assert(false);
+    }
+
+    // Gets a Promise -> Stream.
+    getBlob(blobPath) {
+        // Qualify the blobPath with the tree's base path.
+        var blobPathQualified = path.join(this.basePath,blobPath);
+
+        return new Promise((resolve,reject) => {
+            try {
+                resolve(fs.createReadStream(blobPathQualified));
+            } catch (err) {
+                reject(err);
+            }
+        });
+    }
+
+    // Gets a Promise. Walks the tree and calls callback(path,name,streamFunc)
+    // for each blob. The "streamFunc" parameter can be called to obtain a
+    // stream to the blob's contents. If specified, filter(path) -> false heads
+    // off a particular branch path.
+    walk(callback,filter) {
+        return new Promise((resolve,reject) => {
+            let outstanding = 1;
+
+            function attemptResolution() {
+                if (--outstanding <= 0) {
+                    resolve();
+                }
+            }
+
+            function walkRecursive(basePath) {
+                return (err,files) => {
+                    for (let i = 0;i < files.length;++i) {
+                        var filePath = path.join(basePath,files[i]);
+                        var stat = fs.lstatSync(filePath);
+                        if (stat.isFile()) {
+                            callback(basePath,files[i],() => { return fs.createReadStream(filePath); });
+                        }
+                        else if (stat.isDirectory()) {
+                            if (!filter || filter(filePath)) {
+                                outstanding += 1;
+                                fs.readdir(filePath,walkRecursive(filePath));
+                            }
                         }
                     }
-                }
 
-                attemptResolution();
-            };
+                    attemptResolution();
+                };
+            }
+
+            fs.readdir(this.basePath,walkRecursive(this.basePath));
+        });
+    }
+
+    // Gets Promise -> Boolean. For path trees, an extra mtime parameter must be
+    // provided against which to check for modification.
+    isBlobModified(blobPath,mtime) {
+        return this.getMTime(blobPath).then((tm) => {
+            return tm > mtime;
+        });
+    }
+
+    // Gets Promise -> Number. Obtains the modification time for the specified
+    // blob under the path tree.
+    getMTime(blobPath) {
+        if (blobPath in this.mtimeCache) {
+            return this.mtimeCache[blobPath];
         }
 
-        fs.readdir(this.basePath,walkRecursive(this.basePath));
-    });
-};
-
-// Gets Promise -> Boolean. For path trees, this will always resolve to true
-// since we have nothing to compare.
-PathTree.prototype.isBlobModified = function(blobPath) {
-    return Promise.resolve(true);
-};
+        return this.mtimeCache[blobPath] = new Promise((resolve,reject) => {
+            fs.lstat(path.join(this.basePath,blobPath),(err,stats) => {
+                if (err) {
+                    if (err.code == 'ENOENT') {
+                        resolve(false);
+                    }
+                    else {
+                        reject(err);
+                    }
+                }
+                else {
+                    resolve(stats.mtime);
+                }
+            });
+        });
+    }
+}
 
 // Gets a Promise -> RepoTree.
 function createRepoTree(repoPath) {

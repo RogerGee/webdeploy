@@ -187,7 +187,7 @@ function deployBuildStep(tree,options) {
         // Otherwise return an empty set.
 
         if (options.graph && options.graph.isLoaded()) {
-            return options.graph.getIgnoreSources(options.buildPath);
+            return options.graph.getIgnoreSources(tree);
         }
 
         return Promise.resolve(new Set());
@@ -341,11 +341,11 @@ function deployStartStep(tree,options) {
             options.buildPath = "";
         }
 
-        // Load up dependency graph if in build mode.
+        // Load up dependency graph.
 
-        if (options.type == DEPLOY_TYPES.TYPE_BUILD) {
-            options.graph = depends.loadFromFile(options.buildPath);
-        }
+        return depends.loadFromTree(tree);
+    }).then((graph) => {
+        options.graph = graph;
 
         // Obtain the deploy path. For TYPE_BUILD deployments, this is always
         // the same as the build path. For TYPE_DEPLOY deployments, this is
@@ -367,7 +367,7 @@ function deployStartStep(tree,options) {
     }).then((val) => {
         // Save the dependency graph if available.
         if (options.graph) {
-            depends.saveToFile(options.buildPath,options.graph);
+            return depends.saveToTree(tree,options.graph).then(() => { return val; });
         }
 
         return val;
