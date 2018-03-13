@@ -35,6 +35,10 @@ module.exports = {
                     var newCode = code;
                 }
 
+                if (typeof settings.rename !== 'undefined' && !settings.rename) {
+                    newName = target.targetName;
+                }
+
                 var newTarget = target.makeOutputTarget(newName);
                 newTarget.stream.end(newCode);
 

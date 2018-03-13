@@ -12,7 +12,18 @@ module.exports = {
             });
 
             target.stream.on("end", () => {
-                var transpilation = babel.transform(code,{ presets: ["env"] });
+                var options = {
+
+                };
+
+                if (settings.presets) {
+                    options.presets = settings.presets.map((presetModule) => { return require(presetModule); });
+                }
+                else {
+                    options.presets = [require("babel-preset-env")];
+                }
+
+                var transpilation = babel.transform(code,options);
                 var outputTarget = target.makeOutputTarget();
 
                 outputTarget.stream.end(transpilation.code);
