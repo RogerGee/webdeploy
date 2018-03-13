@@ -32,8 +32,15 @@ module.exports = {
     includes: [
         {
             /**
-             * Specifies a RegExp that matches the path names of candidate
-             * targets.
+             * Specifies an exact match against the path names of candidate
+             * targets. This may alternatively be an array of such matches.
+             */
+            match: "index.js",
+
+            /**
+             * Specifies a RegExp (object or string) that matches the path names
+             * of candidate targets. This may alternatively be an array of such
+             * regular expressions.
              */
             pattern: /src\/.*\.js$/,
 
@@ -69,7 +76,7 @@ module.exports = {
                         });
                     }
                 }
-            ],
+            ]
         }
     ]
 };

@@ -68,9 +68,40 @@ function deployBuildStep(tree,options) {
     function findTargetInclude(candidate) {
         var i = 0;
         while (i < includes.length) {
-            if (candidate.match(includes[i].pattern)) {
-                return includes[i];
+            // Try matches (exact match).
+
+            if (includes[i].match) {
+                if (Array.isArray(includes[i].match)) {
+                    var matches = includes[i].match;
+                }
+                else {
+                    var matches = [includes[i].match];
+                }
+
+                for (var j = 0;j < matches.length;++j) {
+                    if (candidate == matches[j]) {
+                        return includes[i];
+                    }
+                }
             }
+
+            // Try patterns (regex match).
+
+            if (includes[i].pattern) {
+                if (Array.isArray(includes[i].pattern)) {
+                    var patterns = includes[i].pattern;
+                }
+                else {
+                    var patterns = [includes[i].pattern];
+                }
+
+                for (var j = 0;j < patterns.length;++j) {
+                    if (candidate.match(patterns[j])) {
+                        return includes[i];
+                    }
+                }
+            }
+
             i += 1;
         }
 
@@ -212,9 +243,7 @@ function deployBuildStep(tree,options) {
 
         return Promise.resolve(new Set());
     }).then((ignoreSet) => {
-        // Load set of initial targets from tree. Only include the blobs that
-        // match an include object's pattern and that are not ignored by the
-        // build configuration.
+        // Load set of initial targets from tree.
 
         logger.log("Adding targets:");
         logger.pushIndent();

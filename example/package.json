@@ -1,0 +1,57 @@
+// pacakge.json
+
+// This is like webdeploy.config.js but is limited to what can be represented
+// using JSON.
+
+{
+    // ...
+
+    "webdeploy": {
+        "build": "write",
+        "deploy": "write",
+        "includes": [
+            {
+                "match": [
+                    "index.php"
+                ],
+                "pattern": [
+                    "^includes\\/.*\\.php$",
+                    "^cron\\/.*\\.php$"
+                ],
+                "handlers": [
+                    {
+                        "id": "pass",
+                        "dev": false,
+                        "build": false
+                    }
+                ]
+            },
+            {
+                "pattern": "^scripts\\/.*\\.js$",
+                "handlers": [
+                    {
+                        "id": "babel",
+                        "dev": true,
+                        "path": "dist/scripts"
+                    },
+                    {
+                        "id": "minify",
+                        "dev": false,
+                        "rename": false
+                    }
+                ]
+            },
+            {
+                "pattern": "^styles\\/.*\\.css$",
+                "handlers": [
+                    {
+                        "id": "minify",
+                        "dev": false,
+                        "path": "dist/styles",
+                        "rename": false
+                    }
+                ]
+            }
+        ]
+    }
+}
