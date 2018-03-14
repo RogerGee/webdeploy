@@ -7,8 +7,12 @@
     // ...
 
     "webdeploy": {
-        "build": "write",
-        "deploy": "write",
+        "build": {
+            "id": "write"
+        },
+        "deploy": {
+            "id": "write"
+        },
         "includes": [
             {
                 "match": [

@@ -32,8 +32,9 @@ function repoTreeGetConfigObject($this) {
 }
 
 function repoTreeGetConfig($this,param,useLocalConfig) {
-    // RepoTrees look up configuration parameters from the combined git and
-    // local file configuration pools.
+    // RepoTrees look up configuration parameters from the combined git-config
+    // and target tree configuration pools. The target tree configuration pool
+    // has precedence.
 
     return new Promise((resolve,reject) => {
         if ($this.config && $this.config[param]) {
@@ -228,6 +229,20 @@ class RepoTree {
         return repoTreeGetConfig(this,param,true);
     }
 
+    // Gets a Promise -> Object. This method gets an entire configuration
+    // section from the git-config.
+    getConfigSection(section) {
+        section = "webdeploy." + section;
+
+        return repoTreeGetConfigObject(this).then((config) => {
+            // There is currently no way to implement this with nodegit. (We
+            // need something like git_config_foreach_match().) We'll implement
+            // this once more bindings are available...
+
+            return {};
+        });
+    }
+
     // Gets a Promise. The Promise resolves when the operation is finished.
     writeConfigParameter(param,value) {
         // Force param key under webdeploy section.
@@ -353,6 +368,11 @@ class PathTree {
                 reject(new Error("No such configuration parameter: '" + param + "'"));
             }
         });
+    }
+
+    // Not provided for PathTree.
+    getConfigSection(section) {
+        return Promise.resolve({});
     }
 
     // Not provided for PathTree.

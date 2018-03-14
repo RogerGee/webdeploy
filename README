@@ -155,18 +155,6 @@ some way before deploying the blobs to the filesystem. One deployment plugin is
 configured for a project; however multiple deployment plugins can chain together
 if needed.
 
-The webdeploy core code (i.e. this repository) comes with several core, built-in
-plugins:
-
-    [build]
-    pass        - does absolutely nothing to the target except forward it along
-
-    [deployment]
-    exclude     - does absolutely nothing (i.e. excludes all targets from deployment)
-    write       - writes output targets to the filesystem relative to the deploy path
-
-The built-in plugins cannot be removed; they perform core operations.
-
 A plugin is implemented as a NodeJS module whose module.exports conforms to the
 plugin API.
 
@@ -183,9 +171,9 @@ Each handler is an object of at least the form:
         id: "plugin-id"
     }
 
-The following extra configuration options are supported for any plugin. Their
-default values listed below are applied when one of these extra configuration
-options is omitted:
+The following extra configuration options are supported for any build
+plugin. Their default values listed below are applied when one of these extra
+configuration options is omitted:
 
     {
         dev: true,    // denotes if the handler is invoked in a development build
@@ -194,6 +182,40 @@ options is omitted:
     }
 
 Any other configuration options are plugin-specific.
+
+Deploy plugins can have extra configuration parameters as well. These parameters
+can be included in the target tree configuration. Alternatively, these can be
+stored in a git repository's config under the section
+"webdeploy.plugins.<plugin-id>". (NOTE: git-config is not yet supported since
+nodegit lacks the necessary functionality.)
+
+The webdeploy core code (i.e. this repository) comes with several core, built-in
+plugins:
+
+[build]
+
+    pass - does absolutely nothing to the target except forward it along
+
+        {
+            id: "pass"
+        }
+
+[deployment]
+
+    exclude - does absolutely nothing (i.e. excludes all targets from deployment)
+
+        {
+            id: "exclude"
+        }
+
+    write - writes output targets to the filesystem relative to the deploy path
+
+        {
+            id: "write",
+            mode: 0o666
+        }
+
+The built-in plugins cannot be removed; they perform core operations.
 
 --------------------------------------------------------------------------------
 Standard plugins
@@ -208,6 +230,7 @@ Provided plugins (along with their default options):
     minify - minifies JS and CSS
 
         {
+            id: "minify",
             rename: true // A.js -> A.min.js
         }
 

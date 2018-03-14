@@ -19,7 +19,7 @@ const DEPLOY_TYPES = {
 };
 
 function deployDeployStep(tree,options,targets) {
-    logger.log("Deploying targets: _" + options.deployPlugin + "_");
+    logger.log("Deploying targets: _" + options.deployPlugin.id + "_");
 
     if (targets.length == 0) {
         if (options.ignored) {
@@ -46,19 +46,19 @@ function deployDeployStep(tree,options,targets) {
     }
 
     var context = new contextModule.DeployContext(options.deployPath,targets);
-    var plugin = pluginLoader.loadDeployPlugin(options.deployPlugin);
+    var plugin = pluginLoader.loadDeployPlugin(options.deployPlugin.id);
 
     // Hijack chain() method so we can log messages.
 
     context.chain = function(nextPlugin) {
         logger.popIndent();
-        logger.log("Chain deploy _" + options.deployPlugin + "_ -> _" + nextPlugin + "_");
+        logger.log("Chain deploy _" + options.deployPlugin.id + "_ -> _" + nextPlugin + "_");
         logger.pushIndent();
         contextModule.DeployContext.prototype.chain(nextPlugin);
     }
 
     logger.pushIndent();
-    var promise = plugin.exec(context);
+    var promise = plugin.exec(context,options.deployPlugin);
     logger.popIndent();
 
     return promise;
@@ -414,7 +414,28 @@ function deployStartStep(tree,options) {
     // Obtain the deploy plugin name.
 
     return tree.getConfigParameter(options.type).then((deployPlugin) => {
+        if (typeof deployPlugin !== "object") {
+            throw new Error("Config parameter '" + options.type + "' must be a plugin object");
+        }
+        if (!deployPlugin.id) {
+            throw new Error("Config parameter '" + options.type + "' must have plugin id");
+        }
+
         options.deployPlugin = deployPlugin;
+
+        // Load up any extra deploy plugin options from the git-config.
+
+        return tree.getConfigSection(deployPlugin.id);
+    }).then((sectionConfig) => {
+        // Augment existing plugin object with discovered config section.
+        var keys = Object.keys(sectionConfig);
+        for (var i = 0;i < keys.length;++i) {
+            asset(keys[i] != "id");
+            options.deployPlugin[keys[i]] = sectionConfig[keys[i]];
+        }
+
+        // Set build path. RepoTrees will return an empty string.
+
         options.buildPath = tree.getPath();
         if (!options.buildPath) {
             options.buildPath = "";
@@ -432,7 +453,8 @@ function deployStartStep(tree,options) {
 
         // Obtain the deploy path. For TYPE_BUILD deployments, this is always
         // the same as the build path. For TYPE_DEPLOY deployments, this is
-        // obtained from the configuration.
+        // obtained from the configuration. Then execute the build pipe to begin
+        // the pipeline.
 
         return new Promise((resolve,reject) => {
             if (options.type == DEPLOY_TYPES.TYPE_BUILD) {

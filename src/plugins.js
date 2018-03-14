@@ -65,7 +65,7 @@ const DEFAULT_BUILD_PLUGINS = {
 
 const DEFAULT_DEPLOY_PLUGINS = {
     exclude: {
-        exec: (context) => {
+        exec: (context,settings) => {
             return new Promise((resolve,reject) => {
                 resolve();
             });
@@ -73,7 +73,16 @@ const DEFAULT_DEPLOY_PLUGINS = {
     },
 
     write: {
-        exec: (context) => {
+        exec: (context,settings) => {
+            if (typeof settings.mode == "undefined") {
+                settings.mode = 0o666;
+            }
+            else {
+                // Force Number to convert possible string values. This works
+                // for octal literals encoded as strings.
+                settings.mode = Number(settings.mode);
+            }
+
             return new Promise((resolve,reject) => {
                 var pathset = new Set();
 
@@ -91,7 +100,7 @@ const DEFAULT_DEPLOY_PLUGINS = {
 
                     // Write data to file.
                     var outPath = target.getDeployTargetPath();
-                    var outStream = fs.createWriteStream(outPath);
+                    var outStream = fs.createWriteStream(outPath,{ mode: settings.mode });
                     target.stream.pipe(outStream);
                     context.logger.log("Writing _" + outPath + "_");
                 }

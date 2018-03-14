@@ -14,17 +14,22 @@
 
 module.exports = {
     /**
-     * Specifies which deployment plugin is to be utilized for the build
-     * command.
+     * Specifies a deployment plugin configuration object. This determines which
+     * plugin is to be utilized for a build. The object must have at least an
+     * "id" property to identify the deploy plugin.
      */
-    build: "write",
+    build: {
+        "id": "write"
+    },
 
     /**
-     * Specifies which deployment plugin is to be utilized for deployment. You
-     * should specify something here since the default plugin is "exclude"
-     * (which excludes everything).
+     * Specifies a deployment plugin configuration object. This determines which
+     * plugin is to be utilized for deployment. The object must have at least an
+     * "id" property to identify the deploy plugin.
      */
-    deploy: "write",
+    deploy: {
+        "id": "write"
+    },
 
     /**
      * Defines which blobs are included as targets in the deployment. 
@@ -70,7 +75,7 @@ module.exports = {
                     dev: false,
 
                     // A custom, inline plugin implementation. This is optional.
-                    handler: (target) => {
+                    handler: (target,settings) => {
                         return new Promise((resolve,reject) => {
 
                         });
