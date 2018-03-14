@@ -1,31 +1,49 @@
-webdeploy - v0.0.0
+webdeploy - v0.1.0
 --------------------------------------------------------------------------------
-This project provides a command-line tool for deploying a website on a web
-server. It employs NodeJS and libgit2. Configuration for the deployments is kept
-in the bare repository's 'config' file.
-
-This project is based off of `gitsync`. See https://git.rserver.us/utils/gitsync.
+Webdeploy is a command-line tool for building and deploying websites from git
+repositories. It employs NodeJS and nodegit (node bindings for libgit2).
 
 Primary authors:
 
     Roger Gee <roger.gee@tulsalibrary.org>
 
 --------------------------------------------------------------------------------
+Installation
+
+You should install webdeploy globally on your system, providing "webdeploy.js"
+to your PATH. Non-standard webdeploy plugin modules should be installed under
+this global location as well.
+
+NOTE: At some point webdeploy might get on npm, so you'd be able to install it
+that way.
+
+--------------------------------------------------------------------------------
 Methodology
 
-This is a lightweight tool that implements a deployment pipeline. The pipeline
-operates on the filesystem OR a git repository tree. (This is collectively
-called the "target tree") The pipeline's job is to map certain targets within
-the target tree to their respective output variants. This can be as simple as
-copying a file to an output directory or converting the contents of the
-specified file to a usable/convenient format.
+This is a lightweight tool that implements a build and deployment pipeline. The
+pipeline operates on a filesystem tree OR a git repository tree. (This is
+collectively called the "target tree".) The pipeline's job is to map certain
+targets within the target tree to their respective output variants. This can be
+as simple as copying a file to an output directory or converting the contents of
+the specified file to a usable/convenient format.
 
-The pipeline process contains two primary steps: build and deploy. The build
-phase is optional as it involves transforming a target into one or more output
-targets. This transformation at the simplest level can just be a pass-through,
-leaving the output target unchanged from its parent target.
+The pipeline process collectively consists of two steps: build and deploy. The
+build phase involves transforming a target into one or more output targets. This
+transformation at the simplest level can just be a pass-through, leaving the
+output target unchanged from its parent target.  The deploy phase consists of
+processing all the output targets collectively. This may consist of combining,
+transforming and writing to disk the set of output targets in some way.
 
-A more granular description of the pipeline follows:
+The webdeploy system tracks dependencies as it goes, meaning dependencies are
+not declared ahead of time. The dependency graph is saved to disk so that on a
+subsequent run the system can more efficiently build/deploy the target
+tree. This consists of the build system only processing targets that derive a
+build product that depends on an out-of-date target. If the target tree is a
+git repository, the system detects which blobs were modified/added by comparing
+against the previously deployed commit (if any). For a path-based target tree,
+the file modification times are used to detect changes (like Make).
+
+An overview of the pipeline follows:
 
     0.1 Load the first valid configuration file in the target tree. A config
         file is used to specify how the project is to be built for deployment
@@ -49,23 +67,27 @@ A more granular description of the pipeline follows:
     0.2 Load configuration from the repository's config file. If the target tree
         is not a git repository, then this step does nothing. This configuration
         should store settings related to the deployment, which is specific to
-        the environment of the git repository.
+        the environment of the git repository. All of these configuration
+        parameters are keyed under "webdeploy". The implementation allows these
+        to exist in the target tree config file (e.g. "webdeploy.config.js") but
+        this is not ideal since these two configurations should be kept
+        separate.
 
     1.  Search the target tree recursively for targets matching rules defined by
-        the configuration gathered in step 0. The order of the search is not
-        important.
+        the configuration gathered in step 0.1. The order of the search is
+        undefined.
 
     2.  Build each target.
 
-        The order of builds is not important; however output targets can be
+        Each build operation is handled by a build plugin (see Plugins
+        section). While a plugin can decide how it handles a certain target
+        based on some criteria (e.g. file name pattern match, file content,
+        ETC.), the configuration file denotes which targets among all available
+        targets in the target tree are processed by.
+
+        The order of builds is undefined; however output targets can be
         recursively processed or chained through multiple steps which create
         obvious dependencies.
-
-        Each build operation is handled by a build handler plugin (see Plugins
-        section). While a handler can decide which target(s) it handles based on
-        some criteria (e.g. file name pattern match, file content, ETC.), the
-        configuration file denotes which initial targets get sent to which
-        handlers.
 
         All build operations are executed before any deployment is executed.
 
@@ -78,34 +100,44 @@ A more granular description of the pipeline follows:
 --------------------------------------------------------------------------------
 Command usage
 
-There are two basic, high-level commands: build and deploy. They essentially do
-the same thing but refer to alternate configurations.
+There are two basic, high-level commands: build and deploy. The build command is
+a subset of the deploy command which also allows for a development
+configuration.
 
-    $ webdeploy build [path]
+    $ webdeploy build [path] [--dev] [--prod] [-f]
 
-        path - source path of tree to deploy; defaults to current directory
+        path     - source path of tree to deploy; defaults to current directory
 
-      A build runs a deployment without the "build" deployment
-      configuration. This basically means it doesn't require a "deploy-path"
-      configuration; instead the deploy path is implicitly configured to be the
-      same as the build path.
+        --dev    - run in development mode [default]
 
-      This is useful for building locally when testing.
+        --prod   - run in production mode
+
+        -f       - force rebuild (i.e. ignore existing dependency information)
+
+      A build runs a deployment without loading the deployment
+      configuration. This basically means it doesn't require a
+      "webdeploy.deployPath" configuration parameter; instead, the deploy path
+      is implicitly configured to be the same as the build path. This command
+      does not run on git repositories: it's useful for building locally when
+      testing. As such it supports a development configuration that allows for
+      certain modules to be ignored in dev mode.
 
       NOTE: A webdeploy.config.js file must still be available.
 
-    $ webdeploy deploy [path]
+    $ webdeploy deploy [path] [-f]
 
         path - source path of tree to deploy; defaults to current directory
 
+        -f       - force rebuild (i.e. ignore existing dependency information)
+
       Runs a deployment. The tool determines whether "path" refers to a
-      git-repository or just a normal directory tree. The semantics of operating
-      on a git-repository are different than those operating on a local path. A
+      git repository or just a normal directory tree. The semantics of operating
+      on a git repository are different than those operating on a local path. A
       "deploy-path" option must be available.
 
-      This command is really designed for git-repositories, but it can work on
-      normal directories also. It is recommened that "deploy-path" is kept in
-      git-config for the repository to separate it from the committed
+      This command is really designed for git repositories, but it can work on
+      normal directories also. It is recommened that "webdeploy.deployPath" is
+      kept in git-config for the repository to separate it from the committed
       "webdeploy.config.js" file.
 
 --------------------------------------------------------------------------------
@@ -114,61 +146,20 @@ Plugins
 Plugins are external bits of code that add functionality to webdeploy. They come
 in two flavors: build plugins and deployment plugins.
 
-A build plugin transforms a target into one or more output targets. It
-receives a "target" object that has the following structure:
+A build plugin transforms a target into one or more output targets. The plugin
+can elect to have the resulting targets recursively processed.
 
-    {
-        inputStream: Stream, // Stream for reading target content
-        targetName: String,  // Name of target (i.e. file/blob name)
-        sourcePath: String,  // Relative path to target
-        deployPath: String,  // If set, absolute path to target destination
-        makeOutputTarget: Function // Generates an output target
-    }
-
-The plugin reads the contents of the target from "target.inputStream" and calls
-"target.makeOutputTarget() one or more times to produce the output targets. The
-call to makeOutputTarget() returns a Stream to which the content of the output
-target is written and it takes three optional arguments:
-
-    makeOutputTarget(newTargetName, newTargetPath, recursive) -> Stream
-
-        newTargetName: the name for the new target; inherits if omitted
-        newTargetPath: the path to the new target; inherits if omitted
-        recursive: if true, then the target is recursively processed by the build system
-
-A deployment plugin performs operations on output targets, which may include
-transforming the set of output targets in some way. One deployment plugin is
-initiated for a single run; however multiple deployment plugins can chain
-together if needed. A deployment plugin receives a "context" object that has the
-following structure:
-
-    {
-        targets: Array, // The set of targets to process
-        resolveTargets: Function, // Resolves multiple targets into one
-        chain: Function // Chains the deploy operation to another deployment plugin
-    }
-
-The deployment plugin context contains a list of output targets that are ready
-to be processed. However a plugin may choose to transform this set of targets by
-resolving one or more targets into a new target. The function "resolveTargets"
-converts the specified list of targets into a new target having the specified
-path. If new target path is null, then the targets are removed without a
-resolution. The function returns a Stream suitable for writing the new target.
-
-    resolveTargets(newTargetPath,targets) -> Stream
-
-The "chain" function takes the plugin ID for the next deployment plugin to be
-executed. This is useful to fallback onto existing functionality. Typically, a
-custom plugin will chain to the "write" plugin to write the targets to the
-filesystem:
-
-    chain(pluginName)
+A deployment plugin performs operations on the set of final output targets
+produced during the build phase. It may transform the set of output targets in
+some way before deploying the blobs to the filesystem. One deployment plugin is
+configured for a project; however multiple deployment plugins can chain together
+if needed.
 
 The webdeploy core code (i.e. this repository) comes with several core, built-in
 plugins:
 
     [build]
-    pass        - does absolutely nothing to the target
+    pass        - does absolutely nothing to the target except forward it along
 
     [deployment]
     exclude     - does absolutely nothing (i.e. excludes all targets from deployment)
@@ -176,28 +167,15 @@ plugins:
 
 The built-in plugins cannot be removed; they perform core operations.
 
-A plugin is implemented as a NodeJS module. It must provide the following object
-in its module.exports:
-
-    {
-        exec(target | context, plugin): Function
-    }
-
-The exec() function takes either "target" or "context" objects for build and
-deployment plugins respectively. It should return a Promise that passes the
-created target name(s) to its resolve callback. This can be a scalar or an
-array.
-
-The second parameter is sent for build plugins to pass in the plugin handler
-object defined in webdeploy.config.js. For deploy plugins this is currently
-undefined.
+A plugin is implemented as a NodeJS module whose module.exports conforms to the
+plugin API.
 
 --------------------------------------------------------------------------------
 Plugin handlers
 
-The webdeploy specifies a list of plugin handlers for each target. The plugin
-handlers denote which plugins to load and execute; additionally they contain
-configuration related to the plugin.
+The webdeploy configuration specifies a list of plugin handlers for each
+target. The plugin handlers denote which plugins to load and execute for a given
+set of targets; additionally they contain configuration related to the plugin.
 
 Each handler is an object of at least the form:
 
@@ -223,11 +201,21 @@ Standard plugins
 This repository provides several standard plugins that aim to be universal in
 application. They are located under the "plugins" subdirectory and take
 precedence over any external plugins. However these plugins can be removed
-(unlike the core, built-in plugins).
+(unlike the core, built-in plugins) if desired.
 
-Provided plugins:
+Provided plugins (along with their default options):
 
     minify - minifies JS and CSS
+
+        {
+            rename: true // A.js -> A.min.js
+        }
+
     babel - leverages Babel
+
+        {
+            id: "babel",
+            presets: ["env"]
+        }
 
 --------------------------------------------------------------------------------
