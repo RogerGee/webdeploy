@@ -81,6 +81,17 @@ module.exports = {
                         });
                     }
                 }
+            ],
+
+            /**
+             * Options for the targets created by this include rule.
+             *
+             * Options are plugin-specific and can be accessed by both build or
+             * deploy plugins.
+             */
+            "options": [
+                "foo": "bar",
+                "baz": 45
             ]
         }
     ]

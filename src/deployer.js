@@ -55,7 +55,7 @@ function deployDeployStep(tree,options,targets) {
         logger.log("Chain deploy _" + options.deployPlugin.id + "_ -> _" + nextPlugin + "_");
         logger.pushIndent();
         contextModule.DeployContext.prototype.chain(nextPlugin);
-    }
+    };
 
     logger.pushIndent();
     var promise = plugin.exec(context,options.deployPlugin);
@@ -141,7 +141,7 @@ function deployBuildStep(tree,options) {
             if (include) {
                 if (!newTarget) {
                     // Resolve the delayed target information into a Target object.
-                    newTarget = new targetModule.Target(initial.path,initial.name,initial.createStream());
+                    newTarget = new targetModule.Target(initial.path,initial.name,initial.createStream(),include.options);
                 }
                 newTarget.level = 1;
                 newTarget.handlers = include.handlers.slice(0);

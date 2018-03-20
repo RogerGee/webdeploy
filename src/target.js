@@ -4,7 +4,7 @@ const pathModule = require("path");
 const stream = require("stream");
 const process = require("process");
 
-function makeOutputTarget(newTargetPath,newTargetName) {
+function makeOutputTarget(newTargetPath,newTargetName,options) {
     // If no broken down name was specified, then assume the name is in the
     // path.
     if (!newTargetName) {
@@ -16,12 +16,12 @@ function makeOutputTarget(newTargetPath,newTargetName) {
     // Create a duplex, Transform stream for storing the target data. Currently
     // this just keeps the data in main memory.
     var memoryStream = new stream.PassThrough();
-    var newTarget = new Target(newTargetPath,newTargetName,memoryStream);
+    var newTarget = new Target(newTargetPath,newTargetName,memoryStream,options);
 
     return newTarget;
 }
 
-function Target(sourcePath,targetName,stream) {
+function Target(sourcePath,targetName,stream,options) {
     // Ensure the sourcePath is never an absolute path.
     if (pathModule.isAbsolute(sourcePath)) {
         throw Error("Target sourcePath cannot be an absolute path");
@@ -49,6 +49,9 @@ function Target(sourcePath,targetName,stream) {
     // Determines whether the target will be recursively cycled through the
     // build system.
     this.recursive = false;
+
+    // Options provided by the deployment configuration.
+    this.options = options || {};
 }
 
 // Gets the path to the target relative to the target's source tree. This
@@ -88,7 +91,7 @@ Target.prototype.makeOutputTarget = function(newTargetName,newTargetPath,recursi
         newTargetPath = this.deploySourcePath;
     }
 
-    var newTarget = makeOutputTarget(newTargetPath,newTargetName);
+    var newTarget = makeOutputTarget(newTargetPath,newTargetName,this.options);
     newTarget.recursive = recursive;
 
     return newTarget;
@@ -96,7 +99,7 @@ Target.prototype.makeOutputTarget = function(newTargetName,newTargetPath,recursi
 
 // Moves the target through the pipeline unchanged.
 Target.prototype.pass = function() {
-    var newTarget = new Target(this.sourcePath,this.targetName,this.stream);
+    var newTarget = new Target(this.sourcePath,this.targetName,this.stream,this.options);
     newTarget.recursive = false;
 
     return newTarget;

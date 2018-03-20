@@ -122,7 +122,7 @@ configuration.
       testing. As such it supports a development configuration that allows for
       certain modules to be ignored in dev mode.
 
-      NOTE: A webdeploy.config.js file must still be available.
+      NOTE: A webdeploy.config.js (or similar) file must still be available.
 
     $ webdeploy deploy [path] [-f]
 

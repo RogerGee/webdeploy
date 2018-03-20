@@ -14,6 +14,9 @@ function DeployContext(deployPath,targets) {
     }
 }
 
+// Resolves the set of "removeTargets" into the specified new target. This
+// collapses existing targets down to a single new target. The "newTargetPath"
+// must contain both the target path and name.
 DeployContext.prototype.resolveTargets = function(newTargetPath,removeTargets) {
     // Remove targets from our internal list.
     var newTargets = this.targets.filter((elem) => {
@@ -27,6 +30,7 @@ DeployContext.prototype.resolveTargets = function(newTargetPath,removeTargets) {
     }
 };
 
+// Sends control to another deploy plugin.
 DeployContext.prototype.chain = function(nextPlugin) {
     plugins.loadDeployPlugin(nextPlugin).exec(this);
 };

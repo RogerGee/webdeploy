@@ -28,6 +28,10 @@
                         "dev": false,
                         "build": false
                     }
+                ],
+                "options": [
+                    "foo": "bar",
+                    "baz": 45
                 ]
             },
             {
