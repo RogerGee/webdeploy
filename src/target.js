@@ -24,7 +24,7 @@ function makeOutputTarget(newTargetPath,newTargetName,options) {
 function Target(sourcePath,targetName,stream,options) {
     // Ensure the sourcePath is never an absolute path.
     if (pathModule.isAbsolute(sourcePath)) {
-        throw Error("Target sourcePath cannot be an absolute path");
+        throw new Error("Target sourcePath cannot be an absolute path");
     }
 
     // The stream is available for reading/writing the target's content.
@@ -57,14 +57,14 @@ function Target(sourcePath,targetName,stream,options) {
 // Gets the path to the target relative to the target's source tree. This
 // includes the target name.
 Target.prototype.getSourceTargetPath = function() {
-    return pathModule.join(this.sourcePath,this.targetName);
+    return pathModule.posix.join(this.sourcePath,this.targetName);
 };
 
 // Gets the path to an output target in a deployment. This is an absolute path
 // that includes the target name.
 Target.prototype.getDeployTargetPath = function() {
     if (!this.deployPath) {
-        throw Error("Deploy path is not set on target");
+        throw new Error("Deploy path is not set on target");
     }
 
     return pathModule.join(this.deployPath,this.targetName);
@@ -75,7 +75,7 @@ Target.prototype.getDeployTargetPath = function() {
 Target.prototype.setDeployPath = function(basePath) {
     // Verify that the path is absolute.
     if (!pathModule.isAbsolute(basePath)) {
-        throw Error("Target deploy path must be an absolute path");
+        throw new Error("Target deploy path must be an absolute path");
     }
 
     this.deployPath = pathModule.join(basePath,this.deploySourcePath);

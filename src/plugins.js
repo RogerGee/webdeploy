@@ -105,7 +105,7 @@ const DEFAULT_DEPLOY_PLUGINS = {
                     context.logger.log("Writing _" + outPath + "_");
                 }
 
-                resolve(context.targets);
+                resolve();
             });
         }
     }

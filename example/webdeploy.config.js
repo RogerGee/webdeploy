@@ -74,6 +74,10 @@ module.exports = {
                     // development run. The default is false.
                     dev: false,
 
+                    // Determines if the handler is considered during a build run.
+                    // The default is false.
+                    build: false,
+
                     // A custom, inline plugin implementation. This is optional.
                     handler: (target,settings) => {
                         return new Promise((resolve,reject) => {
@@ -89,10 +93,10 @@ module.exports = {
              * Options are plugin-specific and can be accessed by both build or
              * deploy plugins.
              */
-            "options": [
-                "foo": "bar",
-                "baz": 45
-            ]
+            options: {
+                foo: "bar",
+                baz: 45
+            }
         }
     ]
 };

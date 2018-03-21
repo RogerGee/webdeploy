@@ -20,6 +20,8 @@ function loadFromTree(tree) {
     };
 
     return new Promise((resolve,reject) => {
+        var loadError;
+
         function nextAttempt() {
             if (sources.modules.length > 0) {
                 var blobName = sources.modules.pop();
@@ -89,12 +91,12 @@ function loadFromTree(tree) {
                 };
             }
             else {
-                reject(Error("No blob was found that contained a suitable configuration."));
+                reject(loadError);
                 return;
             }
 
             tree.getBlob(blobName).then(callback).then(resolve)
-                .catch((err) => { nextAttempt(); });
+                .catch((err) => { loadError = err; nextAttempt(); });
         }
 
         nextAttempt();
