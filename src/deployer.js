@@ -291,7 +291,7 @@ function deployBuildStep(tree,options) {
             // trivial product), then check to see if it is modified and should
             // be included or not.
 
-            if (options.graph && !options.graph.hasProductForSource(ref)) {
+            if (!options.force && options.graph && !options.graph.hasProductForSource(ref)) {
                 targetPromises.push(tree.isBlobModified(ref).then(addTarget));
             }
             else {
