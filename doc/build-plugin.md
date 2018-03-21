@@ -53,9 +53,39 @@ is hardcoded into the webdeploy sources whereas a standard plugin ships under
 
 Built-ins
 
-* `pass` - converts the target into an output target unchanged; this plugin is useful for copying files from the target tree to the deploy tree
+#### `pass`
+
+Converts the target into an output target unchanged; this plugin is useful for
+copying files from the target tree to the deploy tree
 
 Standard
 
-* `babel` - apply babel.js to a target
-* `minify` - apply uglifyjs to a target
+#### `babel`
+
+Apply babel.js to a target.
+
+Object schema (settings properties indicate the defaults):
+
+```js
+{
+  id: "babel",
+
+  // The babel presets to load for the run.
+  presets: ["env"]
+}
+```
+
+#### `minify`
+
+Minifies CSS or JS targets. Targets are identified by file extension.
+
+Object schema (settings properties indicate the defaults):
+
+```js
+{
+  id: "minify",
+
+  // By default renames targets such that A.ext -> A.min.ext.
+  rename: true
+}
+```

@@ -45,16 +45,16 @@ function deployDeployStep(tree,options,targets) {
         throw new Error("No deploy path for deploy step!");
     }
 
-    var context = new contextModule.DeployContext(options.deployPath,targets);
+    var context = new contextModule.DeployContext(options.deployPath,targets,options.graph);
     var plugin = pluginLoader.loadDeployPlugin(options.deployPlugin.id);
 
     // Hijack chain() method so we can log messages.
 
-    context.chain = function(nextPlugin) {
-        logger.popIndent();
-        logger.log("Chain deploy _" + options.deployPlugin.id + "_ -> _" + nextPlugin + "_");
+    context.chain = function(nextPlugin,settings) {
         logger.pushIndent();
-        contextModule.DeployContext.prototype.chain(nextPlugin);
+        logger.log("Chain deploy _" + options.deployPlugin.id + "_ -> _" + nextPlugin + "_");
+        logger.popIndent();
+        return contextModule.DeployContext.prototype.chain.call(context,nextPlugin,settings);
     };
 
     logger.pushIndent();

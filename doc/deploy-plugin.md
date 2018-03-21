@@ -58,7 +58,7 @@ processing the targets.
 
 A `DeployContext` object has the following properties:
 
-* `DeployContext.deployPath` [String]
+#### `DeployContext.deployPath` [String]
 
 The absolute path to the root of the deploy tree. Any target source path is
 relative to this root.
@@ -68,27 +68,110 @@ the context's `deployPath`. For example, given the context's `deployPath` set to
 `/path/to/deploy` and the target's `sourcePath` set to `src`, the target's
 `deployPath` will be set to `/path/to/deploy/src`.
 
-* `DeployContext.targets` [Array]
+#### `DeployContext.targets` [Array]
 
 The list of output targets to process. Each item is a `Target` object.
 
-* `DeployContext.logger` [Object]
+#### `DeployContext.logger` [Object]
 
 The logger module from the core codebase. This is loaded so the plugin can
 produce messages. Care should be taken to preserve the original indent level.
 
 ### Functionality
 
-A `DeployContext` object has the following properties:
+A `DeployContext` object has the following functions:
 
-* `DeployContext.resolveTargets(newTargetPath,removeTargets)` -> `Target`
+#### `DeployContext.createTarget(newTargetPath)` -> `Target`
+
+Creates a new output target and adds it to the context's list of targets.
+
+#### `DeployContext.resolveTargets(newTargetPath,removeTargets)` -> `Target`
 
 Resolves a list of targets down into a single, new target. If `newTargetPath` is
-provided, then a new target is created with the given path and returned.
-Otherwise the specified targets are removed and nothing is returned. The list of
-`removeTargets` should contain target objects from the context's `targets` list.
+provided, then a new target is created with the given path, added to the
+context's list of targets and returned. Otherwise the specified targets are
+removed and nothing is returned. The list of `removeTargets` should contain
+target objects from the context's `targets` list. It may be omitted or left
+empty to just create a new target.
 
-* `DeployContext.chain(nextPlugin,settings)` -> `Promise`
+#### `DeployContext.chain(nextPlugin,settings)` -> `Promise`
 
 Invokes the specified deploy plugin, which is passed the called `DeployContext`
 instance. The `Promise` returned from the plugin's `exec` function is returned.
+
+## Default Plugins
+
+The following deploy plugins are provided by the core repository:
+
+#### `exclude`
+
+This plugin does absolutely nothing, resolving immediately.
+
+Object schema:
+
+```js
+{
+  id: "exclude"
+}
+```
+
+#### `write`
+
+Writes output targets the to deployment tree. This is the core deploy plugin to
+which most other plugins will chain.
+
+Object schema (settings properties indicate their defaults):
+
+```js
+{
+  id: "write",
+
+  // NOTE: System umask will still apply.
+  mode: 0o666
+}
+```
+
+#### `combine`
+
+Combines multiple targets together into a single file. The settings properties
+define the mapping and ordering of subfiles.
+
+This plugin chains to the `write` plugin.
+
+Object schema (settings properties indicate their defaults):
+
+```js
+{
+  id: "combine",
+
+  mappings: [
+    {
+      // The matches/patterns indicate which blobs are combined.
+      match: "filename.ext",
+      // OR
+      match: ["filename1.ext","filename2.ext"],
+
+      pattern: ".*ext$",
+      // OR
+      pattern: [".*ext1$",".*ext2$"],
+
+      // The path to the resultant output target.
+      target: "dist/combined.ext",
+
+      // The ordering indicates which files go first in the combined file. The
+      // values should be the source path of the target. If omitted the ordering
+      // is undefined.
+      ordering: [
+        "file1.ext",
+        "file2.ext",
+        "src/file3.ext"
+      ],
+
+      // Optional settings to pass to chained call to write plugin.
+      writeSettings: {
+        // ...
+      }
+    }
+  ]
+}
+```
