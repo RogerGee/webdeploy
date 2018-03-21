@@ -55,7 +55,28 @@ function processMapping(context,mapping) {
             }
         }
 
-        // TODO Sort targets by ordering.
+        if (targets.length == 0) {
+            return Promise.resolve();
+        }
+
+        // Sort targets by ordering.
+
+        if (mapping.ordering) {
+            var pos = 0;
+            var names = targets.map((x) => { return x.getSourceTargetPath(); });
+            for (var i = 0;i < mapping.ordering.length;++i) {
+                var indexOf = names.indexOf(mapping.ordering[i]);
+                if (indexOf >= 0 && indexOf != pos) {
+                    var target = targets[indexOf];
+                    targets.splice(indexOf,1);
+                    targets.splice(pos,0,target);
+                    var targetName = names[indexOf];
+                    names.splice(indexOf,1);
+                    names.splice(pos,0,targetName);
+                }
+                pos += ( indexOf >= 0 ) ? 1 : 0;
+            }
+        }
 
         var i = 0;
         var newTarget = context.resolveTargets(mapping.target,targets);
@@ -67,7 +88,6 @@ function processMapping(context,mapping) {
         function combineFile() {
             if (i < targets.length) {
                 var target = targets[i++];
-                console.log(target.getSourceTargetPath());
 
                 target.stream.on('data',transfer);
                 target.stream.on('end',combineFile);
