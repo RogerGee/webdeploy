@@ -401,7 +401,7 @@ class PathTree {
 
     // Gets a Promise. Walks the tree and calls callback(path,name,streamFunc)
     // for each blob. The "streamFunc" parameter can be called to obtain a
-    // stream to the blob's contents. If specified, filter(path) -> false heads
+    // stream to the blob's contents. If specified, filter(entry) -> false heads
     // off a particular branch path.
     walk(callback,filter) {
         return new Promise((resolve,reject) => {
@@ -416,13 +416,13 @@ class PathTree {
             function walkRecursive(basePath) {
                 return (err,files) => {
                     for (let i = 0;i < files.length;++i) {
-                        var filePath = path.join(basePath,files[i]);
-                        var stat = fs.lstatSync(filePath);
+                        let filePath = path.join(basePath,files[i]);
+                        let stat = fs.lstatSync(filePath);
                         if (stat.isFile()) {
                             callback(basePath,files[i],() => { return fs.createReadStream(filePath); });
                         }
                         else if (stat.isDirectory()) {
-                            if (!filter || filter(filePath)) {
+                            if (!filter || filter(files[i])) {
                                 outstanding += 1;
                                 fs.readdir(filePath,walkRecursive(filePath));
                             }
