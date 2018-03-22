@@ -65,6 +65,11 @@ has the following form:
   // OR
   "pattern": ["src\\/.*\\.js$", "src\\/.*\\.jsx$"],
 
+  // Regular expressions for excluding certain targets.
+  "exclude": "pattern",
+  // OR
+  "exclude": ["pattern1", "pattern2"],
+
   "handlers": [ /* handler objects*/ ],
 
   "options": {

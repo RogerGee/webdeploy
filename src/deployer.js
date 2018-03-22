@@ -75,6 +75,23 @@ function deployBuildStep(tree,options) {
     function findTargetInclude(candidate) {
         var i = 0;
         while (i < includes.length) {
+            // Make sure the candidate is not excluded.
+
+            if (includes[i].exclude) {
+                if (Array.isArray(includes[i].exclude)) {
+                    var excludes = includes[i].exclude;
+                }
+                else {
+                    var excludes = [includes[i].exclude];
+                }
+
+                for (var j = 0;j < excludes.length;++j) {
+                    if (candidate.match(excludes[j])) {
+                        return false;
+                    }
+                }
+            }
+
             // Try matches (exact match).
 
             if (includes[i].match) {

@@ -50,6 +50,13 @@ module.exports = {
             pattern: /src\/.*\.js$/,
 
             /**
+             * Specifies a RegExp (object or string) that matches the path names
+             * of candidate targets to exclude. This may alternatively be an
+             * array of such regular expressions.
+             */
+            exclude: /^src\/bad\.js$/,
+
+            /**
              * Specifies the set of build plugins that handle the targets that
              * match the pattern.
              *
