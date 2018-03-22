@@ -291,30 +291,29 @@ function deployBuildStep(tree,options) {
                 return;
             }
 
-            function addTarget(isModified) {
-                if (!isModified) {
-                    return;
-                }
-
-                // Create a candidate target and attempt to add it.
-                var delayedTarget = {
-                    path: relativePath,
-                    name: name,
-                    createStream: createInputStream
-                };
-
-                pushOutputTarget(null,null,delayedTarget);
-            }
+            // Create a candidate target and attempt to add it.
+            var delayedTarget = {
+                path: relativePath,
+                name: name,
+                createStream: createInputStream
+            };
 
             // If a potential target does not have a build product (i.e. is a
             // trivial product), then check to see if it is modified and should
             // be included or not.
 
             if (!options.force && options.graph && !options.graph.hasProductForSource(ref)) {
-                targetPromises.push(tree.isBlobModified(ref).then(addTarget));
+                targetPromises.push(tree.isBlobModified(ref).then((result) => {
+                    if (result) {
+                        pushOutputTarget(null,null,delayedTarget);
+                    }
+                    else {
+                        options.ignored = true;
+                    }
+                }));
             }
             else {
-                addTarget(true);
+                pushOutputTarget(null,null,delayedTarget);
             }
         }, (path) => {
             // Ignore any hidden paths.
@@ -327,11 +326,11 @@ function deployBuildStep(tree,options) {
             return Promise.all(targetPromises);
         });
     }).then(() => {
-        // Send each target through each plugin.
-
         if (targets.length == 0) {
             logger.log("*No Targets*");
         }
+
+        // Send each target through each plugin.
 
         logger.popIndent();
         logger.log("Building targets:");
