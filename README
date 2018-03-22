@@ -63,6 +63,7 @@ An overview of the pipeline follows:
             JSON file.
 
               "package.json"
+              "composer.json"
 
     0.2 Load configuration from the repository's config file. If the target tree
         is not a git repository, then this step does nothing. This configuration

@@ -78,6 +78,19 @@ targets are selected for the rule. The `handlers` property is a list of build
 plugin handlers that denote which build plugins process the targets matched.
 Multiple handlers denote a sequence of handlers that operate on the target(s).
 
+The target tree can be included in a variety of different files. NodeJS modules
+and JSON files are supported:
+
+_NodeJS module-based config files_
+
+    webdeploy.config.js
+    .webdeploy.config.js
+
+_JSON-based config files_
+
+    package.json
+    composer.json
+
 #### Build Handler Object
 
 The build handler object has the following schema:

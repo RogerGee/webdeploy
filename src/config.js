@@ -16,7 +16,7 @@ function loadFromTree(tree) {
         modules: ["webdeploy.config.js",".webdeploy.config.js"],
 
         // JSON: The config object is a child of the core object.
-        json: ["package.json"]
+        json: ["package.json","composer.json"]
     };
 
     return new Promise((resolve,reject) => {

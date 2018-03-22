@@ -70,6 +70,8 @@ function deployBuildStep(tree,options) {
     var targets = [];         // targets processed by build plugins
     var outputTargets = [];   // targets to be processed by deploy plugin
 
+    // Create function for matching a candidate target path against the set of
+    // includes.
     function findTargetInclude(candidate) {
         var i = 0;
         while (i < includes.length) {
@@ -184,7 +186,7 @@ function deployBuildStep(tree,options) {
     }
 
     return tree.getConfigParameter("info").then((configInfo) => {
-        logger.log("Loaded build config from _" + configInfo.file + "_");
+        logger.log("Loaded target tree config from _" + configInfo.file + "_");
         return tree.getConfigParameter("includes");
     }).then((_includes) => {
         // Load build plugins required by this deployment.
