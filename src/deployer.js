@@ -221,10 +221,10 @@ function deployBuildStep(tree,options) {
                 }
 
                 if (typeof plugin.dev === 'undefined') {
-                    plugin.dev = true;
+                    plugin.dev = false;
                 }
                 if (typeof plugin.build === 'undefined') {
-                    plugin.build = true;
+                    plugin.build = false;
                 }
 
                 // Skip if in dev mode and plugin is not for dev OR if the

@@ -166,12 +166,12 @@ Object schema (settings properties indicate their defaults):
         "file2.ext",
         "src/file3.ext"
       ],
-
-      // Optional settings to pass to chained call to write plugin.
-      writeSettings: {
-        // ...
-      }
     }
   ]
+
+  // Optional settings to pass to chained call to write plugin.
+  writeSettings: {
+    // ...
+  }
 }
 ```
