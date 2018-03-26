@@ -56,7 +56,8 @@ function processMapping(context,mapping) {
         }
 
         if (targets.length == 0) {
-            return Promise.resolve();
+            resolve();
+            return;
         }
 
         // Sort targets by ordering.

@@ -54,7 +54,13 @@ module.exports = {
              * of candidate targets to exclude. This may alternatively be an
              * array of such regular expressions.
              */
-            exclude: /^src\/bad\.js$/,
+            exclude: /^src\/scripts\.js$/,
+
+            /**
+             * Determines if the include is considered for a build run. The
+             * default is true.
+             */
+            build: true,
 
             /**
              * Specifies the set of build plugins that handle the targets that
@@ -63,6 +69,9 @@ module.exports = {
              * Build plugins transform targets into their output representation. They
              * are invoked in sequence. This may be a custom handler function or a
              * string denoting an installed handler plugin.
+             *
+             * The list of handlers may be empty, which essentially passes the
+             * targets through unchanged.
              *
              * By default, a handler is not made available during a development
              * run. If this is required, then set "dev" to true.
@@ -75,15 +84,15 @@ module.exports = {
                      * plugin. An inline plugin takes precendence over any
                      * external build plugins.
                      */
-                    id: "pass",
+                    id: "minify",
 
                     // Determines if the handler is considered during a
                     // development run. The default is false.
                     dev: false,
 
                     // Determines if the handler is considered during a build run.
-                    // The default is false.
-                    build: false,
+                    // The default is true.
+                    build: true,
 
                     // A custom, inline plugin implementation. This is optional.
                     handler: (target,settings) => {

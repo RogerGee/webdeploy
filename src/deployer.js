@@ -34,7 +34,10 @@ function deployDeployStep(tree,options,targets) {
             return Promise.resolve();
         }
 
-        throw new Error("No targets for deploy step!");
+        logger.pushIndent();
+        logger.log("No targets to build");
+        logger.popIndent();
+        return Promise.resolve();
     }
 
     if (!options.deployPlugin) {
@@ -51,17 +54,20 @@ function deployDeployStep(tree,options,targets) {
     // Hijack chain() method so we can log messages.
 
     context.chain = function(nextPlugin,settings) {
-        logger.pushIndent();
         logger.log("Chain deploy _" + options.deployPlugin.id + "_ -> _" + nextPlugin + "_");
-        logger.popIndent();
-        return contextModule.DeployContext.prototype.chain.call(context,nextPlugin,settings);
+        logger.pushIndent();
+        return contextModule.DeployContext.prototype.chain.call(context,nextPlugin,settings).then((retval) => {
+            logger.popIndent();
+            return retval;
+        });
     };
 
     logger.pushIndent();
-    var promise = plugin.exec(context,options.deployPlugin);
-    logger.popIndent();
+    return plugin.exec(context,options.deployPlugin).then((retval) => {
+        logger.popIndent();
 
-    return promise;
+        return retval;
+    });
 }
 
 function deployBuildStep(tree,options) {
@@ -212,29 +218,42 @@ function deployBuildStep(tree,options) {
         includes = _includes; // set outer-scoped variable
 
         for (var i = 0;i < includes.length;++i) {
+            var include = includes[i];
+
+            // Apply defaults for core include object settings.
+            if (typeof include.build == "undefined") {
+                include.build = true;
+            }
+
+            // Skip loading if not for build and we are doing a build run.
+            if (options.type == DEPLOY_TYPES.TYPE_BUILD && !include.build) {
+                includes[i] = null;
+                continue;
+            }
+
             for (var j = 0;j < includes[i].handlers.length;++j) {
-                var plugin = includes[i].handlers[j];
+                var plugin = include.handlers[j];
 
                 // Skip if plugin already loaded.
                 if (plugin.id in plugins) {
                     continue;
                 }
 
+                // Apply defaults for core plugin settings.
                 if (typeof plugin.dev === 'undefined') {
                     plugin.dev = false;
                 }
                 if (typeof plugin.build === 'undefined') {
-                    plugin.build = false;
+                    plugin.build = true;
                 }
 
-                // Skip if in dev mode and plugin is not for dev OR if the
-                // plugin cannot be used in build.
+                // Skip plugin if dev and build settings do not align.
                 if (!plugin.dev && options.dev) {
-                    includes[i].handlers[j] = null;
+                    include.handlers[j] = null;
                     continue;
                 }
                 if (!plugin.build && options.type == DEPLOY_TYPES.TYPE_BUILD) {
-                    includes[i].handlers[j] = null;
+                    include.handlers[j] = null;
                     continue;
                 }
 
@@ -248,10 +267,7 @@ function deployBuildStep(tree,options) {
                 }
             }
 
-            includes[i].handlers = includes[i].handlers.filter((x) => { return x !== null; });
-            if (includes[i].handlers.length == 0) {
-                includes[i] = null;
-            }
+            include.handlers = include.handlers.filter((x) => { return x !== null; });
         }
 
         includes = includes.filter((x) => { return x !== null; });
