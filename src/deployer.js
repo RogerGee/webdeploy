@@ -7,6 +7,7 @@ const treeLoader = require("./tree");
 const pluginLoader = require("./plugins");
 const targetModule = require("./target");
 const contextModule = require("./context");
+const builderModule = require("./builder");
 const depends = require("./depends");
 const logger = require("./logger");
 
@@ -71,207 +72,33 @@ function deployDeployStep(tree,options,targets) {
 }
 
 function deployBuildStep(tree,options) {
-    var includes;             // include rules for target analysis (to be set later)
-    var plugins = {};         // plugins available for build
-    var targets = [];         // targets processed by build plugins
-    var outputTargets = [];   // targets to be processed by deploy plugin
+    var builder;
 
-    // Create function for matching a candidate target path against the set of
-    // includes.
-    function findTargetInclude(candidate) {
-        var i = 0;
-        while (i < includes.length) {
-            // Make sure the candidate is not excluded.
+    function printNewTargets(target,plugin,newTargets) {
+        if (newTargets.length > 0) {
+            logger.pushIndent(target.level);
+            var prefix = "exec _" + target.targetName + "_"
+                + " -> *" + plugin.id + "* -> ";
 
-            if (includes[i].exclude) {
-                if (Array.isArray(includes[i].exclude)) {
-                    var excludes = includes[i].exclude;
-                }
-                else {
-                    var excludes = [includes[i].exclude];
-                }
-
-                for (var j = 0;j < excludes.length;++j) {
-                    if (candidate.match(excludes[j])) {
-                        return false;
-                    }
-                }
+            newTargetNames = newTargets.map((x) => { return x.targetName; });
+            logger.log(prefix + "_" + newTargetNames[0] + "_");
+            for (var j = 1;j < newTargetNames.length;++j) {
+                logger.log(" ".repeat(prefix.length - 7) + "-> _"
+                           + newTargetNames[j] + "_");
             }
-
-            // Try matches (exact match).
-
-            if (includes[i].match) {
-                if (Array.isArray(includes[i].match)) {
-                    var matches = includes[i].match;
-                }
-                else {
-                    var matches = [includes[i].match];
-                }
-
-                for (var j = 0;j < matches.length;++j) {
-                    if (candidate == matches[j]) {
-                        return includes[i];
-                    }
-                }
-            }
-
-            // Try patterns (regex match).
-
-            if (includes[i].pattern) {
-                if (Array.isArray(includes[i].pattern)) {
-                    var patterns = includes[i].pattern;
-                }
-                else {
-                    var patterns = [includes[i].pattern];
-                }
-
-                for (var j = 0;j < patterns.length;++j) {
-                    if (candidate.match(patterns[j])) {
-                        return includes[i];
-                    }
-                }
-            }
-
-            i += 1;
+            logger.popIndent(target.level);
         }
-
-        return false;
-    }
-
-    // Create a function for adding output targets to the global arrays.
-    function pushOutputTarget(parentTarget,newTarget,initial) {
-        if (typeof initial == "undefined") {
-            // Treat recursive targets as initial targets.
-            initial = newTarget.recursive;
-        }
-
-        // If the push is for an initial target, then determine if the target is
-        // included in the set of processed targets.
-
-        if (initial) {
-            // The target may only exist in a delayed state if 'newTarget' is
-            // not set, in that case the required information exists in
-            // "initial".
-            if (!newTarget) {
-                assert(typeof initial == "object" && "path" in initial
-                       && "name" in initial && 'createStream' in initial);
-
-                var candidate = pathModule.join(initial.path,initial.name);
-            }
-            else {
-                var candidate = newTarget.getSourceTargetPath();
-            }
-
-            var include = findTargetInclude(candidate);
-            if (include) {
-                if (!newTarget) {
-                    // Resolve the delayed target information into a Target object.
-                    newTarget = new targetModule.Target(initial.path,initial.name,initial.createStream(),include.options);
-                }
-                newTarget.level = 1;
-                newTarget.handlers = include.handlers.slice(0);
-                targets.push(newTarget);
-
-                logger.log("add _" + candidate + "_");
-            }
-
-            return;
-        }
-
-        // If the parentTarget has a non-empty list of handlers, then let the
-        // newTarget reference the list of remaining handlers.
-
-        assert(parentTarget);
-
-        if (options.graph) {
-            options.graph.addConnection(parentTarget.getSourceTargetPath(),
-                                        newTarget.getSourceTargetPath());
-        }
-
-        if (parentTarget.handlers.length > 0) {
-            // Let the newTarget inherit the remaining handlers from the parent
-            // target. This allows for chaining handlers from the parent to the
-            // child.
-            newTarget.level = parentTarget.level + 1;
-            if (newTarget !== parentTarget) {
-                newTarget.handlers = parentTarget.handlers;
-                delete parentTarget.handlers;
-            }
-
-            targets.push(newTarget);
-            return;
-        }
-
-        // Otherwise the newTarget is an output target and is not processed by
-        // the build system anymore.
-
-        outputTargets.push(newTarget);
     }
 
     return tree.getConfigParameter("info").then((configInfo) => {
         logger.log("Loaded target tree config from _" + configInfo.file + "_");
         return tree.getConfigParameter("includes");
-    }).then((_includes) => {
-        // Load build plugins required by this deployment.
+    }).then((includes) => {
+        // Load builder required for this deployment.
 
-        var n = 0;
-        includes = _includes; // set outer-scoped variable
+        builder = new builderModule.Builder(includes,options,printNewTargets);
 
-        for (var i = 0;i < includes.length;++i) {
-            var include = includes[i];
-
-            // Apply defaults for core include object settings.
-            if (typeof include.build == "undefined") {
-                include.build = true;
-            }
-
-            // Skip loading if not for build and we are doing a build run.
-            if (options.type == DEPLOY_TYPES.TYPE_BUILD && !include.build) {
-                includes[i] = null;
-                continue;
-            }
-
-            for (var j = 0;j < includes[i].handlers.length;++j) {
-                var plugin = include.handlers[j];
-
-                // Skip if plugin already loaded.
-                if (plugin.id in plugins) {
-                    continue;
-                }
-
-                // Apply defaults for core plugin settings.
-                if (typeof plugin.dev === 'undefined') {
-                    plugin.dev = false;
-                }
-                if (typeof plugin.build === 'undefined') {
-                    plugin.build = true;
-                }
-
-                // Skip plugin if dev and build settings do not align.
-                if (!plugin.dev && options.dev) {
-                    include.handlers[j] = null;
-                    continue;
-                }
-                if (!plugin.build && options.type == DEPLOY_TYPES.TYPE_BUILD) {
-                    include.handlers[j] = null;
-                    continue;
-                }
-
-                n += 1;
-
-                if (plugin.handler) {
-                    plugins[plugin.id] = { exec: plugin.handler };
-                }
-                else {
-                    plugins[plugin.id] = pluginLoader.loadBuildPlugin(plugin.id);
-                }
-            }
-
-            include.handlers = include.handlers.filter((x) => { return x !== null; });
-        }
-
-        includes = includes.filter((x) => { return x !== null; });
-
+        var n = builder.getPluginCount();
         logger.log("Loaded _" + n + "_ build " + logger.plural(n,"plugin"));
 
         // Calculate the set of ignored targets given a dependency graph.
@@ -307,7 +134,8 @@ function deployBuildStep(tree,options) {
                 return;
             }
 
-            // Create a candidate target and attempt to add it.
+            // Create a delayed target object and attempt to add it to the
+            // builder.
             var delayedTarget = {
                 path: relativePath,
                 name: name,
@@ -321,7 +149,10 @@ function deployBuildStep(tree,options) {
             if (!options.force && options.graph && !options.graph.hasProductForSource(ref)) {
                 targetPromises.push(tree.isBlobModified(ref).then((result) => {
                     if (result) {
-                        pushOutputTarget(null,null,delayedTarget);
+                        var newTarget = builder.pushInitialTarget(null,delayedTarget);
+                        if (newTarget) {
+                            logger.log("add _" + newTarget.getSourceTargetPath() + "_");
+                        }
                     }
                     else {
                         options.ignored = true;
@@ -329,7 +160,10 @@ function deployBuildStep(tree,options) {
                 }));
             }
             else {
-                pushOutputTarget(null,null,delayedTarget);
+                var newTarget = builder.pushInitialTarget(null,delayedTarget);
+                if (newTarget) {
+                    logger.log("add _" + newTarget.getSourceTargetPath() + "_");
+                }
             }
         }, (path) => {
             // Ignore any hidden paths.
@@ -342,7 +176,7 @@ function deployBuildStep(tree,options) {
             return Promise.all(targetPromises);
         });
     }).then(() => {
-        if (targets.length == 0) {
+        if (builder.targets.length == 0) {
             logger.log("*No Targets*");
         }
 
@@ -351,93 +185,15 @@ function deployBuildStep(tree,options) {
         logger.popIndent();
         logger.log("Building targets:");
 
-        if (targets.length == 0) {
+        if (builder.targets.length == 0) {
             logger.pushIndent();
             logger.log("*No Targets*");
             logger.popIndent();
         }
 
-        return new Promise((resolve,reject) => {
-            var recursion = 0;
-
-            function execTargets() {
-                // Execute all available targets. Only execute the first
-                // specified handler. Any remaining handlers are executed
-                // recursively by child targets if at all.
-
-                while (targets.length > 0) {
-                    let target = targets.pop();
-
-                    // Ignore the target if it has no more handlers.
-                    if (!target.handlers || target.handlers.length == 0) {
-                        outputTargets.push(target);
-                        continue;
-                    }
-
-                    // Lookup next plugin to execute. Make sure it is included
-                    // in the set of loaded plugins before continuing. We ignore
-                    // unloaded plugins.
-                    let plugin;
-                    while (target.handlers.length > 0) {
-                        var cand = target.handlers.shift();
-                        if (cand.id in plugins) {
-                            plugin = cand;
-                            break;
-                        }
-                    }
-                    if (!plugin) {
-                        outputTargets.push(target);
-                        continue;
-                    }
-
-                    // Apply any settings from the plugin handler to the target.
-                    target.applySettings(plugin);
-
-                    recursion += 1;
-                    plugins[plugin.id].exec(target,plugin).then((newTargets) => {
-                        if (newTargets) {
-                            // Normalize newTargets into an array.
-                            if (newTargets && !Array.isArray(newTargets)) {
-                                newTargets = [newTargets];
-                            }
-                            else if (newTargets.length == 0) {
-                                newTargets = null;
-                            }
-
-                            // Push targets into output lists.
-                            for (var i = 0;i < newTargets.length;++i) {
-                                pushOutputTarget(target,newTargets[i]);
-                            }
-
-                            // Print logging messages.
-                            logger.pushIndent(target.level);
-                            if (newTargets) {
-                                var prefix = "exec _" + target.targetName + "_"
-                                    + " -> *" + plugin.id + "* -> ";
-
-                                newTargetNames = newTargets.map((x) => { return x.targetName; });
-                                logger.log(prefix + "_" + newTargetNames[0] + "_");
-                                for (var j = 1;j < newTargetNames.length;++j) {
-                                    logger.log(" ".repeat(prefix.length - 7) + "-> _"
-                                               + newTargetNames[j] + "_");
-                                }
-                            }
-                            logger.popIndent(target.level);
-                        }
-
-                        recursion -= 1;
-                        execTargets();
-                    }).catch(reject);
-                }
-
-                // If this is the last recursion, call the deploy step.
-                if (recursion == 0) {
-                    deployDeployStep(tree,options,outputTargets).then(resolve,reject);
-                }
-            }
-
-            execTargets();
-        });
+        return builder.execute();
+    }).then(() => {
+        return deployDeployStep(tree,options,builder.outputTargets);
     });
 }
 
