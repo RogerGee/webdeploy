@@ -41,6 +41,8 @@ function processMapping(context,mapping) {
     // mapping object. This will resolve the targets down, preventing them from
     // being used in another mapping.
 
+    var newTarget;
+
     return new Promise((resolve,reject) => {
         var targets = [];
 
@@ -80,7 +82,7 @@ function processMapping(context,mapping) {
         }
 
         var i = 0;
-        var newTarget = context.resolveTargets(mapping.target,targets);
+        newTarget = context.resolveTargets(mapping.target,targets);
 
         function transfer(chunk) {
             newTarget.stream.write(chunk);
@@ -100,6 +102,13 @@ function processMapping(context,mapping) {
         }
 
         combineFile();
+    }).then(() => {
+        if (mapping.handlers) {
+            var revisedHandlers = context.builder.loadHandlerPlugins(mapping.handlers);
+            if (revisedHandlers.length > 0) {
+                context.builder.pushInitialTargetWithHandlers(newTarget,revisedHandlers);
+            }
+        }
     });
 }
 
@@ -118,7 +127,9 @@ module.exports = {
             }
 
             Promise.all(promises).then(() => {
-                return context.chain("write",settings.writeSettings);
+                return context.executeBuilder().then(() => {
+                    return context.chain("write",settings.writeSettings);
+                });
             }).then(resolve,reject);
         });
     }

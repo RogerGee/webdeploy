@@ -19,10 +19,10 @@ const DEPLOY_TYPES = {
     TYPE_DEPLOY: 'deploy'
 };
 
-function deployDeployStep(tree,options,targets) {
+function deployDeployStep(tree,builder,options) {
     logger.log("Deploying targets: _" + options.deployPlugin.id + "_");
 
-    if (targets.length == 0) {
+    if (builder.outputTargets.length == 0) {
         if (options.ignored) {
             logger.pushIndent();
             if (options.type == DEPLOY_TYPES.TYPE_BUILD) {
@@ -49,7 +49,7 @@ function deployDeployStep(tree,options,targets) {
         throw new Error("No deploy path for deploy step!");
     }
 
-    var context = new contextModule.DeployContext(options.deployPath,targets,options.graph);
+    var context = new contextModule.DeployContext(options.deployPath,builder);
     var plugin = pluginLoader.loadDeployPlugin(options.deployPlugin.id);
 
     // Hijack chain() method so we can log messages.
@@ -194,7 +194,7 @@ function deployBuildStep(tree,options) {
 
         return builder.execute();
     }).then(() => {
-        return deployDeployStep(tree,options,builder.outputTargets);
+        return deployDeployStep(tree,builder,options);
     });
 }
 

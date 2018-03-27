@@ -208,6 +208,15 @@ class Builder {
         return false;
     }
 
+    // Pushes a new, initial output target having the specified sequence of
+    // handlers.
+    pushInitialTargetWithHandlers(newTarget,handlers) {
+        newTarget.level = 1;
+        newTarget.setHandlers(handlers.slice());
+        this.targets.push(newTarget);
+        return newTarget;
+    }
+
     // Pushes a new output target given the specified parent target.
     pushOutputTarget(parentTarget,newTarget) {
         // Treat recursive targets as initial. This will ignore any outstanding

@@ -68,9 +68,15 @@ the context's `deployPath`. For example, given the context's `deployPath` set to
 `/path/to/deploy` and the target's `sourcePath` set to `src`, the target's
 `deployPath` will be set to `/path/to/deploy/src`.
 
+#### `DeployContext.builder` [Builder]
+
+The `Builder` instance associated with the set of targets.
+
 #### `DeployContext.targets` [Array]
 
-The list of output targets to process. Each item is a `Target` object.
+The list of output targets to process. Each item is a `Target` object. This is a
+reference to `builder.outputTargets`, replicated for convenience. Do not change
+the reference to another object; undefined behavior will result.
 
 #### `DeployContext.logger` [Object]
 
@@ -166,6 +172,11 @@ Object schema (settings properties indicate their defaults):
         "file2.ext",
         "src/file3.ext"
       ],
+
+      // A list of build plugin handlers
+      handlers: [
+        // Same as "handlers" section from include object
+      ]
     }
   ]
 

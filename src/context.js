@@ -10,16 +10,28 @@ const plugins = require("./plugins");
  * for processing.
  */
 class DeployContext {
-    constructor(deployPath,targets,graph) {
+    constructor(deployPath,builder) {
         this.deployPath = deployPath;
-        this.targets = targets;
+        this.builder = builder;
+        this.targets = builder.outputTargets;
+        this.graph = builder.graph; // DependencyGraph
         this.logger = require("./logger");
-        this.graph = graph; // DependencyGraph
 
-        // Set deployment paths for each target.
+        this.setTargetsDeployPath();
+    }
+
+    // Sets the deployment path for each target.
+    setTargetsDeployPath() {
         for (var i = 0;i < this.targets.length;++i) {
             this.targets[i].setDeployPath(this.deployPath);
         }
+    }
+
+    // Wrapper for builder.execute() that sets output targets deploy paths.
+    executeBuilder() {
+        return this.builder.execute().then(() => {
+            this.setTargetsDeployPath();
+        });
     }
 
     // Gets Target. Creates a new output target that is added to the context's
@@ -36,12 +48,14 @@ class DeployContext {
     // "newTargetPath" must contain both the target path and name. The new
     // target is added to the context's list of targets.
     resolveTargets(newTargetPath,removeTargets) {
-        if (removeTargets && removeTargets.length > 0) {
+        if (removeTargets) {
             // Remove targets from our internal list.
-            var newTargets = this.targets.filter((elem) => {
-                return removeTargets.indexOf(elem) == -1;
+            removeTargets.forEach((elem) => {
+                var index = this.targets.indexOf(elem);
+                if (index >= 0) {
+                    this.targets.splice(index,1);
+                }
             });
-            this.targets = newTargets;
         }
 
         // Create new target if path is specified.
@@ -49,7 +63,8 @@ class DeployContext {
             // Add dependency graph information.
             if (removeTargets && this.graph) {
                 for (var i = 0;i < removeTargets.length;++i) {
-                    this.graph.addConnection(removeTargets[i].getSourceTargetPath(),newTargetPath);
+                    this.graph.addConnection(removeTargets[i].getSourceTargetPath(),
+                                             newTargetPath);
                 }
             }
             return this.createTarget(newTargetPath);
