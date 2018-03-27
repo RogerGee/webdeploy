@@ -11,6 +11,8 @@ const SAVE_FILE_NAME = ".webdeploy.deps";
 function loadFromJson(graph,json) {
     var parsed = JSON.parse(json);
 
+    // The set of raw connections and forward mappings are the same
+    // initially. Then all that's left is to compute the reverse mappings.
     graph.connections = parsed.map;
     graph.forwardMappings = Object.assign({},parsed.map);
     graph._calcReverseMappings();
@@ -274,6 +276,62 @@ class DependencyGraph {
         this.connections = {};
         delete this.forwardMappings;
         delete this.reverseMappings;
+    }
+
+    // Removes the connection(s) between the specified source and all of its build
+    // products (in both directions).
+    removeConnectionGivenSource(source,sync) {
+        // Remove the raw connections.
+        var stk = [source];
+        while (stk.length > 0) {
+            var elem = stk.pop();
+            if (!this.connections[elem]) {
+                break;
+            }
+
+            var bucket = this.connections[elem];
+            delete this.connections[elem];
+
+            bucket.forEach((elem) => {
+                stk.push(elem);
+            });
+        }
+
+        if (sync) {
+            this.resolve();
+        }
+    }
+
+    // Removes the connection(s) between the specified product and all of its
+    // build sources (in both directions).
+    removeConnectionGivenProduct(product,sync) {
+        var removeRecursive = (level) => {
+            if (!level) {
+                var children = this.lookupReverse(product);
+            }
+            else {
+                // Base case: consider leaf node.
+                if (!this.connections[level]) {
+                    return level == product ? 0 : 1;
+                }
+
+                var children = this.connections[level];
+            }
+
+            var a = children.reduce((x,childLevel) => { return x + removeRecursive(childLevel) },0);
+
+            // Remove links that lead only to the product node.
+            if (a == 0) {
+                delete this.connections[level]
+            }
+
+            return a;
+        }
+        removeRecursive();
+
+        if (sync) {
+            this.resolve();
+        }
     }
 
     _calcReverseMappings() {
