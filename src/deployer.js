@@ -96,7 +96,8 @@ function deployBuildStep(tree,options) {
     }).then((includes) => {
         // Load builder required for this deployment.
 
-        builder = new builderModule.Builder(includes,options,printNewTargets);
+        builder = new builderModule.Builder(options,printNewTargets);
+        builder.setIncludes(includes);
 
         var n = builder.getPluginCount();
         logger.log("Loaded _" + n + "_ build " + logger.plural(n,"plugin"));

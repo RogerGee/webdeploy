@@ -20,11 +20,65 @@ class Builder {
     //   -type: "build" or "deploy"
     //   -dev: Boolean
     //   -graph: DependencyGraph
-    constructor(includes,options,callback) {
+    constructor(options,callback) {
         this.options = options;
         this.plugins = {};
+        this.includes = [];
+        this.targets = [];
+        this.outputTargets = [];
+        this.callback = callback;
+    }
 
-        includes = includes.slice(); // copy
+    // Loads the plugins associated with the set of handlers. Some handlers are
+    // ignored due to builder options (e.g. dev/type). The method returns the
+    // revised set of handlers.
+    loadHandlerPlugins(handlers) {
+        var keep = [];
+
+        for (var i = 0;i < handlers.length;++i) {
+            var plugin = handlers[i];
+
+            // Skip if plugin already loaded.
+            if (plugin.id in this.plugins) {
+                keep.push(handlers[i]);
+                continue;
+            }
+
+            // Apply defaults for core plugin settings.
+            if (typeof plugin.dev === 'undefined') {
+                plugin.dev = false;
+            }
+            if (typeof plugin.build === 'undefined') {
+                plugin.build = true;
+            }
+
+            // Skip plugin if dev and build settings do not align.
+            if (!plugin.dev && this.options.dev) {
+                continue;
+            }
+            if (!plugin.build && this.options.type == "build") {
+                continue;
+            }
+
+            if (plugin.handler) {
+                this.plugins[plugin.id] = { exec: plugin.handler };
+            }
+            else {
+                this.plugins[plugin.id] = pluginLoader.loadBuildPlugin(plugin.id);
+            }
+
+            keep.push(handlers[i]);
+        }
+
+        return keep;
+    }
+
+    // Sets the include objects on the instance. This also will load all plugins
+    // referenced by the include objects' handler lists. The method may exclude
+    // some rules depending on the builder options.
+    setIncludes(includes) {
+        var keep = [];
+
         for (var i = 0;i < includes.length;++i) {
             var include = includes[i];
 
@@ -32,54 +86,20 @@ class Builder {
             if (typeof include.build == "undefined") {
                 include.build = true;
             }
+            if (!include.handlers) {
+                include.handlers = [];
+            }
 
             // Skip loading if not for build and we are doing a build run.
-            if (options.type == "build" && !include.build) {
-                includes[i] = null;
+            if (this.options.type == "build" && !include.build) {
                 continue;
             }
 
-            for (var j = 0;j < includes[i].handlers.length;++j) {
-                var plugin = include.handlers[j];
-
-                // Skip if plugin already loaded.
-                if (plugin.id in this.plugins) {
-                    continue;
-                }
-
-                // Apply defaults for core plugin settings.
-                if (typeof plugin.dev === 'undefined') {
-                    plugin.dev = false;
-                }
-                if (typeof plugin.build === 'undefined') {
-                    plugin.build = true;
-                }
-
-                // Skip plugin if dev and build settings do not align.
-                if (!plugin.dev && options.dev) {
-                    include.handlers[j] = null;
-                    continue;
-                }
-                if (!plugin.build && options.type == "build") {
-                    include.handlers[j] = null;
-                    continue;
-                }
-
-                if (plugin.handler) {
-                    this.plugins[plugin.id] = { exec: plugin.handler };
-                }
-                else {
-                    this.plugins[plugin.id] = pluginLoader.loadBuildPlugin(plugin.id);
-                }
-            }
-
-            include.handlers = include.handlers.filter((x) => { return x !== null; });
+            include.handlers = this.loadHandlerPlugins(include.handlers);
+            keep.push(include);
         }
 
-        this.includes = includes.filter((x) => { return x !== null; });
-        this.targets = [];
-        this.outputTargets = [];
-        this.callback = callback;
+        this.includes = keep;
     }
 
     // Gets the number of plugins that were loaded by this builder.
@@ -150,6 +170,10 @@ class Builder {
         return false;
     }
 
+    // Pushes an initial target into the builder's set of targets. This will
+    // employ the builder's includes to determine the set of handlers for the
+    // new target. The target may be specified as a Target object via
+    // "newTarget" or as a delayed target object via "delayed".
     pushInitialTarget(newTarget,delayed) {
         // The target may only exist in a delayed state if 'newTarget' is not
         // set, in that case the required information exists in "delayed".
@@ -184,6 +208,7 @@ class Builder {
         return false;
     }
 
+    // Pushes a new output target given the specified parent target.
     pushOutputTarget(parentTarget,newTarget) {
         // Treat recursive targets as initial. This will ignore any outstanding
         // handlers.

@@ -72,8 +72,9 @@ has the following form:
 
   "handlers": [ /* handler objects*/ ],
 
+  // Options apply to all included targets.
   "options": {
-    "foo": "plugin-specific thingy"
+    "foo": "bar"
   }
 }
 ```
