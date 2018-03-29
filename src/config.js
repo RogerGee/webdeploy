@@ -80,23 +80,26 @@ function loadFromTree(tree) {
                                     resolve(toplevel.webdeploy);
                                 }
                                 else {
-                                    reject(new Error("Config in JSON file '" + blobName + "' failed verification"));
+                                    reject(loadError = new Error("Config in JSON file '" + blobName + "' failed verification"));
                                 }
                             }
                             else {
-                                reject(new Error("JSON in file '" + blobName + "' did not contain webdeploy config object"));
+                                reject(loadError = new Error("JSON in file '" + blobName + "' did not contain webdeploy config object"));
                             }
                         });
                     });
                 };
             }
             else {
+                if (!loadError) {
+                    loadError = new Error("Couldn't find suitable configuration file in tree");
+                }
                 reject(loadError);
                 return;
             }
 
             tree.getBlob(blobName).then(callback).then(resolve)
-                .catch((err) => { loadError = err; nextAttempt(); });
+                .catch((err) => { nextAttempt(); });
         }
 
         nextAttempt();
