@@ -3,6 +3,11 @@
 const fs = require("fs");
 const pathModule = require("path");
 
+const PLUGIN_KINDS = {
+    BUILD_PLUGIN: 0,
+    DEPLOY_PLUGIN: 1
+};
+
 function mkdirParents(path,base) {
     var parsed = pathModule.parse(path);
     var parts = pathModule.join(parsed.dir,parsed.base).split(pathModule.sep)
@@ -29,7 +34,7 @@ function mkdirParents(path,base) {
     }
 }
 
-function requirePlugin(pluginId) {
+function requirePlugin(pluginId,kind) {
     // There is nothing special about a plugin - it's just a NodeJS module that
     // we "require" like any other. There are two possible ways we require a
     // plugin: 1) from this repository's "plugins" subdirectory or 2) globally
@@ -45,9 +50,21 @@ function requirePlugin(pluginId) {
         }
     }
 
-    // Make sure it has an exec() function.
+    // Make sure the plugin module exports the correct interface (i.e. it has an
+    // exec() function or employs the dual-plugin interface).
     if (typeof plugin.exec != "function") {
-        throw Error("Plugin '" + pluginId + "' does not provide exec() entry point.");
+        if (!plugin.build && kind == PLUGIN_KINDS.BUILD_PLUGIN
+            || !plugin.deploy && kind == PLUGIN_KINDS.DEPLOY_PLUGIN)
+        {
+            throw Error("Plugin '" + pluginId + "' does not provide required interface.");
+        }
+
+        if (kind == PLUGIN_KINDS.BUILD_PLUGIN) {
+            plugin = plugin.build;
+        }
+        else if (kind == PLUGIN_KINDS.DEPLOY_PLUGIN) {
+            plugin = plugin.deploy;
+        }
     }
 
     return plugin;
@@ -118,7 +135,7 @@ module.exports = {
             return DEFAULT_BUILD_PLUGINS[pluginId];
         }
 
-        return requirePlugin(pluginId);
+        return requirePlugin(pluginId,PLUGIN_KINDS.BUILD_PLUGIN);
     },
 
     // Loads a deploy plugin object.
@@ -127,6 +144,6 @@ module.exports = {
             return DEFAULT_DEPLOY_PLUGINS[pluginId];
         }
 
-        return requirePlugin(pluginId);
+        return requirePlugin(pluginId,PLUGIN_KINDS.DEPLOY_PLUGIN);
     }
 };

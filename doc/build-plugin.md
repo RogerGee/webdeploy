@@ -44,6 +44,27 @@ halted.
 The resolve handler may take a single scalar `Target` instance or an array of
 such instances.
 
+## Dual-Plugin Interface
+
+Both build and deploy plugins can be combined into a single NodeJS module. The
+module exports have a different interface that supports distinguishing between
+build and deploy plugins. The exports allow both `build` and `deploy` plugins to
+be exported together like so:
+
+```js
+module.exports = {
+  build: {
+    exec: (target,settings) => { /* ... */ }
+  },
+  deploy: {
+    exec: (context,settings) => { /* ... */ }
+  }
+};
+```
+
+Under the dual-plugin scheme, both the build and deploy plugins have the same
+identifier.
+
 ## Default Build Plugins
 
 Webdeploy comes with several default build plugins. There are two flavors of
