@@ -101,9 +101,14 @@ class Target {
         return newTarget;
     }
 
-    // Moves the target through the pipeline unchanged.
-    pass() {
-        var newTarget = new Target(this.sourcePath,this.targetName,this.stream,this.options);
+    // Moves the target through the pipeline unchanged. You may optionally
+    // change the target name/path if desired. The content will always pass
+    // through though.
+    pass(newTargetName,newTargetPath) {
+        var newTarget = new Target(newTargetPath || this.sourcePath,
+                                   newTargetName || this.targetName,
+                                   this.stream,
+                                   this.options);
         newTarget.recursive = false;
 
         return newTarget;
