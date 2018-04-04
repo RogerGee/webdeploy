@@ -4,6 +4,10 @@ const babel = require("babel-core");
 
 module.exports = {
     exec: (target,settings) => {
+        // Normalize setting.
+        settings.presets = settings.presets || [require("babel-preset-env")];
+        settings.plugins = settings.plugins || [];
+
         return new Promise((resolve,reject) => {
             var code = "";
 
@@ -13,15 +17,9 @@ module.exports = {
 
             target.stream.on("end", () => {
                 var options = {
-
+                    presets: settings.presets,
+                    plugins: settings.plugins
                 };
-
-                if (settings.presets) {
-                    options.presets = settings.presets.map((presetModule) => { return require(presetModule); });
-                }
-                else {
-                    options.presets = [require("babel-preset-env")];
-                }
 
                 var transpilation = babel.transform(code,options);
                 var outputTarget = target.makeOutputTarget();
