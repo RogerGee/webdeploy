@@ -14,7 +14,7 @@ class DeployContext {
         this.deployPath = deployPath;
         this.builder = builder;
         this.targets = builder.outputTargets;
-        this.graph = builder.graph; // DependencyGraph
+        this.graph = builder.options.graph; // DependencyGraph
         this.logger = require("./logger");
 
         this.setTargetsDeployPath();
@@ -34,20 +34,47 @@ class DeployContext {
         });
     }
 
-    // Gets Target. Creates a new output target that is added to the context's
-    // list of targets.
-    createTarget(newTargetPath) {
+    // Gets Target. Creates a new target having the given path. The final
+    // parameter is an options object with the following keys:
+    //   - parents: Array of Target denoting parent targets for dependency
+    //     management
+    //   - isOutputTarget: true if new target should be added as an output
+    //     target [default=true]
+    createTarget(newTargetPath,options) {
+        // Normalize and unpack options.
+        options = options || {};
+        var { parents, isOutputTarget } = options;
+        isOutputTarget = (typeof isOutputTarget === "undefined") ? true : isOutputTarget;
+
+        // Add dependency graph information if parents specified.
+        if (parents && this.graph) {
+            for (var i = 0;i < parents.length;++i) {
+                this.graph.addConnection(parents[i].getSourceTargetPath(),
+                                         newTargetPath);
+            }
+        }
+
         var target = targetModule.makeOutputTarget(newTargetPath);
         target.setDeployPath(this.deployPath);
-        this.targets.push(target);
+        if (isOutputTarget) {
+            this.targets.push(target);
+        }
         return target;
     }
 
-    // Resolves the set of "removeTargets" into the specified new target. This
-    // collapses existing targets down to a single new target. The
-    // "newTargetPath" must contain both the target path and name. The new
-    // target is added to the context's list of targets.
-    resolveTargets(newTargetPath,removeTargets) {
+    // Resolves the set of "removeTargets" into a new target with the given
+    // path. This essentially collapses existing targets down to a single new
+    // target. The "newTargetPath" must contain both the target path and
+    // name. The new target is added to the context's list of targets. The final
+    // parameter is an options object with the following keys:
+    //   - isOutputTarget: true if new target should be added as an output
+    //     target [default=true]
+    resolveTargets(newTargetPath,removeTargets,options) {
+        // Normalize and unpack options.
+        options = options || {};
+        var { isOutputTarget } = options;
+        isOutputTarget = (isOutputTarget !== "undefined") ? isOutputTarget : true
+
         if (removeTargets) {
             // Remove targets from our internal list.
             removeTargets.forEach((elem) => {
@@ -60,14 +87,11 @@ class DeployContext {
 
         // Create new target if path is specified.
         if (newTargetPath) {
-            // Add dependency graph information.
-            if (removeTargets && this.graph) {
-                for (var i = 0;i < removeTargets.length;++i) {
-                    this.graph.addConnection(removeTargets[i].getSourceTargetPath(),
-                                             newTargetPath);
-                }
-            }
-            return this.createTarget(newTargetPath);
+            var createOpts = {
+                parents: removeTargets,
+                isOutputTarget: isOutputTarget
+            };
+            return this.createTarget(newTargetPath,createOpts);
         }
     }
 

@@ -91,7 +91,9 @@ the context's `deployPath`. For example, given the context's `deployPath` set to
 
 #### `DeployContext.builder` [Builder]
 
-The `Builder` instance associated with the set of targets.
+The `Builder` instance associated with the set of targets. You can use the
+builder to build targets processed/created during the deploy step. You do this
+by adding initial targets to the builder and calling `builder.executeBuilder()`.
 
 #### `DeployContext.targets` [Array]
 
@@ -108,18 +110,34 @@ produce messages. Care should be taken to preserve the original indent level.
 
 A `DeployContext` object has the following functions:
 
-#### `DeployContext.createTarget(newTargetPath)` -> `Target`
+#### `DeployContext.createTarget(newTargetPath,options)` -> `Target`
 
-Creates a new output target and adds it to the context's list of targets.
+Creates a new target having the specified path. This is the preferred method of
+creating a new target in the deploy step since it allows the system to track
+target creation (e.g. dependencies).
 
-#### `DeployContext.resolveTargets(newTargetPath,removeTargets)` -> `Target`
+The `options` parameter is an optional object having the following properties:
+
+* `options.parents`: An `Array` of `Target` objects denoting the parents of the
+  new target. This is used to update dependency graph information internally.
+
+* `options.isOutputTarget`: If `true`, then the new target is added to the
+  context's list of output targets. The default is `true`.
+
+#### `DeployContext.resolveTargets(newTargetPath,removeTargets,options)` -> `Target`
 
 Resolves a list of targets down into a single, new target. If `newTargetPath` is
 provided, then a new target is created with the given path, added to the
 context's list of targets and returned. Otherwise the specified targets are
 removed and nothing is returned. The list of `removeTargets` should contain
 target objects from the context's `targets` list. It may be omitted or left
-empty to just create a new target.
+empty to just create a new target. In this case, a call to `resolveTargets` is
+equivilent to a call to `createTarget`.
+
+The `options` parameter is an optional object having the following properties:
+
+* `options.isOutputTarget`: If `true`, then the new target is added to the
+  context's list of output targets. The default is `true`.
 
 #### `DeployContext.chain(nextPlugin,settings)` -> `Promise`
 
