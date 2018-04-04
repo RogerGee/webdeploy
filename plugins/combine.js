@@ -67,7 +67,7 @@ function processMapping(context,mapping) {
         if (mapping.ordering) {
             var pos = 0;
             var names = targets.map((x) => { return x.getSourceTargetPath(); });
-            for (var i = 0;i < mapping.ordering.length;++i) {
+            for (let i = 0;i < mapping.ordering.length;++i) {
                 var indexOf = names.indexOf(mapping.ordering[i]);
                 if (indexOf >= 0 && indexOf != pos) {
                     var target = targets[indexOf];
@@ -81,16 +81,32 @@ function processMapping(context,mapping) {
             }
         }
 
-        var i = 0;
-        newTarget = context.resolveTargets(mapping.target,targets);
+        // Create the new target. The new target is an output target if no
+        // handlers are available. Otherwise the target is pushed into the
+        // builder to execute the handlers at a later time.
+
+        var handlers = mapping.handlers
+            ? context.builder.loadHandlerPlugins(mapping.handlers) : [];
+
+        newTarget = context.resolveTargets(mapping.target,
+                                           targets,
+                                           { isOutputTarget:handlers.length == 0 });
+
+        if (handlers.length > 0) {
+            context.builder.pushInitialTargetWithHandlers(newTarget,handlers);
+        }
+
+        // Combine all targets together into the new output target.
+
+        let counter = 0;
 
         function transfer(chunk) {
             newTarget.stream.write(chunk);
         }
 
         function combineFile() {
-            if (i < targets.length) {
-                var target = targets[i++];
+            if (counter < targets.length) {
+                var target = targets[counter++];
 
                 target.stream.on('data',transfer);
                 target.stream.on('end',combineFile);
@@ -102,13 +118,6 @@ function processMapping(context,mapping) {
         }
 
         combineFile();
-    }).then(() => {
-        if (mapping.handlers) {
-            var revisedHandlers = context.builder.loadHandlerPlugins(mapping.handlers);
-            if (revisedHandlers.length > 0) {
-                context.builder.pushInitialTargetWithHandlers(newTarget,revisedHandlers);
-            }
-        }
     });
 }
 
