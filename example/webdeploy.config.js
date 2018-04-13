@@ -14,6 +14,18 @@
 
 module.exports = {
     /**
+     * Defines the base path under the target tree. All target paths will be
+     * evaluated relative to this path. The default is the root of the target
+     * tree, denoted by an empty value.
+     *
+     * The base path is only considered when traversing the target tree for
+     * potential targets, not for loading the configuration files (like this
+     * one). Again, all target paths will be relative to this base but not other
+     * blobs loaded under the target tree.
+     */
+    basePath: "",
+
+    /**
      * Specifies a deployment plugin configuration object. This determines which
      * plugin is to be utilized for a build. The object must have at least an
      * "id" property to identify the deploy plugin.

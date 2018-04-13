@@ -176,7 +176,7 @@ function repoTreeWalkImpl($this,prefix,tree,callback,filter) {
             if (ent.isBlob()) {
                 outstanding += 1;
                 $this.repo.getBlob(ent.oid()).then((blob) => {
-                    callback(prefix,ent.path(),() => { return makeBlobStream(blob); });
+                    callback(prefix,ent.name(),() => { return makeBlobStream(blob); });
                     attemptResolution();
                 }, reject);
             }
@@ -195,8 +195,20 @@ function repoTreeWalkImpl($this,prefix,tree,callback,filter) {
     });
 }
 
-function repoTreeWalk($this,callback,filter,tree) {
-    return repoTreeWalkImpl($this,tree.path(),tree,callback,filter);
+function repoTreeWalk($this,callback,options) {
+    if (options.basePath) {
+        var prom = repoTreeGetTree($this,options.basePath);
+    }
+    else {
+        var prom = repoTreeGetTargetTree($this);
+    }
+
+    return prom.then(tree => {
+        var filter = options.filter || undefined;
+        var basePath = options.basePath || tree.path();
+
+        return repoTreeWalkImpl($this,basePath,tree,callback,filter);
+    });
 }
 
 /**
@@ -276,12 +288,17 @@ class RepoTree {
 
     // Gets a Promise. Walks the tree recursively and calls
     // callback(path,name,streamFunc) for each blob. The "streamFunc" parameter
-    // is a function that creates a stream for the blob entry. If specified,
-    // filter(path) -> false heads off a particular path branch. The Promise is
+    // is a function that creates a stream for the blob entry. The Promise is
     // resolved once all entries have been walked.
-    walk(callback,filter) {
-        return repoTreeGetTargetTree(this)
-            .then((targetTree) => { return repoTreeWalk(this,callback,filter,targetTree); });
+    //
+    // The following options object may be passed in:
+    //   - filter: function like 'filter(path)' such that 'filter(path) ->
+    //      false' heads off a particular path branch. 
+    //   - basePath: the base path under the tree representing the starting
+    //      place for the walk. NOTE: paths passed to the callback will still be
+    //      relative to the target tree.
+    walk(callback,options) {
+        return repoTreeWalk(this,callback,options);
     }
 
     // Gets a Promise -> Boolean. Determines if the specified blob has been
@@ -401,9 +418,24 @@ class PathTree {
 
     // Gets a Promise. Walks the tree and calls callback(path,name,streamFunc)
     // for each blob. The "streamFunc" parameter can be called to obtain a
-    // stream to the blob's contents. If specified, filter(entry) -> false heads
-    // off a particular branch path.
-    walk(callback,filter) {
+    // stream to the blob's contents. The Promise is resolved once all entries
+    // have been walked.
+    //
+    // The following options object may be passed in:
+    //   - filter: function like 'filter(path)' such that 'filter(path) ->
+    //      false' heads off a particular path branch. 
+    //   - basePath: the base path under the tree representing the starting
+    //      place for the walk. NOTE: paths passed to the callback will still be
+    //      relative to the target tree.
+    walk(callback,options) {
+        var filter = options.filter || undefined;
+        if (options.basePath) {
+            var basePath = path.join(this.basePath,options.basePath);
+        }
+        else {
+            var basePath = this.basePath;
+        }
+
         return new Promise((resolve,reject) => {
             let outstanding = 1;
 
@@ -433,7 +465,7 @@ class PathTree {
                 };
             }
 
-            fs.readdir(this.basePath,walkRecursive(this.basePath));
+            fs.readdir(basePath,walkRecursive(this.basePath));
         });
     }
 
