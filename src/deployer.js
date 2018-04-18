@@ -161,7 +161,8 @@ function deployBuildStep(tree,options) {
             // be included or not.
 
             if (!options.force && options.graph && !options.graph.hasProductForSource(ref)) {
-                targetPromises.push(tree.isBlobModified(ref).then((result) => {
+                var realRef = pathModule.join(targetBasePath,ref);
+                targetPromises.push(tree.isBlobModified(realRef).then((result) => {
                     if (result) {
                         var newTarget = builder.pushInitialTarget(null,delayedTarget);
                         if (newTarget) {
