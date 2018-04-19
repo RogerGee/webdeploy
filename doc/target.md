@@ -26,6 +26,11 @@ The stream for reading/writing a target's content.
 The target's content stream has its encoding set to UTF-8. Currently the
 implementation has all streams keep data buffered in memory.
 
+#### `Target.content` [String]
+
+The content as read from `Target.stream`. This property is only set if a
+`loadContent` method call resolved successfully.
+
 #### `Target.sourcePath` [String]
 
 The relative path under the target tree to the target, not including the target
@@ -54,6 +59,12 @@ read-only.
 ## Functionality
 
 A `Target` object has the following functions:
+
+#### `Target.loadContent` -> Promise
+
+Loads all content from the target data stream. The `Target.content` property will
+be set after this operation finished. The content is loaded once the Promise
+resolves. The Promise resolve handler is passed the content variable as well.
 
 #### `Target.getSourceTargetPath()` -> String
 

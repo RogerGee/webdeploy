@@ -9,13 +9,7 @@ module.exports = {
         settings.plugins = settings.plugins || [];
 
         return new Promise((resolve,reject) => {
-            var code = "";
-
-            target.stream.on("data", (chunk) => {
-                code += chunk;
-            });
-
-            target.stream.on("end", () => {
+            target.loadContent().then((code) => {
                 var options = {
                     presets: settings.presets,
                     plugins: settings.plugins

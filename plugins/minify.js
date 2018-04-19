@@ -6,13 +6,7 @@ const uglifycss = require("uglifycss");
 module.exports = {
     exec: (target,settings) => {
         return new Promise((resolve,reject) => {
-            var code = "";
-
-            target.stream.on("data",(chunk) => {
-                code += chunk;
-            });
-
-            target.stream.on("end",() => {
+            target.loadContent().then((code) => {
                 var matchJs = target.targetName.match(/(.*)\.js$/);
                 var matchCss = target.targetName.match(/(.*)\.css/);
 

@@ -31,6 +31,7 @@ class Target {
         // The stream is available for reading/writing the target's content.
         stream.setEncoding("utf8");
         this.stream = stream;
+        this.content = undefined;
 
         // The sourcePath is a relative path under the source tree to the target,
         // excluding the target name.
@@ -56,6 +57,22 @@ class Target {
 
         // Used by the implementation to track target handlers.
         this.handlers = undefined;
+    }
+
+    // Reads all target content into a single string. Gets a Promise that
+    // resolves to the content on completion. The content is also assigned to
+    // the 'content' property on this object.
+    loadContent() {
+        if (this.content) {
+            return Promise.resolve(this.content);
+        }
+
+        return new Promise((resolve,reject) => {
+            this.content = '';
+
+            this.stream.on("data",(chunk) => { this.content += chunk; });
+            this.stream.on("end",() => { resolve(this.content); });
+        });
     }
 
     // Gets the path to the target relative to the target's source tree. This
