@@ -7,9 +7,8 @@ plugin can decide.
 
 Writing a custom deploy plugin is useful for when the set of output targets
 needs to be modified or when the deploy environment is something other than the
-local filesystem. A deploy plugin can chain to another deploy plugin after it
-has modified the set of output targets in some way. This behavior is fixed and
-should be designed to work for every use case.
+local filesystem. A deploy plugin can chain to another deploy plugin at any
+point in its execution. See the section on chaining below for more information:
 
 For example, suppose we wanted to combine all scripts and styles into single
 files respectively then write those files to the deploy tree on disk. Our custom
@@ -144,6 +143,21 @@ The `options` parameter is an optional object having the following properties:
 Invokes the specified deploy plugin, which is passed the called `DeployContext`
 instance. The `Promise` returned from the plugin's `exec` function is returned.
 
+## Chaining
+
+Deploy plugins can transfer execution to other deploy plugins. This allows for
+some pretty powerful leveraging of different bits of functionality. When you
+chain from one plugin to another, you temporarily transfer control to another
+deploy plugin. The original plugin should only continue after the chained plugin
+has resolved. All deploy plugins share the same `DeployContext` instance, so all
+changes are available to any plugin.
+
+**NOTE**: Special care should be taken to read each plugin's documentation. Some
+chaining behaviors are hard-coded. For example, the default plugin `combine`
+always chains to the `write` plugin. In this case we'd consider the plugin to
+be terminal since the targets will be written out after the chain resolves. Other
+plugins are more flexible and can allow for additional chains later on.
+
 ## Default Plugins
 
 The following deploy plugins are provided by the core repository:
@@ -162,6 +176,8 @@ Object schema:
 
 #### `write`
 
+**CHAINS**: _None_
+
 Writes output targets the to deployment tree. This is the core deploy plugin to
 which most other plugins will chain.
 
@@ -176,12 +192,21 @@ Object schema (settings properties indicate their defaults):
 }
 ```
 
+#### `sass`
+
+**CHAINS**: _None_
+
+The _sass_ plugin leverages `node-sass` against a set of input targets having
+the suffix `.scss`. The plugin manages all sass modules in memory in true
+webdeploy fashion. You should use this as an intermediate deploy plugin that
+you execute before executing your final deploy plugin.
+
 #### `combine`
+
+**CHAINS**: `combine -> write`
 
 Combines multiple targets together into a single file. The settings properties
 define the mapping and ordering of subfiles.
-
-This plugin chains to the `write` plugin.
 
 Object schema (settings properties indicate their defaults):
 

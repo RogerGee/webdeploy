@@ -17,6 +17,7 @@
     "babel-preset-env": "^1.6.1",
     "colors": "^1.1.2",
     "commander": "^2.14.1",
+    "node-sass": "^4.8.3",
     "nodegit": "^0.20.3",
     "require-from-string": "^2.0.1",
     "uglify-js": "^3.3.13",
