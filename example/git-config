@@ -5,13 +5,16 @@
 [webdeploy]
 	# This defaults to the root tree in the repository. Only specify this if the
 	# webdeploy.config.js file is in a non-standard subtree. All operations will
-	# be relative to this target tree.
+	# be relative to this target tree. This option is only considered from the
+	# git-config.
 	targetTree = "/"
 
-    # Defines the branch whose head tree is to be deployed.
+    # Defines the branch whose head tree is to be deployed. You may use this
+    # option in the webdeploy config, however it should be discouraged.
     deployBranch = "master"
 
-    # Defines the base path of the deployment directory.
+    # Defines the base path of the deployment directory. You may use this option
+    # in the webdeploy config, however it should be discouraged.
     deployPath = "/path/to/deployment"
 
 # These config keys are used to cache deployment information. Do not touch
@@ -26,6 +29,7 @@
 
 #
 # Local Variables:
+# mode:conf
 # indent-tabs-mode:t
 # End:
 #

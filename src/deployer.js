@@ -113,6 +113,7 @@ function deployDeployStep(tree,builder,options) {
 
 function deployBuildStep(tree,options) {
     var builder;
+    var targetBasePath = "";
 
     function printNewTargets(target,plugin,newTargets) {
         if (newTargets.length > 0) {
@@ -132,6 +133,13 @@ function deployBuildStep(tree,options) {
 
     return tree.getConfigParameter("info").then((configInfo) => {
         logger.log("Loaded target tree config from _" + configInfo.file + "_");
+
+        // Load base path from config. This config parameter is optional.
+
+        return tree.getConfigParameter("basePath").then(theBasePath => {
+            targetBasePath = theBasePath;
+        }, e => {});
+    }).then(() => {
         return tree.getConfigParameter("includes");
     }).then((includes) => {
         // Load builder required for this deployment.
@@ -163,6 +171,11 @@ function deployBuildStep(tree,options) {
         var targetPromises = [];
 
         return tree.walk((path,name,createInputStream) => {
+            // Normalize path relative to configured target base path.
+            if (targetBasePath) {
+                path = pathModule.relative(targetBasePath,path);
+            }
+
             var relativePath = pathModule.relative(options.buildPath,path);
             var ref = pathModule.join(relativePath,name);
 
@@ -188,7 +201,8 @@ function deployBuildStep(tree,options) {
             // be included or not.
 
             if (!options.force && options.graph && !options.graph.hasProductForSource(ref)) {
-                targetPromises.push(tree.isBlobModified(ref).then((result) => {
+                var realRef = pathModule.join(targetBasePath,ref);
+                targetPromises.push(tree.isBlobModified(realRef).then((result) => {
                     if (result) {
                         var newTarget = builder.pushInitialTarget(null,delayedTarget);
                         if (newTarget) {
@@ -206,13 +220,16 @@ function deployBuildStep(tree,options) {
                     logger.log("add _" + newTarget.getSourceTargetPath() + "_");
                 }
             }
-        }, (path) => {
-            // Ignore any hidden paths.
-            if (path[0] == ".") {
-                return false;
-            }
+        }, {
+            filter: (path) => {
+                // Ignore any hidden paths.
+                if (path[0] == ".") {
+                    return false;
+                }
 
-            return true;
+                return true;
+            },
+            basePath: targetBasePath
         }).then(() => {
             return Promise.all(targetPromises);
         });

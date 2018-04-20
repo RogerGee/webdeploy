@@ -42,7 +42,7 @@ commander.command("deploy [path]")
             .then(() => {
                 logger.popIndent();
                 logger.log("*[DONE]*");
-            }, reject);
+            }).catch(reject);
     });
 
 commander.command("build [path]")
@@ -76,7 +76,7 @@ commander.command("build [path]")
         deployer.deployLocal(localPath,options).then(() => {
             logger.popIndent();
             logger.log("*[DONE]*");
-        }, reject);
+        }).catch(reject);
     });
 
 commander.command("server")
