@@ -20,7 +20,8 @@ which will write the combined files.
 A deploy plugin is similar to a [build plugin](build-plugin.md). It is
 implemented as a NodeJS module (either single-file or a package). The module
 exports provide a single function `exec` that serves as the entry point to the
-plugin.
+plugin. Additionally, a deploy plugin should advertise its ID via an `id`
+property.
 
 The `exec` function takes a `DeployContext` (documented below) instance along
 with a settings object derived from the deploy plugin specification in the
@@ -33,6 +34,7 @@ Here is a minimal example:
 
 ```js
 module.exports = {
+  id: "plugin-id",
   exec: (context,settings) => {
     return new Promise((resolve,reject) => {
       // Do some work...
@@ -56,6 +58,7 @@ be exported together like so:
 
 ```js
 module.exports = {
+  id: "plugin-id",
   build: {
     exec: (target,settings) => { /* ... */ }
   },
@@ -143,6 +146,8 @@ The `options` parameter is an optional object having the following properties:
 Invokes the specified deploy plugin, which is passed the called `DeployContext`
 instance. The `Promise` returned from the plugin's `exec` function is returned.
 
+The `nextPlugin` can either be a loaded plugin object or the plugin's ID string.
+
 ## Chaining
 
 Deploy plugins can transfer execution to other deploy plugins. This allows for
@@ -158,9 +163,31 @@ always chains to the `write` plugin. In this case we'd consider the plugin to
 be terminal since the targets will be written out after the chain resolves. Other
 plugins are more flexible and can allow for additional chains later on.
 
-## Default Plugins
+## Deploy Plugin Config Schema
 
-The following deploy plugins are provided by the core repository:
+In the config file, a deploy plugin is denoted by an object that has at least an
+`id` property denoting the deploy plugin ID. The following schema is universally
+available to any deploy plugin. Developers should take care not to use these
+properties in their own custom plugin settings.
+
+```js
+{
+  id: "<plugin-id>",
+
+  // This property can contain a recursive deploy plugin settings object
+  // denoting a default chain. An array of such objects will chain in sequence.
+  chain: undefined
+}
+```
+
+Note: the plugin settings object can be augmented with settings specific to
+the plugin in question. Consult individual plugin documentation for specific
+details.
+
+## Core Plugins
+
+The following deploy plugins are a part of the core webdeploy system. They
+cannot be removed.
 
 #### `exclude`
 
@@ -192,6 +219,12 @@ Object schema (settings properties indicate their defaults):
 }
 ```
 
+## Standard plugins
+
+The following plugins are provided under `plugins/` from the webdeploy
+repository. These plugins are available by default but can be removed if
+desired.
+
 #### `sass`
 
 **CHAINS**: _None_
@@ -200,6 +233,18 @@ The _sass_ plugin leverages `node-sass` against a set of input targets having
 the suffix `.scss`. The plugin manages all sass modules in memory in true
 webdeploy fashion. You should use this as an intermediate deploy plugin that
 you execute before executing your final deploy plugin.
+
+Object schema (settings properties indicate their defaults):
+
+```js
+{
+  id: "sass",
+
+  // Denotes the base path for modules. All paths are evaluated relative to this
+  // prefix.
+  moduleBase: "",
+}
+```
 
 #### `combine`
 

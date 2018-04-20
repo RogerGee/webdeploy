@@ -82,6 +82,7 @@ const DEFAULT_BUILD_PLUGINS = {
 
 const DEFAULT_DEPLOY_PLUGINS = {
     exclude: {
+        id: "exclude",
         exec: (context,settings) => {
             return new Promise((resolve,reject) => {
                 resolve();
@@ -90,6 +91,7 @@ const DEFAULT_DEPLOY_PLUGINS = {
     },
 
     write: {
+        id: "write",
         exec: (context,settings) => {
             if (typeof settings.mode == "undefined") {
                 settings.mode = 0o666;

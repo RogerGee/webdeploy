@@ -97,6 +97,10 @@ class DeployContext {
 
     // Gets Promise. Sends control to another deploy plugin.
     chain(nextPlugin,settings) {
+        if (typeof nextPlugin === "object") {
+            return nextPlugin.exec(this,settings || {});
+        }
+
         return plugins.loadDeployPlugin(nextPlugin).exec(this,settings || {});
     }
 }

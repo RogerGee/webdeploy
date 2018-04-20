@@ -50,12 +50,13 @@ function deployDeployStep(tree,builder,options) {
     }
 
     var context = new contextModule.DeployContext(options.deployPath,builder);
-    var plugin = pluginLoader.loadDeployPlugin(options.deployPlugin.id);
 
     // Hijack chain() method so we can log messages.
 
     context.chain = function(nextPlugin,settings) {
-        logger.log("Chain deploy _" + options.deployPlugin.id + "_ -> _" + nextPlugin + "_");
+        var pluginId = typeof nextPlugin === 'object' ? nextPlugin.id : nextPlugin;
+
+        logger.log("Chain deploy _" + options.deployPlugin.id + "_ -> _" + pluginId + "_");
         logger.pushIndent();
         return contextModule.DeployContext.prototype.chain.call(context,nextPlugin,settings).then((retval) => {
             logger.popIndent();
@@ -63,12 +64,51 @@ function deployDeployStep(tree,builder,options) {
         });
     };
 
-    logger.pushIndent();
-    return plugin.exec(context,options.deployPlugin).then((retval) => {
-        logger.popIndent();
+    // Load deploy plugins required for this run.
 
+    var plugins = [
+        {
+            plugin: pluginLoader.loadDeployPlugin(options.deployPlugin.id),
+            settings: options.deployPlugin
+        }
+    ];
+
+    if (options.deployPlugin.chain) {
+        var chain = Array.isArray(options.deployPlugin.chain)
+            ? options.deployPlugin.chain
+            : [options.deployPlugin.chain];
+
+        for (var i = 0;i < chain.length;++i) {
+            var pluginSettings = chain[i];
+
+            plugins.push({
+                plugin: pluginLoader.loadDeployPlugin(pluginSettings.id),
+                settings: pluginSettings
+            });
+        }
+    }
+
+    // Execute deploy plugins in sequence.
+
+    var currentIndex = 0;
+    logger.pushIndent();
+
+    function executeNextPlugin(retval) {
+        if (currentIndex < plugins.length) {
+            var next = plugins[currentIndex++];
+
+            if (currentIndex == 1) {
+                return next.plugin.exec(context,next.settings).then(executeNextPlugin);
+            }
+
+            return context.chain(next.plugin,next.settings).then(executeNextPlugin);
+        }
+
+        logger.popIndent();
         return retval;
-    });
+    }
+
+    return executeNextPlugin();
 }
 
 function deployBuildStep(tree,options) {

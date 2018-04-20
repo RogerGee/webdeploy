@@ -122,6 +122,7 @@ function processMapping(context,mapping) {
 }
 
 module.exports = {
+    id: "combine",
     exec: (context,settings) => {
         return new Promise((resolve,reject) => {
             var promises = [];
