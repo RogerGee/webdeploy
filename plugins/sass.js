@@ -5,28 +5,43 @@ const nodeSass = require('node-sass');
 
 const SCSS_REGEX = /\.scss$/;
 
-function resolveModulePath(path,callingPath) {
-    // Cases we should consider:
-    //  - ~path/to/module
-    //     This means we evaluate relative to the root source path. In
-    //     webdeploy's scheme of things, the target path would stay the same.
-    //  - ./path/to/module
-    //     Evaluate path relative to the calling module's path.
-    //  - Anything else is evaluated as if beginning with "./".
+function resolveModulePath(path,currentPath) {
+    // Remove trailing extension component.
+    var match = path.match(/\.[^./]+$/);
+    if (match) {
+        path = path.substr(0,path.length - match[0].length);
+    }
 
+    // Substitute '~' with base path. This is as simple as just removing the
+    // '~'.
     if (path[0] == '~') {
-        var pos = 1;
-        while (pos < path.length && path[pos] == '/') {
-            pos += 1;
-        }
-        return path.substr(pos);
+        return resolveModulePath(path.substr(1),currentPath);
     }
 
-    var pos = 0;
-    if (path[0] == '.' && path[0] == '/') {
-        pos = 2;
+    // Resolve "." or ".." recursively.
+    if (path[0] == '.') {
+        if (path[1] == '.' && path[2] == '/') {
+            var newPath;
+            currentPath = pathModule.parse(currentPath).dir;
+            newPath = pathModule.join(currentPath,path.substring(2));
+
+            return resolveModulePath(newPath,currentPath);
+        }
+
+        if (path[1] == '/') {
+            var newPath = pathModule.join(currentPath,path.substring(1))
+
+            return resolveModulePath(newPath,currentPath);
+        }
     }
-    return pathModule.join(callingPath,path.substr(pos));
+
+    // Strip off leading path separator components.
+    var pos = 0;
+    while (pos < path.length && path[pos] == '/') {
+        pos += 1;
+    }
+
+    return path.substr(pos);
 }
 
 function makeCustomImporter(targets,moduleBase) {
@@ -60,18 +75,19 @@ function makeCustomImporter(targets,moduleBase) {
     }
 
     return (url,prev,done) => {
-        // NOTE: This is a hack around how node-sass handles the prev
-        // path. Since it always evaluates an absolute path, we added a leading
-        // '/' earlier so we can preserve the webdeploy virtual path system.
-        prev = prev.substr(1);
-        var currentPath = targetPathToModulePath(pathModule.parse(prev).dir);
+        if (prev[0] == '/') {
+            prev = targetPathToModulePath(prev.substr(1));
+        }
+        else {
+            prev = pathModule.parse(prev).dir;
+        }
 
-        var path = resolveModulePath(url,currentPath);
+        var path = resolveModulePath(url,prev);
         if (path in targetMap) {
             done({ file: path, contents: targetMap[path].content });
         }
         else {
-            done(new Error("Module '" + url + "' does not exist"));
+            done(new Error("Module '" + url + "' ('" + path + "') does not exist"));
         }
     };
 }
@@ -114,7 +130,7 @@ module.exports = {
 
                 var renderPromise = new Promise((resolve,reject) => {
                     nodeSass.render({
-                        file: '/' + target.getSourceTargetPath(),
+                        file: '/' + target.sourcePath,
                         data: target.content,
                         includePaths: [target.sourcePath],
                         indentedSyntax: false,
