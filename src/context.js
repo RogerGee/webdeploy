@@ -14,8 +14,14 @@ class DeployContext {
         this.deployPath = deployPath;
         this.builder = builder;
         this.targets = builder.outputTargets;
+        this.map = {};
         this.graph = builder.options.graph; // DependencyGraph
         this.logger = require("./logger");
+
+        // Create map for faster target lookup.
+        this.targets.forEach((target) => {
+            this.map[target.getSourceTargetPath()] = target;
+        });
 
         this.setTargetsDeployPath();
     }
@@ -58,8 +64,36 @@ class DeployContext {
         target.setDeployPath(this.deployPath);
         if (isOutputTarget) {
             this.targets.push(target);
+            this.map[newTargetPath] = target;
         }
         return target;
+    }
+
+    // Looks up a target by its source path. Returns false if no such target was
+    // found.
+    lookupTarget(targetPath) {
+        if (targetPath in this.map) {
+            return this.map[targetPath];
+        }
+
+        return false;
+    }
+
+    // Removes targets from the context. This is the preferred way of removing
+    // targets.
+    removeTargets(removeTargets) {
+        if (!Array.isArray(removeTargets)) {
+            removeTargets = [removeTargets];
+        }
+
+        // Remove targets from our internal list and the map.
+        removeTargets.forEach((elem) => {
+            var index = this.targets.indexOf(elem);
+            if (index >= 0) {
+                this.targets.splice(index,1);
+                delete this.map[elem.getSourceTargetPath()];
+            }
+        });
     }
 
     // Resolves the set of "removeTargets" into a new target with the given
@@ -76,13 +110,7 @@ class DeployContext {
         isOutputTarget = (isOutputTarget !== "undefined") ? isOutputTarget : true
 
         if (removeTargets) {
-            // Remove targets from our internal list.
-            removeTargets.forEach((elem) => {
-                var index = this.targets.indexOf(elem);
-                if (index >= 0) {
-                    this.targets.splice(index,1);
-                }
-            });
+            this.removeTargets(removeTargets);
         }
 
         // Create new target if path is specified.

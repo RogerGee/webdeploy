@@ -125,6 +125,15 @@ The `options` parameter is an optional object having the following properties:
 -   `options.isOutputTarget`: If `true`, then the new target is added to the
     context's list of output targets. The default is `true`.
 
+#### `DeployContext.lookupTarget(targetPath)` -> `Target`
+
+Looks up a Target by its source path. Returns `false` if no such target exists.
+
+#### `DeployContext.removeTargets(removeTargets)`
+
+Removes targets from the context's list of targets. This is the preferred method
+of removing targets from the context.
+
 #### `DeployContext.resolveTargets(newTargetPath,removeTargets,options)` -> `Target`
 
 Resolves a list of targets down into a single, new target. If `newTargetPath` is
