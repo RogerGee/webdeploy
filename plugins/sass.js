@@ -120,6 +120,7 @@ module.exports = {
         }
 
         return Promise.all(promises).then(() => {
+            var rm = [];
             var promises = [];
             var importFunc = makeCustomImporter(scss,settings.moduleBase);
 
@@ -127,6 +128,12 @@ module.exports = {
             // target with ".css" suffix.
             for (var i = 0;i < scss.length;++i) {
                 let target = scss[i];
+
+                // Avoid rendering include-only targets.
+                if (target.options.isIncludeOnly) {
+                    rm.push(target);
+                    continue;
+                }
 
                 var renderPromise = new Promise((resolve,reject) => {
                     nodeSass.render({
@@ -137,6 +144,7 @@ module.exports = {
                         importer: importFunc
                     }, (err, result) => {
                         if (err) {
+                            console.log(target.getSourceTargetPath());
                             reject(err);
                         }
                         else {
@@ -159,6 +167,9 @@ module.exports = {
 
                 promises.push(renderPromise);
             }
+
+            // Remove any removed targets.
+            context.resolveTargets(null,rm);
 
             return Promise.all(promises);
         });

@@ -53,8 +53,9 @@ is `path/to/target` then the target name is `target`.
 
 #### `Target.options` [Object]
 
-Plugin-specific options. The functionality should treat this object as
-read-only.
+Plugin-specific options. The functionality may write extra options here if
+required. The options are initially loaded from the `include` config but may
+be modified by build/deploy plugins if required.
 
 ## Functionality
 

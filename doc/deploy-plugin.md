@@ -1,5 +1,4 @@
-Deploy Plugins
-==============
+# Deploy Plugins
 
 A deploy plugin provides functionality for deploying a set of output targets to
 the deploy tree. Typically the deploy tree is the local filesystem but the
@@ -28,7 +27,7 @@ with a settings object derived from the deploy plugin specification in the
 config. The function returns a `Promise` whose resolution marks the completion
 of the operation such as:
 
-* `exec(context,settings)` -> `Promise`
+-   `exec(context,settings)` -> `Promise`
 
 Here is a minimal example:
 
@@ -120,11 +119,11 @@ target creation (e.g. dependencies).
 
 The `options` parameter is an optional object having the following properties:
 
-* `options.parents`: An `Array` of `Target` objects denoting the parents of the
-  new target. This is used to update dependency graph information internally.
+-   `options.parents`: An `Array` of `Target` objects denoting the parents of the
+    new target. This is used to update dependency graph information internally.
 
-* `options.isOutputTarget`: If `true`, then the new target is added to the
-  context's list of output targets. The default is `true`.
+-   `options.isOutputTarget`: If `true`, then the new target is added to the
+    context's list of output targets. The default is `true`.
 
 #### `DeployContext.resolveTargets(newTargetPath,removeTargets,options)` -> `Target`
 
@@ -138,8 +137,8 @@ equivilent to a call to `createTarget`.
 
 The `options` parameter is an optional object having the following properties:
 
-* `options.isOutputTarget`: If `true`, then the new target is added to the
-  context's list of output targets. The default is `true`.
+-   `options.isOutputTarget`: If `true`, then the new target is added to the
+    context's list of output targets. The default is `true`.
 
 #### `DeployContext.chain(nextPlugin,settings)` -> `Promise`
 
@@ -233,6 +232,13 @@ The _sass_ plugin leverages `node-sass` against a set of input targets having
 the suffix `.scss`. The plugin manages all sass modules in memory in true
 webdeploy fashion. You should use this as an intermediate deploy plugin that
 you execute before executing your final deploy plugin.
+
+In a SASS build, you might have some files that should be rendered and others
+that are _include_-only. To work with this, this plugin reads each Target's
+options object for the `isIncludeOnly` property. If this property is `true`,
+then the plugin does not render the target, keeping it around for including.
+Caution: include-only targets are removed from the deployment just before this
+plugin resolves. Note that you can still include render targets as well.
 
 Object schema (settings properties indicate their defaults):
 

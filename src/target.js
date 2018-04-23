@@ -53,7 +53,7 @@ class Target {
         this.recursive = false;
 
         // Options provided by the deployment configuration.
-        this.options = options || {};
+        this.options = Object.assign({},options) || {};
 
         // Used by the implementation to track target handlers.
         this.handlers = undefined;
