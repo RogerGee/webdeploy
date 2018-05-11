@@ -72,6 +72,9 @@ has the following form:
 
   "handlers": [ /* handler objects*/ ],
 
+  // Determines if the include is targeted for the the build phase.
+  "build": false,
+
   // Options apply to all included targets.
   "options": {
     "foo": "bar"
@@ -105,13 +108,13 @@ The build handler object has the following schema:
 {
   "id": "plugin-id",
   "dev": false,
-  "build": false
+  "build": true
 }
 ```
 
 The `dev` property denotes if the handler is executed for dev runs. The `build`
 property determines if the handler is executed for build runs. The default value
-for both of these properties is `false`.
+for `dev` is `false` and the default value for `build` is `true`.
 
 ### Git Config
 
