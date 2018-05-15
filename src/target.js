@@ -138,6 +138,12 @@ class Target {
         }
     }
 
+    // Applies options to the target's list of options.
+    applyOptions(options) {
+        Object.assign(this.options,options);
+    }
+
+    // Sets the handlers that should process the target.
     setHandlers(handlers) {
         this.handlers = handlers;
     }

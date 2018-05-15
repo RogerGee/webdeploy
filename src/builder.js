@@ -20,8 +20,9 @@ class Builder {
     //   -type: "build" or "deploy"
     //   -dev: Boolean
     //   -graph: DependencyGraph
-    constructor(options,callback) {
+    constructor(options,tree,callback) {
         this.options = options;
+        this.tree = tree;
         this.plugins = {};
         this.includes = [];
         this.targets = [];
@@ -183,35 +184,23 @@ class Builder {
 
     // Pushes an initial target into the builder's set of targets. This will
     // employ the builder's includes to determine the set of handlers for the
-    // new target. The target may be specified as a Target object via
-    // "newTarget" or as a delayed target object via "delayed".
-    pushInitialTarget(newTarget,delayed) {
-        // The target may only exist in a delayed state if 'newTarget' is not
-        // set, in that case the required information exists in "delayed".
-        if (!newTarget) {
-            assert(typeof delayed == "object" && "path" in delayed
-                   && "name" in delayed && 'createStream' in delayed);
+    // new target.
+    pushInitialTarget(newTarget,force) {
+        // Determine if the target is to be processed by the system if its path
+        // matches an include defined in the target tree
+        // configuration. Otherwise we only add the target if "force" is set.
 
-            var candidate = pathModule.join(delayed.path,delayed.name);
-        }
-        else {
-            var candidate = newTarget.getSourceTargetPath();
-        }
-
-        // Determine if the target is to be processed by the system. We only add
-        // it if so.
-        var include = this.findTargetInclude(candidate);
+        var include = this.findTargetInclude(newTarget.getSourceTargetPath());
         if (include) {
-            if (!newTarget) {
-                // Resolve the delayed target information into a Target object.
-                newTarget = new targetModule.Target(delayed.path,
-                                                    delayed.name,
-                                                    delayed.createStream(),
-                                                    include.options);
-            }
-
             newTarget.level = 1;
             newTarget.setHandlers(include.handlers.slice(0));
+            newTarget.applyOptions(include.options);
+            this.targets.push(newTarget);
+            return newTarget;
+        }
+
+        if (force) {
+            newTarget.level = 1;
             this.targets.push(newTarget);
             return newTarget;
         }
@@ -230,14 +219,37 @@ class Builder {
 
     // Pushes a new, initial output target. The target is specified in delayed
     // form and is counted as an initial target from the loaded target
-    // tree.
-    pushInitialTargetFromTree(delayed) {
-        var newTarget = this.pushInitialTarget(undefined,delayed);
-        if (newTarget) {
+    // tree. Delayed targets should therefore only be used to indicate targets
+    // loaded from the filesystem.
+    pushInitialTargetDelayed(delayed,force) {
+        assert(typeof delayed == "object" && "path" in delayed
+               && "name" in delayed && 'createStream' in delayed);
+
+        // Resolve the delayed target information into a Target object.
+        var newTarget = new targetModule.Target(delayed.path,
+                                                delayed.name,
+                                                delayed.createStream());
+
+        // Push target. If it was accepted, then count the target as initial.
+        var result = this.pushInitialTarget(newTarget,force);
+        if (result) {
             this.initial.push(newTarget.getSourceTargetPath());
         }
 
-        return newTarget;
+        return result;
+    }
+
+    // Creates a new target with content loaded from the tree targeted by the
+    // build process. This method returns a Promise that resolves to the new
+    // Target.
+    pushInitialTargetFromTree(path) {
+        return this.tree.getBlob(path).then(blobStream => {
+            var parsed = pathModule.parse(path);
+            var newTarget = new targetModule.Target(parsed.dir,parsed.base,blobStream);
+
+            this.pushInitialTarget(newTarget,true);
+            return newTarget;
+        })
     }
 
     // Pushes a new output target given the specified parent target.
@@ -246,7 +258,7 @@ class Builder {
         // handlers.
 
         if (newTarget.recursive) {
-            return this.pushInitialTarget(newTarget,undefined);
+            return this.pushInitialTarget(newTarget);
         }
 
         // If we have a dependency graph, add a connection.

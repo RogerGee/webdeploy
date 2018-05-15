@@ -144,7 +144,7 @@ function deployBuildStep(tree,options) {
     }).then((includes) => {
         // Load builder required for this deployment.
 
-        builder = new builderModule.Builder(options,printNewTargets);
+        builder = new builderModule.Builder(options,tree,printNewTargets);
         builder.setIncludes(includes);
 
         var n = builder.getPluginCount();
@@ -204,7 +204,7 @@ function deployBuildStep(tree,options) {
                 var realRef = pathModule.join(targetBasePath,ref);
                 targetPromises.push(tree.isBlobModified(realRef).then((result) => {
                     if (result) {
-                        var newTarget = builder.pushInitialTargetFromTree(delayedTarget);
+                        var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
                         if (newTarget) {
                             logger.log("add _" + newTarget.getSourceTargetPath() + "_");
                         }
@@ -215,7 +215,7 @@ function deployBuildStep(tree,options) {
                 }));
             }
             else {
-                var newTarget = builder.pushInitialTargetFromTree(delayedTarget);
+                var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
                 if (newTarget) {
                     logger.log("add _" + newTarget.getSourceTargetPath() + "_");
                 }

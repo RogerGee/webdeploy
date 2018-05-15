@@ -27,9 +27,11 @@ class DeployContext {
     }
 
     // Sets the deployment path for each target.
-    setTargetsDeployPath() {
+    setTargetsDeployPath(force) {
         for (var i = 0;i < this.targets.length;++i) {
-            this.targets[i].setDeployPath(this.deployPath);
+            if (!this.targets[i].deployPath || force) {
+                this.targets[i].setDeployPath(this.deployPath);
+            }
         }
     }
 
