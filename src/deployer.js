@@ -204,7 +204,7 @@ function deployBuildStep(tree,options) {
                 var realRef = pathModule.join(targetBasePath,ref);
                 targetPromises.push(tree.isBlobModified(realRef).then((result) => {
                     if (result) {
-                        var newTarget = builder.pushInitialTarget(null,delayedTarget);
+                        var newTarget = builder.pushInitialTargetFromTree(delayedTarget);
                         if (newTarget) {
                             logger.log("add _" + newTarget.getSourceTargetPath() + "_");
                         }
@@ -215,7 +215,7 @@ function deployBuildStep(tree,options) {
                 }));
             }
             else {
-                var newTarget = builder.pushInitialTarget(null,delayedTarget);
+                var newTarget = builder.pushInitialTargetFromTree(delayedTarget);
                 if (newTarget) {
                     logger.log("add _" + newTarget.getSourceTargetPath() + "_");
                 }

@@ -25,8 +25,19 @@ class Builder {
         this.plugins = {};
         this.includes = [];
         this.targets = [];
+        this.initial = [];
         this.outputTargets = [];
         this.callback = callback;
+    }
+
+    // Determines if the specified target is an initial target. The 'target'
+    // parameter may be a Target or a string.
+    isInitialTarget(target) {
+        if (target instanceof targetModule.Target) {
+            target = target.getSourceTargetPath();
+        }
+
+        return this.initial.some(x => { return x == target });
     }
 
     // Loads the plugins associated with the set of handlers. Some handlers are
@@ -217,13 +228,25 @@ class Builder {
         return newTarget;
     }
 
+    // Pushes a new, initial output target. The target is specified in delayed
+    // form and is counted as an initial target from the loaded target
+    // tree.
+    pushInitialTargetFromTree(delayed) {
+        var newTarget = this.pushInitialTarget(undefined,delayed);
+        if (newTarget) {
+            this.initial.push(newTarget.getSourceTargetPath());
+        }
+
+        return newTarget;
+    }
+
     // Pushes a new output target given the specified parent target.
     pushOutputTarget(parentTarget,newTarget) {
         // Treat recursive targets as initial. This will ignore any outstanding
         // handlers.
 
         if (newTarget.recursive) {
-            return this.pushInitialTarget(newTarget);
+            return this.pushInitialTarget(newTarget,undefined);
         }
 
         // If we have a dependency graph, add a connection.
