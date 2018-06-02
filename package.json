@@ -1,14 +1,12 @@
 {
-  "name": "webdeploy",
-  "version": "0.0.0",
-  "description": "A utility for deploying websites at TCCL",
+  "name": "@tccl/webdeploy",
+  "version": "0.1.0",
+  "description": "A utility for building and deploying websites from git repositories",
   "main": "webdeploy.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+  "scripts": {},
   "repository": {
     "type": "git",
-    "url": "http://tccl-apps/git/utilities/webdeploy.git"
+    "url": "https://tccl-apps/git/utilities/webdeploy.git"
   },
   "author": "Roger Gee",
   "license": "MIT",
