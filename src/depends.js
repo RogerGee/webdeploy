@@ -209,19 +209,20 @@ class DependencyGraph {
     // Determines if the specified source is a dependency of any product known
     // to the DependencyTree.
     hasProductForSource(source) {
-        if (this.isLoaded()) {
-            return source in this.forwardMappings;
-        }
-        return false;
+        assert(this.isLoaded());
+
+        return source in this.forwardMappings;
     }
 
     lookupForward(a) {
         assert(this.isLoaded());
+
         return this.forwardMappings[a];
     }
 
     lookupReverse(b) {
         assert(this.isLoaded());
+
         return this.reverseMappings[b];
     }
 
@@ -306,31 +307,44 @@ class DependencyGraph {
     // build sources (in both directions).
     removeConnectionGivenProduct(product,sync) {
         var removeRecursive = (level) => {
+            // Recursively touch each node. Remove every connection that leads
+            // to the product.
+
             if (!level) {
                 var children = this.lookupReverse(product);
             }
             else {
                 // Base case: consider leaf node.
                 if (!this.connections[level]) {
-                    return level == product ? 0 : 1;
+                    return;
                 }
 
                 var children = this.connections[level];
             }
 
-            var a = children.reduce((x,childLevel) => { return x + removeRecursive(childLevel) },0);
+            for (let i = 0;i < children.length;++i) {
+                var childLevel = children[i];
 
-            // Remove links that lead only to the product node.
-            if (a == 0) {
-                delete this.connections[level]
+                removeRecursive(childLevel);
+
+                if (childLevel == product) {
+                    this.connections[level].splice(i,1);
+
+                    if (this.connections[level].length == 0) {
+                        delete this.connections[level];
+                    }
+                }
             }
-
-            return a;
         }
-        removeRecursive();
 
-        if (sync) {
-            this.resolve();
+        // We can only remove a product if it is truly a product (i.e. there are
+        // no connections from the node to another node).
+        if (!this.connections[product]) {
+            removeRecursive();
+
+            if (sync) {
+                this.resolve();
+            }
         }
     }
 
@@ -356,4 +370,4 @@ module.exports = {
     saveToTree: saveToTree,
 
     DependencyGraph: DependencyGraph
-};
+}
