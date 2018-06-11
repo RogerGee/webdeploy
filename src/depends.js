@@ -18,6 +18,11 @@ function loadFromJson(graph,json) {
     graph._calcReverseMappings();
 }
 
+function loadBlank(graph) {
+    graph.forwardMappings = {};
+    graph.reverseMappings = {};
+}
+
 function loadFromFile(path) {
     var graph = new DependencyGraph();
     var saveFilePath = pathModule.join(path,SAVE_FILE_NAME);
@@ -26,6 +31,9 @@ function loadFromFile(path) {
         fs.readFile(saveFilePath,{ encoding:'utf8' },(err,data) => {
             if (!err) {
                 loadFromJson(graph,data);
+            }
+            else {
+                loadBlank(graph);
             }
 
             resolve(graph);
@@ -41,6 +49,8 @@ function loadFromConfig(repoTree) {
 
         return graph;
     }, (err) => {
+        loadBlank(graph);
+
         return graph;
     });
 }
@@ -207,7 +217,7 @@ class DependencyGraph {
     }
 
     // Determines if the specified source is a dependency of any product known
-    // to the DependencyTree.
+    // to the DependencyTree. Returns false if the source wasn't found.
     hasProductForSource(source) {
         assert(this.isLoaded());
 
