@@ -408,12 +408,12 @@ class PathTree {
         var blobPathQualified = path.join(this.basePath,blobPath);
 
         return new Promise((resolve,reject) => {
-            try {
-                resolve(fs.createReadStream(blobPathQualified));
-            } catch (err) {
-                reject(err);
-            }
-        });
+            var stream = fs.createReadStream(blobPathQualified);
+            stream.on('error',reject);
+            stream.on('open',(fd) => {
+                resolve(stream);
+            })
+        })
     }
 
     // Gets a Promise. Walks the tree and calls callback(path,name,streamFunc)
