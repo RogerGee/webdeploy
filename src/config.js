@@ -1,7 +1,8 @@
 // config.js - webdeploy
 
-var pathModule = require('path');
-var requireFromString = require('require-from-string');
+const pathModule = require('path');
+const requireFromString = require('require-from-string');
+const git = require('nodegit');
 
 function verifyConfigObject(object) {
     return true;
@@ -17,7 +18,7 @@ function loadFromTree(tree) {
 
         // JSON: The config object is a child of the core object.
         json: ["package.json","composer.json"]
-    };
+    }
 
     return new Promise((resolve,reject) => {
         var loadError;
@@ -31,11 +32,11 @@ function loadFromTree(tree) {
 
                         stream.on("data",(chunk) => {
                             configText += chunk;
-                        });
+                        })
 
                         stream.on("error", (err) => {
                             reject(err);
-                        });
+                        })
 
                         stream.on("end",() => {
                             var config = requireFromString(configText);
@@ -44,15 +45,15 @@ function loadFromTree(tree) {
                                 config.info = {
                                     type: "MODULE",
                                     file: blobName
-                                };
+                                }
                                 resolve(config);
                             }
                             else {
                                 reject(new Error("Config in file '" + blobName + "' failed verification"));
                             }
-                        });
-                    });
-                };
+                        })
+                    })
+                }
             }
             else if (sources.json.length > 0) {
                 var blobName = sources.json.pop();
@@ -62,11 +63,11 @@ function loadFromTree(tree) {
 
                         stream.on("data",(chunk) => {
                             json += chunk;
-                        });
+                        })
 
                         stream.on("error",(err) => {
                             reject(err);
-                        });
+                        })
 
                         stream.on("end",() => {
                             var toplevel = JSON.parse(json);
@@ -76,7 +77,7 @@ function loadFromTree(tree) {
                                     toplevel.webdeploy.info = {
                                         type: "JSON",
                                         file: blobName
-                                    };
+                                    }
                                     resolve(toplevel.webdeploy);
                                 }
                                 else {
@@ -86,9 +87,9 @@ function loadFromTree(tree) {
                             else {
                                 reject(loadError = new Error("JSON in file '" + blobName + "' did not contain webdeploy config object"));
                             }
-                        });
-                    });
-                };
+                        })
+                    })
+                }
             }
             else {
                 if (!loadError) {
@@ -98,12 +99,27 @@ function loadFromTree(tree) {
                 return;
             }
 
-            tree.getBlob(blobName).then(callback).then(resolve)
-                .catch((err) => { nextAttempt(); });
+            tree.getBlob(blobName)
+                .then(callback)
+                .then(resolve)
+                .catch((err) => {
+                    // Only continue if the blob was not found.
+
+                    if ((err.errno == git.Error.CODE.ENOTFOUND
+                         && tree.name == 'RepoTree'
+                         && err.message.match('does not exist in the given tree'))
+                        || (err.errno == -2 && tree.name == 'PathTree'))
+                    {
+                        nextAttempt();
+                    }
+                    else {
+                        reject(err);
+                    }
+                })
         }
 
         nextAttempt();
-    });
+    })
 }
 
 module.exports = {
@@ -112,4 +128,4 @@ module.exports = {
         MODULE: "MODULE"
     },
     loadFromTree: loadFromTree
-};
+}
