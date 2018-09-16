@@ -8,6 +8,7 @@ const pluginLoader = require("./plugins");
 const targetModule = require("./target");
 const contextModule = require("./context");
 const builderModule = require("./builder");
+const audit = require("./audit");
 const depends = require("./depends");
 const logger = require("./logger");
 
@@ -17,7 +18,7 @@ const DEPLOY_TYPES = {
 
     // Uses the config's "deploy" deployment.
     TYPE_DEPLOY: 'deploy'
-};
+}
 
 function deployDeployStep(tree,builder,options) {
     logger.log("Deploying targets: _" + options.deployPlugin.id + "_");
@@ -61,22 +62,17 @@ function deployDeployStep(tree,builder,options) {
         return contextModule.DeployContext.prototype.chain.call(context,nextPlugin,settings).then((retval) => {
             logger.popIndent();
             return retval;
-        });
-    };
-
-    // Load deploy plugins required for this run.
-
-    const pluginInfo = {
-        pluginId: options.deployPlugin.id,
-        pluginVersion: options.deployPlugin.version
+        })
     }
 
-    var plugins = [
-        {
-            plugin: pluginLoader.loadDeployPlugin(pluginInfo),
-            settings: options.deployPlugin
-        }
-    ];
+    // Audit deploy plugins required for the run.
+
+    var auditor = new audit.PluginAuditor();
+    auditor.addPluginByLoaderInfo({
+        pluginId: options.deployPlugin.id,
+        pluginVersion: options.deployPlugin.version,
+        pluginSettings: options.deployPlugin
+    })
 
     if (options.deployPlugin.chain) {
         var chain = Array.isArray(options.deployPlugin.chain)
@@ -87,15 +83,29 @@ function deployDeployStep(tree,builder,options) {
             var pluginSettings = chain[i];
             const pluginInfo = {
                 pluginId: pluginSettings.id,
-                pluginVersion: pluginVersion.id
+                pluginVersion: pluginSettings.version,
+                // Remember plugin settings by attaching them here.
+                pluginSettings: pluginSettings
             }
 
-            plugins.push({
-                plugin: pluginLoader.loadDeployPlugin(pluginInfo),
-                settings: pluginSettings
-            });
+            auditor.addPluginByLoaderInfo(pluginInfo);
         }
     }
+
+    if (!auditor.audit()) {
+        throw new Error("Failed to audit deploy plugins: " + auditor.getError());
+    }
+
+    // Load deploy plugins required by the run.
+
+    var plugins = [];
+
+    auditor.forEach((plugin) => {
+        plugins.push({
+            plugin: pluginLoader.loadDeployPlugin(plugin),
+            settings: plugin.pluginSettings
+        })
+    })
 
     // Execute deploy plugins in sequence.
 
@@ -145,9 +155,9 @@ function deployBuildStep(tree,options) {
 
         // Load base path from config. This config parameter is optional.
 
-        return tree.getConfigParameter("basePath").then(theBasePath => {
+        return tree.getConfigParameter("basePath").then((theBasePath) => {
             targetBasePath = theBasePath;
-        }, e => {});
+        }, (e) => {})
     }).then(() => {
         return tree.getConfigParameter("includes");
     }).then((includes) => {
@@ -213,7 +223,7 @@ function deployBuildStep(tree,options) {
                 path: relativePath,
                 name: name,
                 createStream: createInputStream
-            };
+            }
 
             // If a potential target does not have a build product (i.e. is a
             // trivial product), then check to see if it is modified and should
@@ -231,7 +241,7 @@ function deployBuildStep(tree,options) {
                     else {
                         options.ignored = true;
                     }
-                }));
+                }))
             }
             else {
                 var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
@@ -251,7 +261,7 @@ function deployBuildStep(tree,options) {
             basePath: targetBasePath
         }).then(() => {
             return Promise.all(targetPromises);
-        });
+        })
     }).then(() => {
         if (builder.targets.length == 0) {
             logger.log("*No Targets*");
@@ -271,7 +281,7 @@ function deployBuildStep(tree,options) {
         return builder.execute();
     }).then(() => {
         return deployDeployStep(tree,builder,options);
-    });
+    })
 }
 
 function deployStartStep(tree,options) {
@@ -335,7 +345,7 @@ function deployStartStep(tree,options) {
                     return deployBuildStep(tree,options);
                 },reject).then(resolve,reject);
             }
-        });
+        })
     }).then(() => {
         // Save the dependency graph if available.
         if (options.graph) {
@@ -345,7 +355,7 @@ function deployStartStep(tree,options) {
         if (tree.name == 'RepoTree') {
             return tree.saveDeployCommit();
         }
-    });
+    })
 }
 
 // Initiates a deployment using the specified git-repository. The "options"
@@ -354,7 +364,7 @@ function deployStartStep(tree,options) {
 function deployRepository(repo,options) {
     return treeLoader.createRepoTree(repo).then((tree) => {
         return deployStartStep(tree,options);
-    });
+    })
 }
 
 // Initiates a deployment using the files/directories from the local
@@ -363,7 +373,7 @@ function deployRepository(repo,options) {
 function deployLocal(path,options) {
     return treeLoader.createPathTree(path).then((tree) => {
         return deployStartStep(tree,options);
-    });
+    })
 }
 
 // Initiates a deployment, deciding whether or not to use a local directory or a
@@ -376,7 +386,7 @@ function deployDecide(path,options,decideCallback) {
         },(err) => {
             decideCallback("local");
             return deployLocal(path,options);
-        });
+        })
 }
 
 module.exports = {
@@ -385,4 +395,4 @@ module.exports = {
     deployDecide: deployDecide,
 
     types: DEPLOY_TYPES
-};
+}

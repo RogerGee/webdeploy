@@ -14,6 +14,10 @@ class PluginAuditor {
         this.pluginList.push(loaderInfo);
     }
 
+    forEach(callback) {
+        return this.pluginList.forEach(callback);
+    }
+
     audit() {
         // TODO
 
