@@ -6,12 +6,14 @@ const pathModule = require("path");
 const PLUGIN_KINDS = {
     BUILD_PLUGIN: 0,
     DEPLOY_PLUGIN: 1
-};
+}
 
 function mkdirParents(path,base) {
     var parsed = pathModule.parse(path);
     var parts = pathModule.join(parsed.dir,parsed.base).split(pathModule.sep)
-        .filter((x) => { return Boolean(x); });
+        .filter((x) => {
+            return Boolean(x);
+        })
 
     if (!base) {
         path = parsed.root;
@@ -34,11 +36,17 @@ function mkdirParents(path,base) {
     }
 }
 
-function requirePlugin(pluginId,kind) {
+function requirePlugin(pluginInfo,kind) {
     // There is nothing special about a plugin - it's just a NodeJS module that
     // we "require" like any other. There are two possible ways we require a
     // plugin: 1) from this repository's "plugins" subdirectory or 2) globally
     // from modules made available to NodeJS.
+
+    const { pluginId, pluginVersion } = pluginInfo;
+
+    if (pluginVersion && pluginVersion != "latest") {
+        pluginId = pluginId + "@" + pluginVersion;
+    }
 
     try {
         var plugin = require(pathModule.join("../plugins",pluginId));
@@ -75,10 +83,10 @@ const DEFAULT_BUILD_PLUGINS = {
         exec: (target) => {
             return new Promise((resolve,reject) => {
                 resolve(target.pass());
-            });
+            })
         }
     }
-};
+}
 
 const DEFAULT_DEPLOY_PLUGINS = {
     exclude: {
@@ -86,7 +94,7 @@ const DEFAULT_DEPLOY_PLUGINS = {
         exec: (context,settings) => {
             return new Promise((resolve,reject) => {
                 resolve();
-            });
+            })
         }
     },
 
@@ -125,27 +133,33 @@ const DEFAULT_DEPLOY_PLUGINS = {
                 }
 
                 resolve();
-            });
+            })
         }
     }
-};
+}
 
 module.exports = {
     // Loads a build plugin object.
-    loadBuildPlugin: (pluginId) => {
-        if (pluginId in DEFAULT_BUILD_PLUGINS) {
-            return DEFAULT_BUILD_PLUGINS[pluginId];
+    loadBuildPlugin: (pluginInfo) => {
+        if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS) {
+            if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
+                // TODO Warn about default plugin not having non-latest version.
+            }
+            return DEFAULT_BUILD_PLUGINS[pluginInfo.pluginId];
         }
 
-        return requirePlugin(pluginId,PLUGIN_KINDS.BUILD_PLUGIN);
+        return requirePlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
     },
 
     // Loads a deploy plugin object.
-    loadDeployPlugin: (pluginId) => {
-        if (pluginId in DEFAULT_DEPLOY_PLUGINS) {
-            return DEFAULT_DEPLOY_PLUGINS[pluginId];
+    loadDeployPlugin: (pluginInfo) => {
+        if (pluginInfo.pluginId in DEFAULT_DEPLOY_PLUGINS) {
+            if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
+                // TODO Warn about default plugin not having non-latest version.
+            }
+            return DEFAULT_DEPLOY_PLUGINS[pluginInfo.pluginId];
         }
 
-        return requirePlugin(pluginId,PLUGIN_KINDS.DEPLOY_PLUGIN);
+        return requirePlugin(pluginInfo.pluginId,PLUGIN_KINDS.DEPLOY_PLUGIN);
     }
-};
+}

@@ -44,7 +44,7 @@ module.exports = {
     },
 
     /**
-     * Defines which blobs are included as targets in the deployment. 
+     * Defines which blobs are included as targets in the deployment.
      */
     includes: [
         {
@@ -98,19 +98,31 @@ module.exports = {
                      */
                     id: "minify",
 
-                    // Determines if the handler is considered during a
-                    // development run. The default is false.
+                    /**
+                     * Lock down a version for the plugin, or specify "latest"
+                     * to use the lastest available package. Defaults to latest.
+                     */
+                    version: "0.1.0",
+
+                    /**
+                     * Determines if the handler is considered during a
+                     * development run. The default is false.
+                     */
                     dev: false,
 
-                    // Determines if the handler is considered during a build run.
-                    // The default is true.
+                    /**
+                     * Determines if the handler is considered during a build
+                     * run. The default is true.
+                     */
                     build: true,
 
-                    // A custom, inline plugin implementation. This is optional.
+                    /**
+                     * A custom, inline plugin implementation. This is optional.
+                     */
                     handler: (target,settings) => {
                         return new Promise((resolve,reject) => {
 
-                        });
+                        })
                     }
                 }
             ],

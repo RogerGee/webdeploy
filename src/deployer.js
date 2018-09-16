@@ -66,9 +66,14 @@ function deployDeployStep(tree,builder,options) {
 
     // Load deploy plugins required for this run.
 
+    const pluginInfo = {
+        pluginId: options.deployPlugin.id,
+        pluginVersion: options.deployPlugin.version
+    }
+
     var plugins = [
         {
-            plugin: pluginLoader.loadDeployPlugin(options.deployPlugin.id),
+            plugin: pluginLoader.loadDeployPlugin(pluginInfo),
             settings: options.deployPlugin
         }
     ];
@@ -80,9 +85,13 @@ function deployDeployStep(tree,builder,options) {
 
         for (var i = 0;i < chain.length;++i) {
             var pluginSettings = chain[i];
+            const pluginInfo = {
+                pluginId: pluginSettings.id,
+                pluginVersion: pluginVersion.id
+            }
 
             plugins.push({
-                plugin: pluginLoader.loadDeployPlugin(pluginSettings.id),
+                plugin: pluginLoader.loadDeployPlugin(pluginInfo),
                 settings: pluginSettings
             });
         }
@@ -142,10 +151,20 @@ function deployBuildStep(tree,options) {
     }).then(() => {
         return tree.getConfigParameter("includes");
     }).then((includes) => {
-        // Load builder required for this deployment.
+        // Create builder required for this deployment.
 
-        builder = new builderModule.Builder(options,tree,printNewTargets);
-        builder.setIncludes(includes);
+        const builderOptions = {
+            type: options.type,
+            dev: options.dev,
+            graph: options.graph,
+            callbacks: {
+                newTarget: printNewTargets
+            }
+        }
+
+        builder = new builderModule.Builder(tree,builderOptions);
+        builder.pushIncludes(includes);
+        builder.finalize();
 
         var n = builder.getPluginCount();
         logger.log("Loaded _" + n + "_ build " + logger.plural(n,"plugin"));

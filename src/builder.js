@@ -4,6 +4,10 @@ const assert = require("assert");
 const pathModule = require("path").posix;
 const targetModule = require("./target");
 const pluginLoader = require("./plugins");
+const audit = require("./audit");
+
+const BUILDER_STATE_INITIAL = 0;
+const BUILDER_STATE_FINALIZED = 1;
 
 /**
  * Builder
@@ -11,24 +15,28 @@ const pluginLoader = require("./plugins");
  * Encapsulates target building invocation.
  */
 class Builder {
-    // Creates a new builder. The builder loads plugins available from the
-    // specified set of includes. The options object contains global build
-    // options. The callback is to handle the addition of new targets into the
-    // build system.
-    //
-    // Options:
-    //   -type: "build" or "deploy"
-    //   -dev: Boolean
-    //   -graph: DependencyGraph
-    constructor(options,tree,callback) {
-        this.options = options;
+    /**
+     * Creates a new builder. A builder audits, loads and executes build plugins
+     * against targets loaded from the specified tree.
+     *
+     * @param Object tree      A RepoTree or PathTree instance
+     * @param Object options       List of builder options
+     * @param string options.type  One of "build" or "deploy"
+     * @param Boolean options.dev  Indicates if running development build
+     * @param DependencyGraph options.graph  The dependency graph for the run
+     * @param Function options.callbacks.newTarget  Callback for new targets during execution
+     */
+    constructor(tree,options) {
+        options.callbacks = options.callbacks || {};
+
         this.tree = tree;
-        this.plugins = {};
         this.includes = [];
+        this.options = options;
+        this.plugins = {};
         this.targets = [];
         this.initial = [];
         this.outputTargets = [];
-        this.callback = callback;
+        this.state = BUILDER_STATE_INITIAL;
     }
 
     // Determines if the specified target is an initial target. The 'target'
@@ -41,58 +49,14 @@ class Builder {
         return this.initial.some(x => { return x == target });
     }
 
-    // Loads the plugins associated with the set of handlers. Some handlers are
-    // ignored due to builder options (e.g. dev/type). The method returns the
-    // revised set of handlers.
-    loadHandlerPlugins(handlers) {
-        var keep = [];
-
-        for (var i = 0;i < handlers.length;++i) {
-            var plugin = handlers[i];
-
-            // Skip if plugin already loaded.
-            if (plugin.id in this.plugins) {
-                keep.push(handlers[i]);
-                continue;
-            }
-
-            // Apply defaults for core plugin settings.
-            if (typeof plugin.dev === 'undefined') {
-                plugin.dev = false;
-            }
-            if (typeof plugin.build === 'undefined') {
-                plugin.build = true;
-            }
-
-            // Skip plugin if dev and build settings do not align.
-            if (!plugin.dev && this.options.dev) {
-                continue;
-            }
-            if (!plugin.build && this.options.type == "build") {
-                continue;
-            }
-
-            if (plugin.handler) {
-                this.plugins[plugin.id] = { exec: plugin.handler };
-            }
-            else {
-                this.plugins[plugin.id] = pluginLoader.loadBuildPlugin(plugin.id);
-            }
-
-            keep.push(handlers[i]);
+    // Pushes include configuration objects on the instance.
+    pushIncludes(includes) {
+        if (this.state != BUILDER_STATE_INITIAL) {
+            throw new Error("Builder has invalid state: cannot push includes");
         }
 
-        return keep;
-    }
-
-    // Sets the include objects on the instance. This also will load all plugins
-    // referenced by the include objects' handler lists. The method may exclude
-    // some rules depending on the builder options.
-    setIncludes(includes) {
-        var keep = [];
-
         for (var i = 0;i < includes.length;++i) {
-            var include = includes[i];
+            var include = Object.assign({},includes[i]);
 
             // Apply defaults for core include object settings.
             if (typeof include.build == "undefined") {
@@ -107,15 +71,109 @@ class Builder {
                 continue;
             }
 
-            include.handlers = this.loadHandlerPlugins(include.handlers);
-            keep.push(include);
+            this.includes.push(include);
+        }
+    }
+
+    // Finalizes the set of includes pushed on to the builder at an earlier
+    // time. This audits and loads the set of plugins required for the build to
+    // succeed.
+    finalize() {
+        if (this.state != BUILDER_STATE_INITIAL) {
+            throw new Error("Builder has invalid state: cannot finalize");
         }
 
-        this.includes = keep;
+        var handlers = {}; // Store unique subset of all handlers.
+
+        // Determine the list of plugins to keep for each include. Also compile
+        // the unique set of plugins for the entire build.
+
+        for (var i = 0;i < this.includes.length;++i) {
+            var keep = [];
+            var include = this.includes[i];
+
+            for (var j = 0;j < include.handlers.length;++j) {
+                var plugin = include.handlers[j];
+
+                // Skip if plugin already loaded.
+                if (plugin.id in handlers) {
+                    keep.push(plugin);
+                    continue;
+                }
+
+                // Apply defaults for core plugin settings.
+                if (typeof plugin.dev === 'undefined') {
+                    plugin.dev = false;
+                }
+                if (typeof plugin.build === 'undefined') {
+                    plugin.build = true;
+                }
+
+                // Skip plugin if dev and build settings do not align.
+                if (!plugin.dev && this.options.dev) {
+                    continue;
+                }
+                if (!plugin.build && this.options.type == "build") {
+                    continue;
+                }
+
+                // If the plugin doesn't supply an inline handler, then we assume it
+                // is to be loaded.
+                if (!plugin.handler) {
+                    plugin.loaderInfo = {
+                        pluginId: plugin.id,
+                        pluginVersion: plugin.version
+                    }
+                }
+
+                keep.push(plugin);
+                handlers[plugin.id] = plugin;
+            }
+
+            include.handlers = keep;
+        }
+
+        handlers = Object.values(handlers);
+
+        // Audit plugins that are to be loaded.
+
+        var auditor = new audit.PluginAuditor();
+
+        for (var i = 0;i < handlers.length;++i) {
+            var plugin = handlers[i];
+
+            if (plugin.loaderInfo) {
+                auditor.addPluginByLoaderInfo(plugin.loaderInfo);
+            }
+        }
+
+        if (!auditor.audit()) {
+            throw new Error("Failed to audit build plugins: " + auditor.getError());
+        }
+
+        // Load plugins. Create on-the-fly plugins for handlers having inline
+        // handlers.
+
+        for (var i = 0;i < handlers.length;++i) {
+            var plugin = handlers[i];
+
+            if (plugin.handler) {
+                this.plugins[plugin.id] = { exec: plugin.handler };
+            }
+            else {
+                this.plugins[plugin.id] = pluginLoader.loadBuildPlugin(plugin.loaderInfo);
+            }
+        }
+
+        this.state = BUILDER_STATE_FINALIZED;
     }
 
     // Gets the number of plugins that were loaded by this builder.
     getPluginCount() {
+        if (this.state != BUILDER_STATE_FINALIZED) {
+            throw new Error("Builder has invalid state: not finalized");
+        }
+
         return Object.keys(this.plugins).length;
     }
 
@@ -123,6 +181,10 @@ class Builder {
     // candidate target is just the target source path. Returns false if no
     // match was found.
     findTargetInclude(candidate) {
+        if (this.state != BUILDER_STATE_FINALIZED) {
+            throw new Error("Builder has invalid state: not finalized");
+        }
+
         var i = 0;
         while (i < this.includes.length) {
             // Make sure the candidate is not excluded.
@@ -186,6 +248,10 @@ class Builder {
     // employ the builder's includes to determine the set of handlers for the
     // new target.
     pushInitialTarget(newTarget,force) {
+        if (this.state != BUILDER_STATE_FINALIZED) {
+            throw new Error("Builder has invalid state: not finalized");
+        }
+
         // Determine if the target is to be processed by the system if its path
         // matches an include defined in the target tree
         // configuration. Otherwise we only add the target if "force" is set.
@@ -211,6 +277,10 @@ class Builder {
     // Pushes a new, initial output target having the specified sequence of
     // handlers.
     pushInitialTargetWithHandlers(newTarget,handlers) {
+        if (this.state != BUILDER_STATE_FINALIZED) {
+            throw new Error("Builder has invalid state: not finalized");
+        }
+
         newTarget.level = 1;
         newTarget.setHandlers(handlers.slice());
         this.targets.push(newTarget);
@@ -222,6 +292,10 @@ class Builder {
     // tree. Delayed targets should therefore only be used to indicate targets
     // loaded from the filesystem.
     pushInitialTargetDelayed(delayed,force) {
+        if (this.state != BUILDER_STATE_FINALIZED) {
+            throw new Error("Builder has invalid state: not finalized");
+        }
+
         assert(typeof delayed == "object" && "path" in delayed
                && "name" in delayed && 'createStream' in delayed);
 
@@ -243,7 +317,11 @@ class Builder {
     // build process. This method returns a Promise that resolves to the new
     // Target.
     pushInitialTargetFromTree(path) {
-        return this.tree.getBlob(path).then(blobStream => {
+        if (this.state != BUILDER_STATE_FINALIZED) {
+            throw new Error("Builder has invalid state: not finalized");
+        }
+
+        return this.tree.getBlob(path).then((blobStream) => {
             var parsed = pathModule.parse(path);
             var newTarget = new targetModule.Target(parsed.dir,parsed.base,blobStream);
 
@@ -254,6 +332,10 @@ class Builder {
 
     // Pushes a new output target given the specified parent target.
     pushOutputTarget(parentTarget,newTarget) {
+        if (this.state != BUILDER_STATE_FINALIZED) {
+            throw new Error("Builder has invalid state: not finalized");
+        }
+
         // Treat recursive targets as initial. This will ignore any outstanding
         // handlers.
 
@@ -298,6 +380,10 @@ class Builder {
     //
     // Returns Promise
     execute() {
+        if (this.state != BUILDER_STATE_FINALIZED) {
+            throw new Error("Builder has invalid state: not finalized");
+        }
+
         var callback = (resolve,reject) => {
             var promises = [];
 
@@ -345,18 +431,20 @@ class Builder {
                             this.pushOutputTarget(target,newTargets[i]);
                         }
 
-                        this.callback(target,plugin,newTargets);
+                        if (this.options.callbacks.newTarget) {
+                            this.options.callbacks.newTarget(target,plugin,newTargets);
+                        }
                     }
 
                     // Make recursive call to execute any recursive targets.
                     return new Promise(callback);
-                });
+                })
 
                 promises.push(promise);
             }
 
             Promise.all(promises).then(resolve,reject);
-        };
+        }
 
         return new Promise(callback);
     }
@@ -364,4 +452,4 @@ class Builder {
 
 module.exports = {
     Builder: Builder
-};
+}
