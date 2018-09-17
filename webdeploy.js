@@ -5,7 +5,7 @@
 const commander = require("commander");
 const path = require("path");
 const logger = require("./src/logger");
-const deployer = require("./src/deployer");
+const commands = require("./src/commands");
 
 function reject(err) {
     logger.error("*[FAIL]* " + String(err));
@@ -24,7 +24,7 @@ commander.command("deploy [path]")
     .action((sourcePath,cmd) => {
         var options = {
             dryRun: cmd.dryRun ? true : false,
-            type: deployer.types.TYPE_DEPLOY,
+            type: commands.types.TYPE_DEPLOY,
             force: cmd.force ? true : false
         };
 
@@ -35,7 +35,7 @@ commander.command("deploy [path]")
             var localPath = path.resolve(".");
         }
 
-        deployer.deployDecide(localPath,options,(type) => {
+        commands.deployDecide(localPath,options,(type) => {
             logger.log("*[DEPLOY]* _" + type + "_: exec " + localPath);
             logger.pushIndent();
         }, reject)
@@ -59,7 +59,7 @@ commander.command("build [path]")
         var options = {
             dryRun: cmd.dryRun ? true : false,
             dev: cmd.dev || !cmd.prod,
-            type: deployer.types.TYPE_BUILD,
+            type: commands.types.TYPE_BUILD,
             force: cmd.force ? true : false
         };
 
@@ -73,7 +73,7 @@ commander.command("build [path]")
         logger.log("*[BUILD]* _local_: exec " + localPath);
         logger.pushIndent();
 
-        deployer.deployLocal(localPath,options).then(() => {
+        commands.deployLocal(localPath,options).then(() => {
             logger.popIndent();
             logger.log("*[DONE]*");
         }).catch(reject);

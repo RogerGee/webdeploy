@@ -450,6 +450,4 @@ class Builder {
     }
 }
 
-module.exports = {
-    Builder: Builder
-}
+module.exports = Builder;
