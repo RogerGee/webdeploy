@@ -6,7 +6,7 @@
   "scripts": {},
   "repository": {
     "type": "git",
-    "url": "https://tccl-apps/git/utilities/webdeploy.git"
+    "url": "https://tccl-apps/git/webdeploy/webdeploy.git"
   },
   "bin": {
     "webdeploy": "./webdeploy.js"
@@ -14,14 +14,9 @@
   "author": "Roger Gee",
   "license": "MIT",
   "dependencies": {
-    "babel-core": "^6.26.3",
-    "babel-preset-env": "^1.7.0",
     "colors": "^1.3.0",
     "commander": "^2.15.1",
-    "node-sass": "^4.9.0",
     "nodegit": "^0.20.3",
-    "require-from-string": "^2.0.2",
-    "uglify-js": "^3.4.0",
-    "uglifycss": "0.0.28"
+    "require-from-string": "^2.0.2"
   }
 }
