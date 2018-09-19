@@ -8,6 +8,13 @@ function verifyConfigObject(object) {
     return true;
 }
 
+class ConfigNotFoundError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = this.constructor.name;
+    }
+}
+
 // Gets a Promise -> object representing the configration. This attempts to load
 // the configuration from a number of different sources, either as a NodeJS
 // module or parsing JSON.
@@ -81,11 +88,13 @@ function loadFromTree(tree) {
                                     resolve(toplevel.webdeploy);
                                 }
                                 else {
-                                    reject(loadError = new Error("Config in JSON file '" + blobName + "' failed verification"));
+                                    reject(loadError = new Error(
+                                        "Config in JSON file '" + blobName + "' failed verification"));
                                 }
                             }
                             else {
-                                reject(loadError = new Error("JSON in file '" + blobName + "' did not contain webdeploy config object"));
+                                reject(loadError = new ConfigNotFoundError(
+                                    "JSON in file '" + blobName + "' did not contain webdeploy config object"));
                             }
                         })
                     })
@@ -108,7 +117,8 @@ function loadFromTree(tree) {
                     if ((err.errno == git.Error.CODE.ENOTFOUND
                          && tree.name == 'RepoTree'
                          && err.message.match('does not exist in the given tree'))
-                        || (err.errno == -2 && tree.name == 'PathTree'))
+                        || (err.errno == -2 && tree.name == 'PathTree')
+                        || (err.name == 'ConfigNotFoundError'))
                     {
                         nextAttempt();
                     }
