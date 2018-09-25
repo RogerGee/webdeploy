@@ -6,6 +6,7 @@ const commander = require("commander");
 const path = require("path");
 const logger = require("./src/logger");
 const commands = require("./src/commands");
+const { version } = require("./package.json")
 
 function reject(err) {
     logger.error("*[FAIL]* " + String(err));
@@ -16,7 +17,7 @@ function reject(err) {
     }
 }
 
-commander.version("0.0.0","-v, --version");
+commander.version(version,"-v, --version");
 
 commander.command("deploy [path]")
     .option("-d, --dry-run","Perform dry run")

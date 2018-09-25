@@ -82,6 +82,7 @@ class Builder {
         if (this.state != BUILDER_STATE_INITIAL) {
             throw new Error("Builder has invalid state: cannot finalize");
         }
+        this.state = BUILDER_STATE_FINALIZED;
 
         var handlers = {}; // Store unique subset of all handlers.
 
@@ -147,25 +148,23 @@ class Builder {
             }
         }
 
-        if (!auditor.audit()) {
-            throw new Error("Failed to audit build plugins: " + auditor.getError());
-        }
+        return auditor.audit().then(() => {
+            // Load plugins. Create on-the-fly plugins for handlers having
+            // inline handlers.
 
-        // Load plugins. Create on-the-fly plugins for handlers having inline
-        // handlers.
+            for (var i = 0;i < handlers.length;++i) {
+                var plugin = handlers[i];
 
-        for (var i = 0;i < handlers.length;++i) {
-            var plugin = handlers[i];
-
-            if (plugin.handler) {
-                this.plugins[plugin.id] = { exec: plugin.handler };
+                if (plugin.handler) {
+                    this.plugins[plugin.id] = { exec: plugin.handler };
+                }
+                else {
+                    this.plugins[plugin.id] = pluginLoader.loadBuildPlugin(plugin.loaderInfo);
+                }
             }
-            else {
-                this.plugins[plugin.id] = pluginLoader.loadBuildPlugin(plugin.loaderInfo);
-            }
-        }
-
-        this.state = BUILDER_STATE_FINALIZED;
+        }, (err) => {
+            return Promise.reject("Failed to audit build plugins: " + auditor.getError());
+        })
     }
 
     // Gets the number of plugins that were loaded by this builder.

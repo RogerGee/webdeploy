@@ -7,7 +7,6 @@ const treeLoader = require("./tree");
 const targetModule = require("./target");
 const Builder = require("./builder");
 const Deployer = require("./deployer");
-const audit = require("./audit");
 const depends = require("./depends");
 const logger = require("./logger");
 
@@ -91,9 +90,9 @@ function deployBuildStep(tree,options) {
     }).then(() => {
         return tree.getConfigParameter("includes");
     }).then((includes) => {
-        // Create builder and deployer objects required for this
-        // deployment. We finalize them both up front so that all plugins
-        // are audited at the same time.
+        // Create builder required for the run. Finalize the builder so that all
+        // required plugins have been audited. We do this up front so that all
+        // plugins are audited before anything has been done.
 
         const builderOptions = {
             type: options.type,
@@ -106,7 +105,11 @@ function deployBuildStep(tree,options) {
 
         builder = new Builder(tree,builderOptions);
         builder.pushIncludes(includes);
-        builder.finalize();
+        return builder.finalize();
+    }).then(() => {
+        // Create deployer required for the run. Finalize the deployer so that all
+        // required plugins have been audited. We do this up front so that all
+        // plugins are audited before anything has been done.
 
         const deployerOptions = {
             deployPlugin: options.deployPlugin,
@@ -118,7 +121,9 @@ function deployBuildStep(tree,options) {
         }
 
         deployer = new Deployer(deployerOptions);
-        deployer.finalize();
+        return deployer.finalize();
+    }).then(() => {
+        // Display message denoting number of build plugins loaded.
 
         var n = builder.getPluginCount();
         logger.log("Loaded _" + n + "_ build " + logger.plural(n,"plugin"));

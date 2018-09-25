@@ -30,6 +30,7 @@ class Deployer {
         if (this.state != DEPLOYER_STATE_INITIAL) {
             throw new Error("Deployer has invalid state: not initial");
         }
+        this.state = DEPLOYER_STATE_FINALIZED;
 
         // Audit deploy plugins required for the run.
 
@@ -59,20 +60,18 @@ class Deployer {
             }
         }
 
-        if (!auditor.audit()) {
-            throw new Error("Failed to audit deploy plugins: " + auditor.getError());
-        }
+        return auditor.audit().then(() => {
+            // Load deploy plugins required by the run.
 
-        // Load deploy plugins required by the run.
-
-        auditor.forEach((plugin) => {
-            this.plugins.push({
-                plugin: pluginLoader.loadDeployPlugin(plugin),
-                settings: plugin.pluginSettings
+            auditor.forEach((plugin) => {
+                this.plugins.push({
+                    plugin: pluginLoader.loadDeployPlugin(plugin),
+                    settings: plugin.pluginSettings
+                })
             })
+        }, (err) => {
+            return Promise.reject("Failed to audit deploy plugins: " + err);
         })
-
-        this.state = DEPLOYER_STATE_FINALIZED;
     }
 
     execute(builder) {

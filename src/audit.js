@@ -18,21 +18,17 @@ class PluginAuditor {
         return this.pluginList.forEach(callback);
     }
 
+    /**
+     * Ensures that the local environment can load the set of plugins previously
+     * supplied.
+     *
+     * @return Promise A Promise that resolves when all plugins have been audited.
+     */
     audit() {
         // TODO
 
 
-        return true;
-    }
-
-    /**
-     * Gets the last error on the object. An error is set if a function returns
-     * a Boolean false.
-     *
-     * @return string
-     */
-    getError() {
-
+        return Promise.resolve();
     }
 }
 
