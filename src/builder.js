@@ -75,14 +75,10 @@ class Builder {
         }
     }
 
-    // Finalizes the set of includes pushed on to the builder at an earlier
-    // time. This audits and loads the set of plugins required for the build to
-    // succeed.
-    finalize() {
+    finalize(auditor) {
         if (this.state != BUILDER_STATE_INITIAL) {
             throw new Error("Builder has invalid state: cannot finalize");
         }
-        this.state = BUILDER_STATE_FINALIZED;
 
         var handlers = {}; // Store unique subset of all handlers.
 
@@ -123,7 +119,8 @@ class Builder {
                 if (!plugin.handler) {
                     plugin.loaderInfo = {
                         pluginId: plugin.id,
-                        pluginVersion: plugin.version
+                        pluginVersion: plugin.version,
+                        pluginKind: pluginLoader.PLUGIN_KINDS.BUILD_PLUGIN
                     }
                 }
 
@@ -138,32 +135,30 @@ class Builder {
 
         // Audit plugins that are to be loaded.
 
-        var auditor = new audit.PluginAuditor();
+        var plugins = handlers.filter((handler) => !!handler.loaderInfo)
+            .map((handler) => handler.loaderInfo);
 
-        for (var i = 0;i < handlers.length;++i) {
-            var plugin = handlers[i];
+        auditor.addOrder(plugins, (results) => {
+            // Set plugins from results.
 
-            if (plugin.loaderInfo) {
-                auditor.addPluginByLoaderInfo(plugin.loaderInfo);
+            for (let i = 0;i < results.length;++i) {
+                var result = results[i];
+
+                this.plugins[result.pluginId] = result.pluginObject;
             }
-        }
 
-        return auditor.audit().then(() => {
-            // Load plugins. Create on-the-fly plugins for handlers having
-            // inline handlers.
+            // Create on-the-fly plugins for plugin objects providing inline
+            // handlers.
 
-            for (var i = 0;i < handlers.length;++i) {
+            for (let i = 0;i < handlers.length;++i) {
                 var plugin = handlers[i];
 
                 if (plugin.handler) {
                     this.plugins[plugin.id] = { exec: plugin.handler };
                 }
-                else {
-                    this.plugins[plugin.id] = pluginLoader.loadBuildPlugin(plugin.loaderInfo);
-                }
             }
-        }, (err) => {
-            return Promise.reject("Failed to audit build plugins: " + auditor.getError());
+
+            this.state = BUILDER_STATE_FINALIZED;
         })
     }
 

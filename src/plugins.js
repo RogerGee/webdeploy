@@ -36,17 +36,23 @@ function mkdirParents(path,base) {
     }
 }
 
+function makeFullPluginId(pluginInfo) {
+    var { pluginId, pluginVersion } = pluginInfo;
+
+    if (pluginVersion && pluginVersion != "latest") {
+        pluginId = pluginId + "@" + pluginVersion;
+    }
+
+    return pluginId;
+}
+
 function requirePlugin(pluginInfo,kind) {
     // There is nothing special about a plugin - it's just a NodeJS module that
     // we "require" like any other. There are two possible ways we require a
     // plugin: 1) from this repository's "plugins" subdirectory or 2) globally
     // from modules made available to NodeJS.
 
-    const { pluginId, pluginVersion } = pluginInfo;
-
-    if (pluginVersion && pluginVersion != "latest") {
-        pluginId = pluginId + "@" + pluginVersion;
-    }
+    const pluginId = makeFullPluginId(pluginInfo);
 
     try {
         var plugin = require(pathModule.join("../plugins",pluginId));
@@ -73,7 +79,13 @@ function requirePlugin(pluginInfo,kind) {
         else if (kind == PLUGIN_KINDS.DEPLOY_PLUGIN) {
             plugin = plugin.deploy;
         }
+        else {
+            throw new Error("Plugin kind in not specified or incorrect");
+        }
     }
+
+    // Augment the plugin object with its fully-qualified ID.
+    plugin.id = pluginId;
 
     return plugin;
 }
@@ -138,28 +150,68 @@ const DEFAULT_DEPLOY_PLUGINS = {
     }
 }
 
-module.exports = {
-    // Loads a build plugin object.
-    loadBuildPlugin: (pluginInfo) => {
-        if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS) {
-            if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
-                // TODO Warn about default plugin not having non-latest version.
-            }
-            return DEFAULT_BUILD_PLUGINS[pluginInfo.pluginId];
+function lookupDefaultPlugin(pluginInfo,kind) {
+    if (kind == PLUGIN_KINDS.BUILD_PLUGIN) {
+        var database = DEFAULT_BUILD_PLUGINS;
+    }
+    else if (kind == PLUGIN_KINDS.DEPLOY_PLUGIN) {
+        var database = DEFAULT_DEPLOY_PLUGINS;
+    }
+    else {
+        return;
+    }
+
+    if (pluginInfo.pluginId in database) {
+        if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
+            // TODO Warn about default plugin not having latest version.
+
         }
 
-        return requirePlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
+        return database[pluginInfo.pluginId];
+    }
+}
+
+module.exports = {
+    PLUGIN_KINDS,
+
+    // Loads a build plugin object.
+    loadBuildPlugin: function(pluginInfo) {
+        var plugin = lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
+        if (!plugin) {
+            plugin = requirePlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
+        }
+
+        return plugin;
     },
 
     // Loads a deploy plugin object.
-    loadDeployPlugin: (pluginInfo) => {
-        if (pluginInfo.pluginId in DEFAULT_DEPLOY_PLUGINS) {
-            if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
-                // TODO Warn about default plugin not having non-latest version.
-            }
-            return DEFAULT_DEPLOY_PLUGINS[pluginInfo.pluginId];
+    loadDeployPlugin: function(pluginInfo) {
+        var plugin = lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
+        if (!plugin) {
+            plugin = requirePlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
         }
 
-        return requirePlugin(pluginInfo.pluginId,PLUGIN_KINDS.DEPLOY_PLUGIN);
-    }
+        return plugin;
+    },
+
+    loadPluginByKind: function(pluginInfo,kind) {
+        var plugin = lookupDefaultPlugin(pluginInfo,kind);
+        if (!plugin) {
+            plugin = requirePlugin(pluginInfo,kind);
+        }
+
+        return plugin;
+    },
+
+    // Looks up a default build plugin.
+    lookupDefaultBuildPlugin: function(pluginInfo) {
+        return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
+    },
+
+    // Looks up a default deploy plugin.
+    lookupDefaultDeployPlugin: function(pluginInfo) {
+        return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_TYPES);
+    },
+
+    makeFullPluginId
 }

@@ -26,18 +26,29 @@ class Deployer {
         this.state = DEPLOYER_STATE_INITIAL;
     }
 
-    finalize() {
+    /**
+     * Prepares the deployer for finalization. The object is not actually
+     * finalized until the plugins have been audited and the auditor invokes the
+     * finalization callback.
+     *
+     * @param Object auditor
+     *  The PluginAuditor instance globally auditing all plugins.
+     */
+    finalize(auditor) {
         if (this.state != DEPLOYER_STATE_INITIAL) {
             throw new Error("Deployer has invalid state: not initial");
         }
-        this.state = DEPLOYER_STATE_FINALIZED;
 
-        // Audit deploy plugins required for the run.
+        // Gather plugin loader objects for all plugins required for the
+        // deployer.
 
-        var auditor = new audit.PluginAuditor();
-        auditor.addPluginByLoaderInfo({
+        var plugins = [];
+
+        plugins.push({
             pluginId: this.deployPlugin.id,
             pluginVersion: this.deployPlugin.version,
+            pluginKind: pluginLoader.PLUGIN_KINDS.DEPLOY_PLUGIN,
+
             // Remember plugin settings by attaching them here.
             pluginSettings: this.deployPlugin
         })
@@ -48,29 +59,35 @@ class Deployer {
                 : [this.deployPlugin.chain];
 
             for (var i = 0;i < chain.length;++i) {
-                var pluginSettings = chain[i];
-                const pluginInfo = {
+                let pluginSettings = chain[i];
+
+                plugins.push({
                     pluginId: pluginSettings.id,
                     pluginVersion: pluginSettings.version,
-                    // Remember plugin settings by attaching them here.
-                    pluginSettings: pluginSettings
-                }
+                    pluginKind: pluginLoader.PLUGIN_KINDS.DEPLOY_PLUGIN,
 
-                auditor.addPluginByLoaderInfo(pluginInfo);
+                    // Remember plugin settings by attaching them here.
+                    pluginSettings
+                })
             }
         }
 
-        return auditor.audit().then(() => {
-            // Load deploy plugins required by the run.
+        // Add order to auditor.
 
-            auditor.forEach((plugin) => {
+        auditor.addOrder(plugins, (results) => {
+            // NOTE: the order that we store plugins in this.plugins IS
+            // important and is guarenteed to be preserved by the auditor.
+
+            for (let i = 0;i < results.length;++i) {
+                let result = results[i];
+
                 this.plugins.push({
-                    plugin: pluginLoader.loadDeployPlugin(plugin),
-                    settings: plugin.pluginSettings
+                    plugin: result.pluginObject,
+                    settings: result.pluginSettings
                 })
-            })
-        }, (err) => {
-            return Promise.reject("Failed to audit deploy plugins: " + err);
+            }
+
+            this.state = DEPLOYER_STATE_FINALIZED;
         })
     }
 
@@ -90,7 +107,7 @@ class Deployer {
             }
             else {
                 plugin = {
-                    id: nextPlugin
+                    pluginId: nextPlugin
                 }
             }
 
@@ -98,7 +115,7 @@ class Deployer {
                 this.callbacks.beforeChain(this.currentPlugin.plugin,plugin);
             }
 
-            return DeployContext.prototype.chain.call(this.context,nextPlugin,settings).then((retval) => {
+            return DeployContext.prototype.chain.call(this.context,plugin,settings).then((retval) => {
                 if (this.callbacks.afterChain) {
                     this.callbacks.afterChain();
                 }

@@ -1,7 +1,7 @@
 // context.js
 
 const targetModule = require("./target");
-const plugins = require("./plugins");
+const { lookupDeployPlugin } = require("./audit");
 
 /**
  * DeployContext
@@ -120,7 +120,8 @@ class DeployContext {
             var createOpts = {
                 parents: removeTargets,
                 isOutputTarget: isOutputTarget
-            };
+            }
+
             return this.createTarget(newTargetPath,createOpts);
         }
     }
@@ -128,16 +129,15 @@ class DeployContext {
     // Gets Promise. Sends control to another deploy plugin.
     chain(nextPlugin,settings) {
         // Execute plugin directly if it is an already-loaded plugin
-        // object.
+        // object. This is just anything that has an exec property.
 
-        if (typeof nextPlugin === "object") {
+        if (nextPlugin.exec) {
             return nextPlugin.exec(this,settings || {});
         }
 
-        // NOTE: if 'nextPlugin' is just a scalar ID, then the plugin
-        // is not audited!
+        // NOTE: 'nextPlugin' is not audited!
 
-        return plugins.loadDeployPlugin(nextPlugin).exec(this,settings || {});
+        return lookupDeployPlugin(nextPlugin).exec(this,settings || {});
     }
 }
 
