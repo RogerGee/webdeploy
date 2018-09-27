@@ -126,7 +126,9 @@ class DeployContext {
         }
     }
 
-    // Gets Promise. Sends control to another deploy plugin.
+    // Gets Promise. Sends control to another deploy plugin. The 'nextPlugin'
+    // must be an object, either an already loaded plugin or a plugin loader
+    // object.
     chain(nextPlugin,settings) {
         // Execute plugin directly if it is an already-loaded plugin
         // object. This is just anything that has an exec property.
@@ -134,8 +136,6 @@ class DeployContext {
         if (nextPlugin.exec) {
             return nextPlugin.exec(this,settings || {});
         }
-
-        // NOTE: 'nextPlugin' is not audited!
 
         return lookupDeployPlugin(nextPlugin).exec(this,settings || {});
     }

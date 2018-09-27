@@ -98,16 +98,29 @@ class Deployer {
 
         this.context = new DeployContext(this.deployPath,builder);
 
-        // Hijack the chain() method so we can issue the chain callbacks.
+        // Hijack the chain() method so we can allow string plugin IDs that map
+        // to the current deploy plugin's requires and issue the chain
+        // callbacks.
 
         this.context.chain = (nextPlugin,settings) => {
             var plugin;
+
             if (typeof nextPlugin === "object") {
                 plugin = nextPlugin;
             }
             else {
+                var version;
+                if (this.currentPlugin.plugin.requires[nextPlugin]) {
+                    version = this.currentPlugin.plugin.requires[nextPlugin];
+                }
+                else {
+                    version = 'latest';
+                }
+
                 plugin = {
-                    pluginId: nextPlugin
+                    id: nextPlugin, // included for the 'beforeChain' callback
+                    pluginId: nextPlugin,
+                    pluginVersion: version
                 }
             }
 

@@ -36,11 +36,15 @@ function mkdirParents(path,base) {
     }
 }
 
-function makeFullPluginId(pluginInfo) {
+function makeFullPluginId(pluginInfo,kind) {
     var { pluginId, pluginVersion } = pluginInfo;
 
     if (pluginVersion && pluginVersion != "latest") {
-        pluginId = pluginId + "@" + pluginVersion;
+        pluginId += "@" + pluginVersion;
+    }
+
+    if (typeof kind !== 'undefined') {
+        pluginId += "--" + (kind == PLUGIN_KINDS.BUILD_PLUGIN ? 'build' : 'deploy');
     }
 
     return pluginId;
@@ -84,7 +88,7 @@ function requirePlugin(pluginInfo,kind) {
         }
     }
 
-    // Augment the plugin object with its fully-qualified ID.
+    // Augment/overwrite the plugin object with its fully-qualified ID.
     plugin.id = pluginId;
 
     return plugin;
@@ -210,7 +214,7 @@ module.exports = {
 
     // Looks up a default deploy plugin.
     lookupDefaultDeployPlugin: function(pluginInfo) {
-        return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_TYPES);
+        return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
     },
 
     makeFullPluginId

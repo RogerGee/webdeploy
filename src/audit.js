@@ -8,12 +8,33 @@ const plugins = require("./plugins");
 const auditedPlugins = {}
 
 function addAuditedPlugin(pluginInfo) {
-    var pluginId = plugins.makeFullPluginId(pluginInfo);
+    var pluginId = plugins.makeFullPluginId(pluginInfo,pluginInfo.pluginKind);
+
+    if (pluginId in auditedPlugins) {
+        return auditedPlugins[pluginId];
+    }
+
     var pluginObject = plugins.loadPluginByKind(pluginInfo,pluginInfo.pluginKind);
 
     auditedPlugins[pluginId] = pluginObject;
 
     return pluginObject;
+}
+
+function addRequiresPlugins(requires,kind) {
+    let keys = Object.keys(requires);
+
+    for (let i = 0;i < keys.length;++i) {
+        let k = keys[i];
+
+        let pluginInfo = {
+            pluginId: k,
+            pluginVersion: requires[k],
+            pluginKind: kind
+        }
+
+        addAuditedPlugin(pluginInfo);
+    }
 }
 
 class PluginAuditor {
@@ -62,6 +83,11 @@ class PluginAuditor {
                 let plugin = order.plugins[j];
 
                 plugin.pluginObject = addAuditedPlugin(plugin);
+
+                // Add any required plugins as well.
+                if (plugin.pluginObject.requires) {
+                    addRequiresPlugins(plugin.pluginObject.requires,plugin.pluginKind);
+                }
             }
 
             order.callback(order.plugins);
@@ -71,15 +97,19 @@ class PluginAuditor {
     }
 }
 
+function lookupAuditedPlugin(pluginInfo,kind) {
+    var pluginId = plugins.makeFullPluginId(pluginInfo,kind);
+    if (!(pluginId in auditedPlugins)) {
+        throw new Error("Plugin '" + pluginId + "' was not in the set of audited plugins");
+    }
+
+    return auditedPlugins[pluginId];
+}
+
 function lookupBuildPlugin(pluginInfo) {
     var plugin = plugins.lookupDefaultBuildPlugin(pluginInfo);
     if (!plugin) {
-        var pluginId = plugins.makeFullPluginId(pluginInfo);
-        if (!(pluginId in auditedPlugins)) {
-            throw new Error("Plugin '" + pluginId + "' was not in the set of audited plugins");
-        }
-
-        plugin = auditedPlugins[pluginId];
+        plugin = lookupAuditedPlugin(pluginInfo,plugins.PLUGIN_KINDS.BUILD_PLUGIN);
     }
 
     return plugin;
@@ -88,12 +118,7 @@ function lookupBuildPlugin(pluginInfo) {
 function lookupDeployPlugin(pluginInfo) {
     var plugin = plugins.lookupDefaultDeployPlugin(pluginInfo);
     if (!plugin) {
-        var pluginId = plugins.makeFullPluginId(pluginInfo);
-        if (!(pluginId in auditedPlugins)) {
-            throw new Error("Plugin '" + pluginId + "' was not in the set of audited plugins");
-        }
-
-        plugin = auditedPlugins[pluginId];
+        plugin = lookupAuditedPlugin(pluginInfo,plugins.PLUGIN_KINDS.DEPLOY_PLUGIN);
     }
 
     return plugin;
