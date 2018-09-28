@@ -110,7 +110,7 @@ class Deployer {
             }
             else {
                 var version;
-                if (this.currentPlugin.plugin.requires[nextPlugin]) {
+                if (this.currentPlugin.plugin.requires && nextPlugin in this.currentPlugin.plugin.requires) {
                     version = this.currentPlugin.plugin.requires[nextPlugin];
                 }
                 else {

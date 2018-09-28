@@ -86,7 +86,14 @@ class PluginAuditor {
 
                 // Add any required plugins as well.
                 if (plugin.pluginObject.requires) {
-                    addRequiresPlugins(plugin.pluginObject.requires,plugin.pluginKind);
+                    let requires = plugin.pluginObject.requires;
+
+                    if (requires.build) {
+                        addRequiresPlugins(requires.build,plugins.PLUGIN_KINDS.BUILD_PLUGIN);
+                    }
+                    if (requires.deploy) {
+                        addRequiresPlugins(requires.deploy,plugins.PLUGIN_KINDS.DEPLOY_PLUGIN);
+                    }
                 }
             }
 

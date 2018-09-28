@@ -98,19 +98,7 @@ class Builder {
                     continue;
                 }
 
-                // Apply defaults for core plugin settings.
-                if (typeof plugin.dev === 'undefined') {
-                    plugin.dev = false;
-                }
-                if (typeof plugin.build === 'undefined') {
-                    plugin.build = true;
-                }
-
-                // Skip plugin if dev and build settings do not align.
-                if (!plugin.dev && this.options.dev) {
-                    continue;
-                }
-                if (!plugin.build && this.options.type == "build") {
+                if (!this.acceptsHandler(plugin)) {
                     continue;
                 }
 
@@ -139,6 +127,11 @@ class Builder {
             .map((handler) => handler.loaderInfo);
 
         auditor.addOrder(plugins, (results) => {
+            // NOTE: The 'this.plugins' object stores both inline plugins and
+            // global (i.e. audited) plugins. We do this locally so that we can
+            // distinguish potential name collisions between inline and global
+            // plugins.
+
             // Set plugins from results.
 
             for (let i = 0;i < results.length;++i) {
@@ -147,13 +140,17 @@ class Builder {
                 this.plugins[result.pluginId] = result.pluginObject;
             }
 
-            // Create on-the-fly plugins for plugin objects providing inline
-            // handlers.
+            // Create on-the-fly (i.e. inline) plugins for plugin objects
+            // providing inline handlers.
 
             for (let i = 0;i < handlers.length;++i) {
                 var plugin = handlers[i];
 
                 if (plugin.handler) {
+                    if (plugin.id in this.plugins) {
+                        throw new Error("Plugin '" + plugin.id + "' is already loaded; cannot load inline plugin");
+                    }
+
                     this.plugins[plugin.id] = { exec: plugin.handler };
                 }
             }
@@ -238,6 +235,68 @@ class Builder {
         return false;
     }
 
+    /**
+     * Determines if the builder can use the specified handler based on its
+     * build configuration. This may exclude a handler if it doesn't fit the
+     * current build settings such as dev or build.
+     *
+     * @param Object handler
+     *  The handler object that denotes the plugin.
+     *
+     * @return Boolean
+     */
+    acceptsHandler(handler) {
+        // Apply defaults for core handler settings.
+        if (typeof handler.dev === 'undefined') {
+            handler.dev = false;
+        }
+        if (typeof handler.build === 'undefined') {
+            handler.build = true;
+        }
+
+        // Skip handler if dev and build settings do not align.
+        if (!handler.dev && this.options.dev) {
+            return false;
+        }
+        if (!handler.build && this.options.type == "build") {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Adds plugin references to the builder so it can use plugins. The plugins
+     * are denoted by the specified handler objects.
+     *
+     * @param Array handlers
+     *  An array of handler objects.
+     */
+    addHandlers(handlers) {
+        for (let i = 0;i < handlers.length;++i) {
+            let plugin = handlers[i];
+
+            if (!this.acceptsHandler(plugin)) {
+                continue;
+            }
+
+            if (!(plugin.id in this.plugins)) {
+                // Create inline plugin if needed.
+                if (plugin.handler) {
+                    this.plugins[plugin.id] = { exec: plugin.handler };
+                }
+                else {
+                    let pluginInfo = {
+                        pluginId: plugin.id,
+                        pluginVersion: plugin.version
+                    }
+
+                    this.plugins[plugin.id] = audit.lookupBuildPlugin(pluginInfo);
+                }
+            }
+        }
+    }
+
     // Pushes an initial target into the builder's set of targets. This will
     // employ the builder's includes to determine the set of handlers for the
     // new target.
@@ -274,6 +333,10 @@ class Builder {
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new Error("Builder has invalid state: not finalized");
         }
+
+        // Add the handler plugins if they are not currently in our list of
+        // plugins.
+        this.addHandlers(handlers);
 
         newTarget.level = 1;
         newTarget.setHandlers(handlers.slice());
