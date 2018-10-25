@@ -3,59 +3,39 @@
 const fs = require("fs");
 const pathModule = require("path");
 
+const sysconfig = require("./sysconfig").config;
+const { mkdirParents } = require("./utils");
+
 const PLUGIN_KINDS = {
     BUILD_PLUGIN: 0,
     DEPLOY_PLUGIN: 1
 }
 
-function mkdirParents(path,base) {
-    var parsed = pathModule.parse(path);
-    var parts = pathModule.join(parsed.dir,parsed.base).split(pathModule.sep)
-        .filter((x) => {
-            return Boolean(x);
-        })
-
-    if (!base) {
-        path = parsed.root;
-    }
-    else {
-        // Assume base exists.
-        path = base;
-    }
-
-    for (var i = 0;i < parts.length;++i) {
-        path = pathModule.join(path,parts[i]);
-
-        try {
-            fs.mkdirSync(path);
-        } catch (err) {
-            if (err.code !== 'EEXIST') {
-                throw err;
-            }
-        }
-    }
-}
-
 function requirePlugin(pluginInfo,kind) {
     // There is nothing special about a plugin - it's just a NodeJS module that
-    // we "require" like any other. There are two possible ways we require a
-    // plugin: 1) from this repository's "plugins" subdirectory or 2) globally
-    // from modules made available to NodeJS.
+    // we "require" like any other. Plugins are loaded from plugin directories
+    // configured in the system configuration.
 
+    const PLUGIN_DIRS = sysconfig.pluginDirectories;
     const { pluginId, pluginVersion } = pluginInfo;
 
     if (pluginVersion && pluginVersion != "latest") {
         pluginId = pluginId + "@" + pluginVersion;
     }
 
-    try {
-        var plugin = require(pathModule.join("../plugins",pluginId));
-    } catch (err1) {
+    for (let i = 0;i < PLUGIN_DIRS.length;++i) {
+        let next = PLUGIN_DIRS[i];
+
         try {
-            plugin = require(pluginId);
-        } catch (err2) {
-            throw err1;
+            var plugin = require(pathModule.join(next,pluginId));
+            break;
+        } catch (err1) {
+            continue;
         }
+    }
+
+    if (!plugin) {
+        throw new Error("Cannot load plugin '" + pluginId + "'");
     }
 
     // Make sure the plugin module exports the correct interface (i.e. it has an
@@ -64,7 +44,7 @@ function requirePlugin(pluginInfo,kind) {
         if (!plugin.build && kind == PLUGIN_KINDS.BUILD_PLUGIN
             || !plugin.deploy && kind == PLUGIN_KINDS.DEPLOY_PLUGIN)
         {
-            throw Error("Plugin '" + pluginId + "' does not provide required interface.");
+            throw new Error("Plugin '" + pluginId + "' does not provide required interface.");
         }
 
         if (kind == PLUGIN_KINDS.BUILD_PLUGIN) {

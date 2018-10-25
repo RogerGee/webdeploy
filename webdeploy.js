@@ -4,9 +4,11 @@
 
 const commander = require("commander");
 const path = require("path");
+
 const logger = require("./src/logger");
 const commands = require("./src/commands");
-const { version } = require("./package.json")
+const { load: loadSysconfig } = require("./src/sysconfig");
+const { VERSION } = require("./package.json")
 
 function reject(err) {
     logger.error("*[FAIL]* " + String(err));
@@ -17,17 +19,15 @@ function reject(err) {
     }
 }
 
-commander.version(version,"-v, --version");
+commander.version(VERSION,"-v, --version");
 
 commander.command("deploy [path]")
-    .option("-d, --dry-run","Perform dry run")
     .option("-f, --force","Force full deploy without consulting dependencies")
     .action((sourcePath,cmd) => {
         var options = {
-            dryRun: cmd.dryRun ? true : false,
             type: commands.types.TYPE_DEPLOY,
             force: cmd.force ? true : false
-        };
+        }
 
         if (sourcePath) {
             var localPath = path.resolve(sourcePath);
@@ -44,10 +44,9 @@ commander.command("deploy [path]")
                 logger.popIndent();
                 logger.log("*[DONE]*");
             }).catch(reject);
-    });
+    })
 
 commander.command("build [path]")
-    .option("-r, --dry-run","Perform dry run")
     .option("-p, --prod","Perform production build")
     .option("-d, --dev","Perform development build (default)")
     .option("-f, --force","Force full build without consulting dependencies")
@@ -58,11 +57,10 @@ commander.command("build [path]")
         }
 
         var options = {
-            dryRun: cmd.dryRun ? true : false,
             dev: cmd.dev || !cmd.prod,
             type: commands.types.TYPE_BUILD,
             force: cmd.force ? true : false
-        };
+        }
 
         if (sourcePath) {
             var localPath = path.resolve(sourcePath);
@@ -77,13 +75,15 @@ commander.command("build [path]")
         commands.deployLocal(localPath,options).then(() => {
             logger.popIndent();
             logger.log("*[DONE]*");
-        }).catch(reject);
-    });
+        }).catch(reject)
+    })
 
 commander.command("server")
     .option("-p, --path","Unix domain socket path")
     .action((cmd) => {
         throw new Error("webdeploy server mode is not implemented yet");
-    });
+    })
 
-commander.parse(process.argv);
+// Run the program.
+
+loadSysconfig().then(() => { commander.parse(process.argv); }).catch(reject);
