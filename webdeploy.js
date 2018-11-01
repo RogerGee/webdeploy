@@ -11,9 +11,12 @@ const { version } = require("./package.json")
 function reject(err) {
     logger.error("*[FAIL]* " + String(err));
     logger.resetIndent();
-    if (err.stack) {
-        console.error("");
-        console.error(err.stack);
+    if (err) {
+        console.log(err);
+        if (err.stack) {
+            console.error("");
+            console.error(err.stack);
+        }
     }
 }
 
@@ -44,7 +47,7 @@ commander.command("deploy [path]")
                 logger.popIndent();
                 logger.log("*[DONE]*");
             }).catch(reject);
-    });
+    })
 
 commander.command("build [path]")
     .option("-r, --dry-run","Perform dry run")
@@ -77,13 +80,14 @@ commander.command("build [path]")
         commands.deployLocal(localPath,options).then(() => {
             logger.popIndent();
             logger.log("*[DONE]*");
-        }).catch(reject);
-    });
+
+        }, reject).catch(reject);
+    })
 
 commander.command("server")
     .option("-p, --path","Unix domain socket path")
     .action((cmd) => {
         throw new Error("webdeploy server mode is not implemented yet");
-    });
+    })
 
 commander.parse(process.argv);
