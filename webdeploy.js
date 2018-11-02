@@ -11,8 +11,8 @@ const { load: loadSysconfig } = require("./src/sysconfig");
 const { VERSION } = require("./package.json")
 
 function reject(err) {
-    logger.error("*[FAIL]* " + String(err));
     logger.resetIndent();
+    logger.error("\n*[FAIL]* " + String(err));
     if (err.stack) {
         console.error("");
         console.error(err.stack);

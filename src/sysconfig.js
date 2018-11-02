@@ -11,7 +11,10 @@ const USER_CONFIG_FILE = path.join(BASEDIR,'webdeployrc');
 const USER_PLUGIN_DIR = path.join(BASEDIR,'plugin-cache');
 
 const DEFAULTS = {
-    pluginDirectories: []
+    pluginDirectories: [],
+    pluginCacheDir: "",
+    webRepos: [],
+    npmNamespaces: []
 }
 
 var configLoaded = false;
@@ -30,7 +33,7 @@ function setupSystemConfig() {
 
     var homedir = os.homedir();
     var userPluginDir = path.join(homedir,USER_PLUGIN_DIR);
-    config.pluginDirectories.push(userPluginDir);
+    config.pluginCacheDir = userPluginDir;
 
     mkdirParents(path.relative(homedir,userPluginDir),homedir);
 
@@ -63,12 +66,27 @@ function loadSystemConfig() {
                     return;
                 }
 
-                Object.assign(config,configPayload);
+                // Merge file-based configuration into the global config.
+
+                for (var key in config) {
+                    if (key in configPayload) {
+                        if (Array.isArray(config[key])) {
+                            config[key] = config[key].concat(configPayload[key]);
+                        }
+                        else {
+                            config[key] = configPayload[key];
+                        }
+                    }
+                }
             }
 
             resolve(config);
         })
     })
+}
+
+function finalizeSystemConfig() {
+    config.pluginDirectories.push(config.pluginCacheDir);
 }
 
 module.exports = {
@@ -79,9 +97,11 @@ module.exports = {
             return Promise.resolve(config);
         }
 
-        return loadSystemConfig().then((config) => {
-            return setupSystemConfig();
+        return setupSystemConfig().then((config) => {
+            return loadSystemConfig();
         }).then((config) => {
+            finalizeSystemConfig();
+
             configLoaded = true;
             return config;
         })

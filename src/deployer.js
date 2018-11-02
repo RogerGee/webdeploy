@@ -3,6 +3,7 @@
 const pluginLoader = require("./plugins");
 const audit = require("./audit");
 const DeployContext = require("./context");
+const { WebdeployError } = require("./error");
 
 const DEPLOYER_STATE_INITIAL = 0;
 const DEPLOYER_STATE_FINALIZED = 1;
@@ -10,10 +11,10 @@ const DEPLOYER_STATE_FINALIZED = 1;
 class Deployer {
     constructor(options) {
         if (!options.deployPath) {
-            throw new Error("No deploy path is provided in deployment options");
+            throw new WebdeployError("No deploy path is provided in deployment options");
         }
         if (!options.deployPlugin) {
-            throw new Error("No deploy plugin is provided in deployment options");
+            throw new WebdeployError("No deploy plugin is provided in deployment options");
         }
 
         this.context = null; // NOTE: DeployContext is created during execute() step.
@@ -28,7 +29,7 @@ class Deployer {
 
     finalize() {
         if (this.state != DEPLOYER_STATE_INITIAL) {
-            throw new Error("Deployer has invalid state: not initial");
+            throw new WebdeployError("Deployer has invalid state: not initial");
         }
         this.state = DEPLOYER_STATE_FINALIZED;
 
@@ -76,7 +77,7 @@ class Deployer {
 
     execute(builder) {
         if (this.state != DEPLOYER_STATE_FINALIZED) {
-            throw new Error("Deployer has invalid state: not finalized");
+            throw new WebdeployError("Deployer has invalid state: not finalized");
         }
 
         this.context = new DeployContext(this.deployPath,builder);

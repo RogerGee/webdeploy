@@ -4,6 +4,8 @@ const pathModule = require("path");
 const stream = require("stream");
 const process = require("process");
 
+const { WebdeployError } = require("./error");
+
 function makeOutputTarget(newTargetPath,newTargetName,options) {
     // If no broken down name was specified, then assume the name is in the
     // path.
@@ -25,7 +27,7 @@ class Target {
     constructor(sourcePath,targetName,stream,options) {
         // Ensure the sourcePath is never an absolute path.
         if (pathModule.isAbsolute(sourcePath)) {
-            throw new Error("Target sourcePath cannot be an absolute path");
+            throw new WebdeployError("Target sourcePath cannot be an absolute path");
         }
 
         // The stream is available for reading/writing the target's content.
@@ -85,7 +87,7 @@ class Target {
     // path that includes the target name.
     getDeployTargetPath() {
         if (!this.deployPath) {
-            throw new Error("Deploy path is not set on target");
+            throw new WebdeployError("Deploy path is not set on target");
         }
 
         return pathModule.join(this.deployPath,this.targetName);
@@ -96,7 +98,7 @@ class Target {
     setDeployPath(basePath) {
         // Verify that the path is absolute.
         if (!pathModule.isAbsolute(basePath)) {
-            throw new Error("Target deploy path must be an absolute path");
+            throw new WebdeployError("Target deploy path must be an absolute path");
         }
 
         this.deployPath = pathModule.join(basePath,this.deploySourcePath);

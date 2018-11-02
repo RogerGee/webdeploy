@@ -3,12 +3,14 @@
 const assert = require("assert");
 const pathModule = require("path").posix;
 const git = require("nodegit");
+
 const treeLoader = require("./tree");
 const targetModule = require("./target");
 const Builder = require("./builder");
 const Deployer = require("./deployer");
 const depends = require("./depends");
 const logger = require("./logger");
+const { WebdeployError } = require("./error");
 
 const DEPLOY_TYPES = {
     // Uses the config's "build" deployment.
@@ -241,10 +243,10 @@ function deployStartStep(tree,options) {
 
     return tree.getConfigParameter(options.type).then((deployPlugin) => {
         if (typeof deployPlugin !== "object") {
-            throw new Error("Config parameter '" + options.type + "' must be a plugin object");
+            throw new WebdeployError("Config parameter '" + options.type + "' must be a plugin object");
         }
         if (!deployPlugin.id) {
-            throw new Error("Config parameter '" + options.type + "' must have plugin id");
+            throw new WebdeployError("Config parameter '" + options.type + "' must have plugin id");
         }
 
         options.deployPlugin = deployPlugin;

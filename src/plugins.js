@@ -5,6 +5,7 @@ const pathModule = require("path");
 
 const sysconfig = require("./sysconfig").config;
 const { mkdirParents } = require("./utils");
+const { WebdeployError } = require("./error");
 
 const PLUGIN_KINDS = {
     BUILD_PLUGIN: 0,
@@ -17,7 +18,7 @@ function requirePlugin(pluginInfo,kind) {
     // configured in the system configuration.
 
     const PLUGIN_DIRS = sysconfig.pluginDirectories;
-    const { pluginId, pluginVersion } = pluginInfo;
+    var { pluginId, pluginVersion } = pluginInfo;
 
     if (pluginVersion && pluginVersion != "latest") {
         pluginId = pluginId + "@" + pluginVersion;
@@ -35,7 +36,7 @@ function requirePlugin(pluginInfo,kind) {
     }
 
     if (!plugin) {
-        throw new Error("Cannot load plugin '" + pluginId + "'");
+        throw new WebdeployError("Cannot load plugin '" + pluginId + "'");
     }
 
     // Make sure the plugin module exports the correct interface (i.e. it has an
@@ -44,7 +45,7 @@ function requirePlugin(pluginInfo,kind) {
         if (!plugin.build && kind == PLUGIN_KINDS.BUILD_PLUGIN
             || !plugin.deploy && kind == PLUGIN_KINDS.DEPLOY_PLUGIN)
         {
-            throw new Error("Plugin '" + pluginId + "' does not provide required interface.");
+            throw new WebdeployError("Plugin '" + pluginId + "' does not provide required interface.");
         }
 
         if (kind == PLUGIN_KINDS.BUILD_PLUGIN) {
@@ -119,12 +120,24 @@ const DEFAULT_DEPLOY_PLUGINS = {
 }
 
 module.exports = {
+    // Determines if the plugin is a default plugin.
+    isDefaultPlugin(pluginInfo) {
+        if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS
+            || pluginInfo.pluginId in DEFAULT_DEPLOY_PLUGINS)
+        {
+            return true;
+        }
+
+        return false;
+    },
+
     // Loads a build plugin object.
-    loadBuildPlugin: (pluginInfo) => {
+    loadBuildPlugin(pluginInfo) {
         if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS) {
             if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
-                // TODO Warn about default plugin not having non-latest version.
+                // TODO Warn about default plugin not having latest version.
             }
+
             return DEFAULT_BUILD_PLUGINS[pluginInfo.pluginId];
         }
 
@@ -132,11 +145,12 @@ module.exports = {
     },
 
     // Loads a deploy plugin object.
-    loadDeployPlugin: (pluginInfo) => {
+    loadDeployPlugin(pluginInfo) {
         if (pluginInfo.pluginId in DEFAULT_DEPLOY_PLUGINS) {
             if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
-                // TODO Warn about default plugin not having non-latest version.
+                // TODO Warn about default plugin not having latest version.
             }
+
             return DEFAULT_DEPLOY_PLUGINS[pluginInfo.pluginId];
         }
 

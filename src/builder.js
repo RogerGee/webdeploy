@@ -2,9 +2,11 @@
 
 const assert = require("assert");
 const pathModule = require("path").posix;
+
 const targetModule = require("./target");
 const pluginLoader = require("./plugins");
 const audit = require("./audit");
+const { WebdeployError } = require("./error");
 
 const BUILDER_STATE_INITIAL = 0;
 const BUILDER_STATE_FINALIZED = 1;
@@ -52,7 +54,7 @@ class Builder {
     // Pushes include configuration objects on the instance.
     pushIncludes(includes) {
         if (this.state != BUILDER_STATE_INITIAL) {
-            throw new Error("Builder has invalid state: cannot push includes");
+            throw new WebdeployError("Builder has invalid state: cannot push includes");
         }
 
         for (var i = 0;i < includes.length;++i) {
@@ -80,7 +82,7 @@ class Builder {
     // succeed.
     finalize() {
         if (this.state != BUILDER_STATE_INITIAL) {
-            throw new Error("Builder has invalid state: cannot finalize");
+            throw new WebdeployError("Builder has invalid state: cannot finalize");
         }
         this.state = BUILDER_STATE_FINALIZED;
 
@@ -163,14 +165,18 @@ class Builder {
                 }
             }
         }, (err) => {
-            return Promise.reject("Failed to audit build plugins: " + auditor.getError());
+            if (err instanceof WebdeployError) {
+                return Promise.reject("Failed to audit build plugins: " + err);
+            }
+
+            throw err;
         })
     }
 
     // Gets the number of plugins that were loaded by this builder.
     getPluginCount() {
         if (this.state != BUILDER_STATE_FINALIZED) {
-            throw new Error("Builder has invalid state: not finalized");
+            throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
         return Object.keys(this.plugins).length;
@@ -181,7 +187,7 @@ class Builder {
     // match was found.
     findTargetInclude(candidate) {
         if (this.state != BUILDER_STATE_FINALIZED) {
-            throw new Error("Builder has invalid state: not finalized");
+            throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
         var i = 0;
@@ -248,7 +254,7 @@ class Builder {
     // new target.
     pushInitialTarget(newTarget,force) {
         if (this.state != BUILDER_STATE_FINALIZED) {
-            throw new Error("Builder has invalid state: not finalized");
+            throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
         // Determine if the target is to be processed by the system if its path
@@ -277,7 +283,7 @@ class Builder {
     // handlers.
     pushInitialTargetWithHandlers(newTarget,handlers) {
         if (this.state != BUILDER_STATE_FINALIZED) {
-            throw new Error("Builder has invalid state: not finalized");
+            throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
         newTarget.level = 1;
@@ -292,7 +298,7 @@ class Builder {
     // loaded from the filesystem.
     pushInitialTargetDelayed(delayed,force) {
         if (this.state != BUILDER_STATE_FINALIZED) {
-            throw new Error("Builder has invalid state: not finalized");
+            throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
         assert(typeof delayed == "object" && "path" in delayed
@@ -317,7 +323,7 @@ class Builder {
     // Target.
     pushInitialTargetFromTree(path) {
         if (this.state != BUILDER_STATE_FINALIZED) {
-            throw new Error("Builder has invalid state: not finalized");
+            throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
         return this.tree.getBlob(path).then((blobStream) => {
@@ -332,7 +338,7 @@ class Builder {
     // Pushes a new output target given the specified parent target.
     pushOutputTarget(parentTarget,newTarget) {
         if (this.state != BUILDER_STATE_FINALIZED) {
-            throw new Error("Builder has invalid state: not finalized");
+            throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
         // Treat recursive targets as initial. This will ignore any outstanding
@@ -380,7 +386,7 @@ class Builder {
     // Returns Promise
     execute() {
         if (this.state != BUILDER_STATE_FINALIZED) {
-            throw new Error("Builder has invalid state: not finalized");
+            throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
         var callback = (resolve,reject) => {
