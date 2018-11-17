@@ -8,6 +8,7 @@ const treeLoader = require("./tree");
 const targetModule = require("./target");
 const Builder = require("./builder");
 const Deployer = require("./deployer");
+const { PluginAuditor } = require("./audit");
 const depends = require("./depends");
 const logger = require("./logger");
 const { WebdeployError } = require("./error");
@@ -79,6 +80,7 @@ function deployDeployStep(deployer,builder,options) {
 function deployBuildStep(tree,options) {
     var builder;
     var deployer;
+    var auditor = new PluginAuditor();
     var targetBasePath = "";
 
     return tree.getConfigParameter("info").then((configInfo) => {
@@ -89,12 +91,13 @@ function deployBuildStep(tree,options) {
         return tree.getConfigParameter("basePath").then((theBasePath) => {
             targetBasePath = theBasePath;
         }, (e) => {})
+
     }).then(() => {
         return tree.getConfigParameter("includes");
+
     }).then((includes) => {
         // Create builder required for the run. Finalize the builder so that all
-        // required plugins have been audited. We do this up front so that all
-        // plugins are audited before anything has been done.
+        // required plugins will be sent to the auditor.
 
         const builderOptions = {
             type: options.type,
@@ -107,11 +110,10 @@ function deployBuildStep(tree,options) {
 
         builder = new Builder(tree,builderOptions);
         builder.pushIncludes(includes);
-        return builder.finalize();
-    }).then(() => {
+        builder.finalize(auditor);
+
         // Create deployer required for the run. Finalize the deployer so that all
-        // required plugins have been audited. We do this up front so that all
-        // plugins are audited before anything has been done.
+        // required plugins will be sent to the auditor
 
         const deployerOptions = {
             deployPlugin: options.deployPlugin,
@@ -123,7 +125,14 @@ function deployBuildStep(tree,options) {
         }
 
         deployer = new Deployer(deployerOptions);
-        return deployer.finalize();
+        deployer.finalize(auditor);
+
+        // Audit all plugins before any build process has been started. This
+        // will ensure all plugins are loadable or that we error out if a plugin
+        // is not found.
+
+        return auditor.audit();
+
     }).then(() => {
         // Display message denoting number of build plugins loaded.
 
@@ -138,6 +147,7 @@ function deployBuildStep(tree,options) {
         }
 
         return Promise.resolve(new Set());
+
     }).then((ignoreSet) => {
         // Load set of initial targets from tree.
 
@@ -213,6 +223,7 @@ function deployBuildStep(tree,options) {
         }).then(() => {
             return Promise.all(targetPromises);
         })
+
     }).then(() => {
         if (builder.targets.length == 0) {
             logger.log("*No Targets*");
@@ -230,8 +241,10 @@ function deployBuildStep(tree,options) {
         }
 
         return builder.execute();
+
     }).then(() => {
         return deployDeployStep(deployer,builder,options);
+
     })
 }
 
@@ -254,6 +267,7 @@ function deployStartStep(tree,options) {
         // Load up any extra deploy plugin options from the git-config.
 
         return tree.getConfigSection(deployPlugin.id);
+
     }).then((sectionConfig) => {
         // Augment existing plugin object with discovered config section.
         var keys = Object.keys(sectionConfig);
@@ -272,6 +286,7 @@ function deployStartStep(tree,options) {
         // Load up dependency graph.
 
         return depends.loadFromTree(tree);
+
     }).then((graph) => {
         options.graph = graph;
 
@@ -297,38 +312,73 @@ function deployStartStep(tree,options) {
                 },reject).then(resolve,reject);
             }
         })
+
     }).then(() => {
         // Save the dependency graph if available.
         if (options.graph) {
             return depends.saveToTree(tree,options.graph);
         }
+
     }).then(() => {
         if (tree.name == 'RepoTree') {
             return tree.saveDeployCommit();
         }
+
     })
 }
 
-// Initiates a deployment using the specified git-repository. The "options"
-// object must contains a "type" property corresponding to one of the
-// DEPLOY_TYPES.
+/**
+ * Initiates a deployment using the specified git repository.
+ *
+ * @param {string} repo - The path to the git repository to load
+ * @param {Object} options - The list of options to pass to the commands
+ * @param {String} options.type - One of the commands.types enumerators
+ *
+ * @return {Promise} - Returns a Promise that resolves when the operation
+ *  completes or rejects when the operation fails.
+ */
 function deployRepository(repo,options) {
     return treeLoader.createRepoTree(repo).then((tree) => {
         return deployStartStep(tree,options);
     })
 }
 
-// Initiates a deployment using the files/directories from the local
-// filesystem. The "options" object must contains a "type" property
-// corresponding to one of the DEPLOY_TYPES.
+/**
+ * Initiates a deployment using the specified tree from the local filesystem.
+ *
+ * @param {string} path - The path to the tree to deploy.
+ * @param {Object} options - The list of options to pass to the commands
+ * @param {String} options.type - One of the commands.types enumerators
+ *
+ * @return {Promise} - Returns a Promise that resolves when the operation
+ *  completes or rejects when the operation fails.
+ */
 function deployLocal(path,options) {
     return treeLoader.createPathTree(path).then((tree) => {
         return deployStartStep(tree,options);
     })
 }
 
-// Initiates a deployment, deciding whether or not to use a local directory or a
-// git-repository depending on the contents of "path".
+/**
+ * Callback for deployDecide function.
+ *
+ * @callback decideCallback
+ * @param {string} type - Either "repo" or "local"
+ */
+
+/**
+ * Initiates a deployment, deciding whether or not to use a local directory or a
+ * git repository. Git repositories have precedence.
+ *
+ * @param {string} path - The path to the a git repository or local path
+ * @param {Object} options - The list of options to pass to the commands
+ * @param {String} options.type - One of the commands.types enumerators
+ * @param {decideCallback} decideCallback - A callback that is passed the
+ *   decision that was made.
+ *
+ * @return {Promise} - Returns a Promise that resolves when the operation
+ *  completes or rejects when the operation fails.
+ */
 function deployDecide(path,options,decideCallback) {
     return git.Repository.discover(path,0,pathModule.resolve(pathModule.join(path,"..")))
         .then((repoPath) => {

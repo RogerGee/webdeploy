@@ -528,7 +528,7 @@ function createPathTree(path) {
             }
 
             resolve(new PathTree(path));
-        }, reject);
+        });
     });
 }
 

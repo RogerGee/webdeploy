@@ -27,18 +27,29 @@ class Deployer {
         this.state = DEPLOYER_STATE_INITIAL;
     }
 
-    finalize() {
+    /**
+     * Prepares the deployer for finalization. The object is not actually
+     * finalized until the plugins have been audited and the auditor invokes the
+     * finalization callback.
+     *
+     * @param Object auditor
+     *  The PluginAuditor instance globally auditing all plugins.
+     */
+    finalize(auditor) {
         if (this.state != DEPLOYER_STATE_INITIAL) {
             throw new WebdeployError("Deployer has invalid state: not initial");
         }
-        this.state = DEPLOYER_STATE_FINALIZED;
 
-        // Audit deploy plugins required for the run.
+        // Gather plugin loader objects for all plugins required for the
+        // deployer.
 
-        var auditor = new audit.PluginAuditor();
-        auditor.addPluginByLoaderInfo({
+        var plugins = [];
+
+        plugins.push({
             pluginId: this.deployPlugin.id,
             pluginVersion: this.deployPlugin.version,
+            pluginKind: pluginLoader.PLUGIN_KINDS.DEPLOY_PLUGIN,
+
             // Remember plugin settings by attaching them here.
             pluginSettings: this.deployPlugin
         })
@@ -49,29 +60,35 @@ class Deployer {
                 : [this.deployPlugin.chain];
 
             for (var i = 0;i < chain.length;++i) {
-                var pluginSettings = chain[i];
-                const pluginInfo = {
+                let pluginSettings = chain[i];
+
+                plugins.push({
                     pluginId: pluginSettings.id,
                     pluginVersion: pluginSettings.version,
-                    // Remember plugin settings by attaching them here.
-                    pluginSettings: pluginSettings
-                }
+                    pluginKind: pluginLoader.PLUGIN_KINDS.DEPLOY_PLUGIN,
 
-                auditor.addPluginByLoaderInfo(pluginInfo);
+                    // Remember plugin settings by attaching them here.
+                    pluginSettings
+                })
             }
         }
 
-        return auditor.audit().then(() => {
-            // Load deploy plugins required by the run.
+        // Add order to auditor.
 
-            auditor.forEach((plugin) => {
+        auditor.addOrder(plugins, (results) => {
+            // NOTE: the order that we store plugins in this.plugins IS
+            // important and is guarenteed to be preserved by the auditor.
+
+            for (let i = 0;i < results.length;++i) {
+                let result = results[i];
+
                 this.plugins.push({
-                    plugin: pluginLoader.loadDeployPlugin(plugin),
-                    settings: plugin.pluginSettings
+                    plugin: result.pluginObject,
+                    settings: result.pluginSettings
                 })
-            })
-        }, (err) => {
-            return Promise.reject("Failed to audit deploy plugins: " + err);
+            }
+
+            this.state = DEPLOYER_STATE_FINALIZED;
         })
     }
 
@@ -82,16 +99,29 @@ class Deployer {
 
         this.context = new DeployContext(this.deployPath,builder);
 
-        // Hijack the chain() method so we can issue the chain callbacks.
+        // Hijack the chain() method so we can allow string plugin IDs that map
+        // to the current deploy plugin's requires and issue the chain
+        // callbacks.
 
         this.context.chain = (nextPlugin,settings) => {
             var plugin;
+
             if (typeof nextPlugin === "object") {
                 plugin = nextPlugin;
             }
             else {
+                var version;
+                if (this.currentPlugin.plugin.requires && nextPlugin in this.currentPlugin.plugin.requires) {
+                    version = this.currentPlugin.plugin.requires[nextPlugin];
+                }
+                else {
+                    version = 'latest';
+                }
+
                 plugin = {
-                    id: nextPlugin
+                    id: nextPlugin, // included for the 'beforeChain' callback
+                    pluginId: nextPlugin,
+                    pluginVersion: version
                 }
             }
 
@@ -99,7 +129,7 @@ class Deployer {
                 this.callbacks.beforeChain(this.currentPlugin.plugin,plugin);
             }
 
-            return DeployContext.prototype.chain.call(this.context,nextPlugin,settings).then((retval) => {
+            return DeployContext.prototype.chain.call(this.context,plugin,settings).then((retval) => {
                 if (this.callbacks.afterChain) {
                     this.callbacks.afterChain();
                 }

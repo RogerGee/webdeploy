@@ -12,17 +12,27 @@ const PLUGIN_KINDS = {
     DEPLOY_PLUGIN: 1
 }
 
+function makeFullPluginId(pluginInfo,kind) {
+    var { pluginId, pluginVersion } = pluginInfo;
+
+    if (pluginVersion && pluginVersion != "latest") {
+        pluginId += "@" + pluginVersion;
+    }
+
+    if (typeof kind !== 'undefined') {
+        pluginId += "--" + (kind == PLUGIN_KINDS.BUILD_PLUGIN ? 'build' : 'deploy');
+    }
+
+    return pluginId;
+}
+
 function requirePlugin(pluginInfo,kind) {
     // There is nothing special about a plugin - it's just a NodeJS module that
     // we "require" like any other. Plugins are loaded from plugin directories
     // configured in the system configuration.
 
     const PLUGIN_DIRS = sysconfig.pluginDirectories;
-    var { pluginId, pluginVersion } = pluginInfo;
-
-    if (pluginVersion && pluginVersion != "latest") {
-        pluginId = pluginId + "@" + pluginVersion;
-    }
+    const pluginId = makeFullPluginId(pluginInfo);
 
     for (let i = 0;i < PLUGIN_DIRS.length;++i) {
         let next = PLUGIN_DIRS[i];
@@ -54,7 +64,13 @@ function requirePlugin(pluginInfo,kind) {
         else if (kind == PLUGIN_KINDS.DEPLOY_PLUGIN) {
             plugin = plugin.deploy;
         }
+        else {
+            throw new Error("Plugin kind in not specified or incorrect");
+        }
     }
+
+    // Augment/overwrite the plugin object with its fully-qualified ID.
+    plugin.id = pluginId;
 
     return plugin;
 }
@@ -119,7 +135,30 @@ const DEFAULT_DEPLOY_PLUGINS = {
     }
 }
 
+function lookupDefaultPlugin(pluginInfo,kind) {
+    if (kind == PLUGIN_KINDS.BUILD_PLUGIN) {
+        var database = DEFAULT_BUILD_PLUGINS;
+    }
+    else if (kind == PLUGIN_KINDS.DEPLOY_PLUGIN) {
+        var database = DEFAULT_DEPLOY_PLUGINS;
+    }
+    else {
+        return;
+    }
+
+    if (pluginInfo.pluginId in database) {
+        if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
+            // TODO Warn about default plugin not having latest version.
+
+        }
+
+        return database[pluginInfo.pluginId];
+    }
+}
+
 module.exports = {
+    PLUGIN_KINDS,
+
     // Determines if the plugin is a default plugin.
     isDefaultPlugin(pluginInfo) {
         if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS
@@ -141,7 +180,7 @@ module.exports = {
             return DEFAULT_BUILD_PLUGINS[pluginInfo.pluginId];
         }
 
-        return requirePlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
+        return plugin;
     },
 
     // Loads a deploy plugin object.
@@ -154,6 +193,27 @@ module.exports = {
             return DEFAULT_DEPLOY_PLUGINS[pluginInfo.pluginId];
         }
 
-        return requirePlugin(pluginInfo.pluginId,PLUGIN_KINDS.DEPLOY_PLUGIN);
-    }
+        return plugin;
+    },
+
+    loadPluginByKind(pluginInfo,kind) {
+        var plugin = lookupDefaultPlugin(pluginInfo,kind);
+        if (!plugin) {
+            plugin = requirePlugin(pluginInfo,kind);
+        }
+
+        return plugin;
+    },
+
+    // Looks up a default build plugin.
+    lookupDefaultBuildPlugin(pluginInfo) {
+        return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
+    },
+
+    // Looks up a default deploy plugin.
+    lookupDefaultDeployPlugin(pluginInfo) {
+        return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
+    },
+
+    makeFullPluginId
 }

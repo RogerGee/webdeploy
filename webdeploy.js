@@ -75,7 +75,8 @@ commander.command("build [path]")
         commands.deployLocal(localPath,options).then(() => {
             logger.popIndent();
             logger.log("*[DONE]*");
-        }).catch(reject)
+
+        }, reject).catch(reject);
     })
 
 commander.command("server")
