@@ -15,7 +15,7 @@ const { WebdeployError } = require("./error");
 const auditedPlugins = {}
 
 function addAuditedPlugin(pluginInfo) {
-    var pluginId = pluginModule.makeFullPluginId(pluginInfo,pluginInfo.pluginKind);
+    var pluginId = pluginModule.makeFullPluginId(pluginInfo);
 
     if (pluginId in auditedPlugins) {
         return auditedPlugins[pluginId];
@@ -62,7 +62,7 @@ class PluginAuditor {
     addPlugins(plugins,kind) {
         for (let i = 0;i < plugins.length;++i) {
             var plugin = plugins[i];
-            var pluginId = pluginModule.makeFullPluginId(plugin,plugin.pluginKind);
+            var pluginId = pluginModule.makeFullPluginId(plugin,plugin);
 
             if (pluginId in this.plugins) {
                 continue;
@@ -127,8 +127,10 @@ class PluginAuditor {
             }
 
             function errfn(err) {
-                rejected = true;
-                reject(err);
+                if (!rejected) {
+                    rejected = true;
+                    reject(err);
+                }
             }
 
             function nextfn() {
@@ -141,7 +143,7 @@ class PluginAuditor {
                 // latest; this allows us to maintain latest and versioned
                 // separately.
                 if (pluginVersion && pluginVersion != "latest") {
-                    pluginId = pluginModule.makeFullPluginId(pluginInfo,pluginInfo.pluginKind);
+                    pluginId = pluginModule.makeFullPluginId(pluginInfo);
                 }
 
                 if (pluginModule.isDefaultPlugin(pluginInfo)) {
@@ -172,7 +174,8 @@ class PluginAuditor {
                                 format("Plugin '%s' must have a version constraint",pluginId)));
                         }
                         else {
-                            pluginCache.installPluginDirect(pluginInfo,donefn,errfn);
+                            process.exit();
+                            pluginCache.installPluginDirect(pluginInfo,() => donefn(pluginInfo),errfn);
                         }
                     }
                 }
@@ -184,7 +187,7 @@ class PluginAuditor {
 }
 
 function lookupAuditedPlugin(pluginInfo,kind) {
-    var pluginId = pluginModule.makeFullPluginId(pluginInfo,kind);
+    var pluginId = pluginModule.makeFullPluginId(pluginInfo);
     if (!(pluginId in auditedPlugins)) {
         throw new Error("Plugin '" + pluginId + "' was not in the set of audited plugins");
     }

@@ -92,13 +92,25 @@ function installPluginFromWebRepo(plugin,baseURL,donefn,continuefn,errfn) {
             return;
         }
 
-        res.pipe(
-            tar.x({
-                C: plugin.path
-            })
-        )
+        fs.mkdir(plugin.path, (err) => {
+            if (err && err.code != 'EEXIST') {
+                errfn(err);
+                return;
+            }
 
-        res.on('end',donefn);
+            var tarstream = tar.x({
+                cwd: plugin.path,
+                onerror(err) {
+                    console.log(err);
+                }
+            })
+
+            tarstream.on('warn',errfn);
+            tarstream.on('err',errfn);
+            tarstream.on('end',donefn);
+
+            res.pipe(tarstream);
+        })
     })
 }
 

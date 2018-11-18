@@ -12,15 +12,11 @@ const PLUGIN_KINDS = {
     DEPLOY_PLUGIN: 1
 }
 
-function makeFullPluginId(pluginInfo,kind) {
+function makeFullPluginId(pluginInfo) {
     var { pluginId, pluginVersion } = pluginInfo;
 
     if (pluginVersion && pluginVersion != "latest") {
         pluginId += "@" + pluginVersion;
-    }
-
-    if (typeof kind !== 'undefined') {
-        pluginId += "--" + (kind == PLUGIN_KINDS.BUILD_PLUGIN ? 'build' : 'deploy');
     }
 
     return pluginId;
