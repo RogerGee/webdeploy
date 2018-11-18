@@ -6,6 +6,7 @@ const { format } = require("util");
 const http = require("http");
 const https = require("https");
 const urlparse = require("url").parse;
+const child_process = require("child_process");
 
 const tar = require("tar");
 
@@ -88,7 +89,9 @@ function installPluginFromWebRepo(plugin,baseURL,donefn,continuefn,errfn) {
         }
 
         if (!/application\/x-gzip/.test(contentType)) {
-            errfn(new WebdeployError(format("Server returned invalid package response")));
+            errfn(new WebdeployError(
+                format("Server returned invalid package response type: '%s'",
+                       contentType)));
             return;
         }
 
@@ -107,10 +110,34 @@ function installPluginFromWebRepo(plugin,baseURL,donefn,continuefn,errfn) {
 
             tarstream.on('warn',errfn);
             tarstream.on('err',errfn);
-            tarstream.on('end',donefn);
+            tarstream.on('end',() => {
+                runNpmOnPlugin(plugin,donefn,errfn);
+            })
 
             res.pipe(tarstream);
         })
+    })
+}
+
+function runNpmOnPlugin(plugin,donefn,errfn) {
+    var proc = child_process.spawn("npm",["install"], {
+        cwd: plugin.path,
+        stdio: 'inherit'
+    })
+
+    proc.on('exit', (code,signal) => {
+        if (signal) {
+            errfn(new WebdeployError(
+                format("The 'npm' subprocess exited with signal '%s'",
+                       signal)));
+        }
+        else if (code != 0) {
+            errfn(new WebdeployError(
+                format("The 'npm' subprocess exited non-zero")));
+        }
+        else {
+            donefn();
+        }
     })
 }
 

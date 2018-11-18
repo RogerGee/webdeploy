@@ -8,6 +8,7 @@ const sysconfig = require("./sysconfig").config;
 const pluginModule = require("./plugins");
 const pluginCache = require("./plugin-cache");
 const { WebdeployError } = require("./error");
+const logger = require("./logger");
 
 // Cache plugins that have been audited here. Plugins are keyed by their
 // fully-qualified names.
@@ -174,7 +175,6 @@ class PluginAuditor {
                                 format("Plugin '%s' must have a version constraint",pluginId)));
                         }
                         else {
-                            process.exit();
                             pluginCache.installPluginDirect(pluginInfo,() => donefn(pluginInfo),errfn);
                         }
                     }
