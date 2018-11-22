@@ -11,20 +11,27 @@ const { WebdeployError } = require("./error");
 const logger = require("./logger");
 
 // Cache plugins that have been audited here. Plugins are keyed by their
-// fully-qualified names.
+// fully-qualified names AND plugin kinds (i.e. build or deploy).
 
-const auditedPlugins = {}
+const auditedPlugins = { build:{}, deploy:{} };
 
 function addAuditedPlugin(pluginInfo) {
+    var bucket;
     var pluginId = pluginModule.makeFullPluginId(pluginInfo);
 
-    if (pluginId in auditedPlugins) {
-        return auditedPlugins[pluginId];
+    if (pluginInfo.pluginKind == pluginModule.PLUGIN_KINDS.BUILD_PLUGIN) {
+        bucket = auditedPlugins.build;
+    }
+    else {
+        bucket = auditedPlugins.deploy;
+    }
+
+    if (pluginId in bucket) {
+        return bucket[pluginId];
     }
 
     var pluginObject = pluginModule.loadPluginByKind(pluginInfo,pluginInfo.pluginKind);
-
-    auditedPlugins[pluginId] = pluginObject;
+    bucket[pluginId] = pluginObject;
 
     return pluginObject;
 }
@@ -36,7 +43,7 @@ function addAuditedPlugin(pluginInfo) {
 class PluginAuditor {
     constructor() {
         this.orders = [];
-        this.plugins = {};
+        this.plugins = { build:{}, deploy:{} };
     }
 
     /**
@@ -62,14 +69,22 @@ class PluginAuditor {
 
     addPlugins(plugins,kind) {
         for (let i = 0;i < plugins.length;++i) {
+            var bucket;
             var plugin = plugins[i];
             var pluginId = pluginModule.makeFullPluginId(plugin,plugin);
 
-            if (pluginId in this.plugins) {
+            if (plugin.pluginKind == pluginModule.PLUGIN_KINDS.BUILD_PLUGIN) {
+                bucket = this.plugins.build;
+            }
+            else {
+                bucket = this.plugins.deploy;
+            }
+
+            if (pluginId in bucket) {
                 continue;
             }
 
-            this.plugins[pluginId] = plugin;
+            bucket[pluginId] = plugin;
         }
     }
 
@@ -83,7 +98,7 @@ class PluginAuditor {
         const PLUGIN_DIRS = sysconfig.pluginDirectories;
         const orders = this.orders;
 
-        var queue = Object.values(this.plugins);
+        var queue = Object.values(this.plugins.build).concat(Object.values(this.plugins.deploy));
         queue.pop = Array.prototype.shift;
 
         return new Promise((resolve,reject) => {
@@ -99,15 +114,21 @@ class PluginAuditor {
 
                     if (requires.build) {
                         for (let i = 0;i < requires.build.length;++i) {
-                            var newPlugin = {pluginKind: PLUGIN_KINDS.BUILD_PLUGIN};
-                            Object.assign(newPlugin,requires.build[i]);
+                            var newPlugin = {
+                                pluginKind: pluginModule.PLUGIN_KINDS.BUILD_PLUGIN
+                            }
+
+                            Object.assign(newPlugin,pluginModule.parseFullPluginId(requires.build[i]));
                             queue.push(newPlugin);
                         }
                     }
                     if (requires.deploy) {
                         for (let i = 0;i < requires.deploy.length;++i) {
-                            var newPlugin = {pluginKind: PLUGIN_KINDS.DEPLOY_PLUGIN};
-                            Object.assign(newPlugin,requires.deploy[i]);
+                            var newPlugin = {
+                                pluginKind: pluginModule.PLUGIN_KINDS.DEPLOY_PLUGIN
+                            }
+
+                            Object.assign(newPlugin,pluginModule.parseFullPluginId(requires.deploy[i]));
                             queue.push(newPlugin);
                         }
                     }
@@ -186,19 +207,15 @@ class PluginAuditor {
     }
 }
 
-function lookupAuditedPlugin(pluginInfo,kind) {
-    var pluginId = pluginModule.makeFullPluginId(pluginInfo);
-    if (!(pluginId in auditedPlugins)) {
-        throw new Error("Plugin '" + pluginId + "' was not in the set of audited plugins");
-    }
-
-    return auditedPlugins[pluginId];
-}
-
 function lookupBuildPlugin(pluginInfo) {
     var plugin = pluginModule.lookupDefaultBuildPlugin(pluginInfo);
     if (!plugin) {
-        plugin = lookupAuditedPlugin(pluginInfo,pluginModule.PLUGIN_KINDS.BUILD_PLUGIN);
+        var pluginId = pluginModule.makeFullPluginId(pluginInfo);
+        if (!(pluginId in auditedPlugins.build)) {
+            throw new Error("Plugin '" + pluginId + "' was not in the set of audited plugins");
+        }
+
+        return auditedPlugins.build[pluginId];
     }
 
     return plugin;
@@ -207,7 +224,12 @@ function lookupBuildPlugin(pluginInfo) {
 function lookupDeployPlugin(pluginInfo) {
     var plugin = pluginModule.lookupDefaultDeployPlugin(pluginInfo);
     if (!plugin) {
-        plugin = lookupAuditedPlugin(pluginInfo,pluginModule.PLUGIN_KINDS.DEPLOY_PLUGIN);
+        var pluginId = pluginModule.makeFullPluginId(pluginInfo);
+        if (!(pluginId in auditedPlugins.deploy)) {
+            throw new Error("Plugin '" + pluginId + "' was not in the set of audited plugins");
+        }
+
+        return auditedPlugins.deploy[pluginId];
     }
 
     return plugin;

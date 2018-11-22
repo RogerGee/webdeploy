@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const pathModule = require("path");
+const { format } = require("util");
 
 const sysconfig = require("./sysconfig").config;
 const { mkdirParents } = require("./utils");
@@ -20,6 +21,26 @@ function makeFullPluginId(pluginInfo) {
     }
 
     return pluginId;
+}
+
+function parseFullPluginId(pluginIdString) {
+    var parts = pluginIdString.split('@');
+
+    if (parts.length == 1) {
+        return {
+            pluginId: parts[0],
+            pluginVersion: 'latest'
+        }
+    }
+
+    if (parts.length != 2) {
+        throw new WebdeployError(format("Invalid plugin '%s'",pluginIdString));
+    }
+
+    return {
+        pluginId: parts[0],
+        pluginVersion: parts[1]
+    }
 }
 
 function requirePlugin(pluginInfo,kind) {
@@ -73,6 +94,7 @@ function requirePlugin(pluginInfo,kind) {
 
 const DEFAULT_BUILD_PLUGINS = {
     pass: {
+        id: "pass",
         exec: (target) => {
             return new Promise((resolve,reject) => {
                 resolve(target.pass());
@@ -211,5 +233,6 @@ module.exports = {
         return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
     },
 
-    makeFullPluginId
+    makeFullPluginId,
+    parseFullPluginId
 }
