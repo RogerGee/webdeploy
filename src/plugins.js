@@ -10,18 +10,23 @@ const PLUGIN_KINDS = {
 
 function mkdirParents(path,base) {
     var parsed = pathModule.parse(path);
-    var parts = pathModule.join(parsed.dir,parsed.base).split(pathModule.sep)
-        .filter((x) => {
-            return Boolean(x);
-        })
 
     if (!base) {
         path = parsed.root;
+
+        if (parsed.dir.substr(0,parsed.root.length) == parsed.root) {
+            parsed.dir = parsed.dir.substr(parsed.root.length);
+        }
     }
     else {
         // Assume base exists.
         path = base;
     }
+
+    var parts = pathModule.join(parsed.dir,parsed.base).split(pathModule.sep)
+        .filter((x) => {
+            return Boolean(x);
+        })
 
     for (var i = 0;i < parts.length;++i) {
         path = pathModule.join(path,parts[i]);
