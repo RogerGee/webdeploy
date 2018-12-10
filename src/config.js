@@ -117,7 +117,7 @@ function loadFromTree(tree) {
                     if ((err.errno == git.Error.CODE.ENOTFOUND
                          && tree.name == 'RepoTree'
                          && err.message.match('does not exist in the given tree'))
-                        || (err.errno == -2 && tree.name == 'PathTree')
+                        || (err.code == 'ENOENT' && tree.name == 'PathTree')
                         || (err.name == 'ConfigNotFoundError'))
                     {
                         nextAttempt();
