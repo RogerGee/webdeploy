@@ -2,75 +2,68 @@
 
 const fs = require("fs");
 const pathModule = require("path");
+const { format } = require("util");
+
+const sysconfig = require("./sysconfig").config;
+const { mkdirParents } = require("./utils");
+const { WebdeployError } = require("./error");
 
 const PLUGIN_KINDS = {
     BUILD_PLUGIN: 0,
     DEPLOY_PLUGIN: 1
 }
 
-function mkdirParents(path,base) {
-    var parsed = pathModule.parse(path);
-
-    if (!base) {
-        path = parsed.root;
-
-        if (parsed.dir.substr(0,parsed.root.length) == parsed.root) {
-            parsed.dir = parsed.dir.substr(parsed.root.length);
-        }
-    }
-    else {
-        // Assume base exists.
-        path = base;
-    }
-
-    var parts = pathModule.join(parsed.dir,parsed.base).split(pathModule.sep)
-        .filter((x) => {
-            return Boolean(x);
-        })
-
-    for (var i = 0;i < parts.length;++i) {
-        path = pathModule.join(path,parts[i]);
-
-        try {
-            fs.mkdirSync(path);
-        } catch (err) {
-            if (err.code !== 'EEXIST') {
-                throw err;
-            }
-        }
-    }
-}
-
-function makeFullPluginId(pluginInfo,kind) {
+function makeFullPluginId(pluginInfo) {
     var { pluginId, pluginVersion } = pluginInfo;
 
     if (pluginVersion && pluginVersion != "latest") {
         pluginId += "@" + pluginVersion;
     }
 
-    if (typeof kind !== 'undefined') {
-        pluginId += "--" + (kind == PLUGIN_KINDS.BUILD_PLUGIN ? 'build' : 'deploy');
+    return pluginId;
+}
+
+function parseFullPluginId(pluginIdString) {
+    var parts = pluginIdString.split('@');
+
+    if (parts.length == 1) {
+        return {
+            pluginId: parts[0],
+            pluginVersion: 'latest'
+        }
     }
 
-    return pluginId;
+    if (parts.length != 2) {
+        throw new WebdeployError(format("Invalid plugin '%s'",pluginIdString));
+    }
+
+    return {
+        pluginId: parts[0],
+        pluginVersion: parts[1]
+    }
 }
 
 function requirePlugin(pluginInfo,kind) {
     // There is nothing special about a plugin - it's just a NodeJS module that
-    // we "require" like any other. There are two possible ways we require a
-    // plugin: 1) from this repository's "plugins" subdirectory or 2) globally
-    // from modules made available to NodeJS.
+    // we "require" like any other. Plugins are loaded from plugin directories
+    // configured in the system configuration.
 
+    const PLUGIN_DIRS = sysconfig.pluginDirectories;
     const pluginId = makeFullPluginId(pluginInfo);
 
-    try {
-        var plugin = require(pathModule.join("../plugins",pluginId));
-    } catch (err1) {
+    for (let i = 0;i < PLUGIN_DIRS.length;++i) {
+        let next = PLUGIN_DIRS[i];
+
         try {
-            plugin = require(pluginId);
-        } catch (err2) {
-            throw err1;
+            var plugin = require(pathModule.join(next,pluginId));
+            break;
+        } catch (err1) {
+            continue;
         }
+    }
+
+    if (!plugin) {
+        throw new WebdeployError("Cannot load plugin '" + pluginId + "'");
     }
 
     // Make sure the plugin module exports the correct interface (i.e. it has an
@@ -79,7 +72,7 @@ function requirePlugin(pluginInfo,kind) {
         if (!plugin.build && kind == PLUGIN_KINDS.BUILD_PLUGIN
             || !plugin.deploy && kind == PLUGIN_KINDS.DEPLOY_PLUGIN)
         {
-            throw Error("Plugin '" + pluginId + "' does not provide required interface.");
+            throw new WebdeployError("Plugin '" + pluginId + "' does not provide required interface.");
         }
 
         if (kind == PLUGIN_KINDS.BUILD_PLUGIN) {
@@ -101,6 +94,7 @@ function requirePlugin(pluginInfo,kind) {
 
 const DEFAULT_BUILD_PLUGINS = {
     pass: {
+        id: "pass",
         exec: (target) => {
             return new Promise((resolve,reject) => {
                 resolve(target.pass());
@@ -183,27 +177,44 @@ function lookupDefaultPlugin(pluginInfo,kind) {
 module.exports = {
     PLUGIN_KINDS,
 
+    // Determines if the plugin is a default plugin.
+    isDefaultPlugin(pluginInfo) {
+        if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS
+            || pluginInfo.pluginId in DEFAULT_DEPLOY_PLUGINS)
+        {
+            return true;
+        }
+
+        return false;
+    },
+
     // Loads a build plugin object.
-    loadBuildPlugin: function(pluginInfo) {
-        var plugin = lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
-        if (!plugin) {
-            plugin = requirePlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
+    loadBuildPlugin(pluginInfo) {
+        if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS) {
+            if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
+                // TODO Warn about default plugin not having latest version.
+            }
+
+            return DEFAULT_BUILD_PLUGINS[pluginInfo.pluginId];
         }
 
         return plugin;
     },
 
     // Loads a deploy plugin object.
-    loadDeployPlugin: function(pluginInfo) {
-        var plugin = lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
-        if (!plugin) {
-            plugin = requirePlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
+    loadDeployPlugin(pluginInfo) {
+        if (pluginInfo.pluginId in DEFAULT_DEPLOY_PLUGINS) {
+            if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
+                // TODO Warn about default plugin not having latest version.
+            }
+
+            return DEFAULT_DEPLOY_PLUGINS[pluginInfo.pluginId];
         }
 
         return plugin;
     },
 
-    loadPluginByKind: function(pluginInfo,kind) {
+    loadPluginByKind(pluginInfo,kind) {
         var plugin = lookupDefaultPlugin(pluginInfo,kind);
         if (!plugin) {
             plugin = requirePlugin(pluginInfo,kind);
@@ -213,14 +224,15 @@ module.exports = {
     },
 
     // Looks up a default build plugin.
-    lookupDefaultBuildPlugin: function(pluginInfo) {
+    lookupDefaultBuildPlugin(pluginInfo) {
         return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
     },
 
     // Looks up a default deploy plugin.
-    lookupDefaultDeployPlugin: function(pluginInfo) {
+    lookupDefaultDeployPlugin(pluginInfo) {
         return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
     },
 
-    makeFullPluginId
+    makeFullPluginId,
+    parseFullPluginId
 }

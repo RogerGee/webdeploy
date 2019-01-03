@@ -4,7 +4,9 @@ const fs = require("fs");
 const path = require("path").posix;
 const git = require("nodegit");
 const stream = require("stream");
+
 const configuration = require("./config.js");
+const { WebdeployError } = require("./error");
 
 const CONFIG_LAST_DEPLOY = "cache.lastDeploy";
 
@@ -101,7 +103,7 @@ function repoTreeGetTree($this,treePath,commit) {
 
                 return tree.getEntry(treePath).then((entry) => {
                     if (!entry.isTree()) {
-                        return Promise.reject(new Error("Path does not refer to tree"));
+                        return Promise.reject(new WebdeployError("Path does not refer to tree"));
                     }
 
                     return entry.getTree();
@@ -152,7 +154,7 @@ function repoTreeGetBlob($this,blobPath,tree) {
     return tree.getEntry(blobPath)
         .then((entry) => {
             if (!entry.isBlob()) {
-                return Promise.reject(new Error("Path does not refer to a blob"));
+                return Promise.reject(new WebdeployError("Path does not refer to a blob"));
             }
 
             return entry.getBlob();
@@ -382,7 +384,7 @@ class PathTree {
                 resolve($this.fileConfig[param]);
             }
             else {
-                reject(new Error("No such configuration parameter: '" + param + "'"));
+                reject(new WebdeployError("No such configuration parameter: '" + param + "'"));
             }
         });
     }

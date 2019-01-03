@@ -4,6 +4,8 @@ const pathModule = require('path');
 const requireFromString = require('require-from-string');
 const git = require('nodegit');
 
+const { WebdeployError } = require("./error");
+
 function verifyConfigObject(object) {
     return true;
 }
@@ -56,7 +58,7 @@ function loadFromTree(tree) {
                                 resolve(config);
                             }
                             else {
-                                reject(new Error("Config in file '" + blobName + "' failed verification"));
+                                reject(new WebdeployError("Config in file '" + blobName + "' failed verification"));
                             }
                         })
                     })
@@ -88,7 +90,7 @@ function loadFromTree(tree) {
                                     resolve(toplevel.webdeploy);
                                 }
                                 else {
-                                    reject(loadError = new Error(
+                                    reject(loadError = new WebdeployError(
                                         "Config in JSON file '" + blobName + "' failed verification"));
                                 }
                             }
@@ -102,7 +104,7 @@ function loadFromTree(tree) {
             }
             else {
                 if (!loadError) {
-                    loadError = new Error("Couldn't find suitable configuration file in tree");
+                    loadError = new WebdeployError("Couldn't find suitable configuration file in tree");
                 }
                 reject(loadError);
                 return;
@@ -122,8 +124,11 @@ function loadFromTree(tree) {
                     {
                         nextAttempt();
                     }
-                    else {
+                    else if (err instanceof WebdeployError) {
                         reject(err);
+                    }
+                    else {
+                        throw err;
                     }
                 })
         }
