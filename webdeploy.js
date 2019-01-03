@@ -22,6 +22,7 @@ function reject(err) {
 commander.version(VERSION,"-v, --version");
 
 commander.command("deploy [path]")
+    .description("runs the deploy task on a webdeploy project")
     .option("-f, --force","Force full deploy without consulting dependencies")
     .action((sourcePath,cmd) => {
         var options = {
@@ -47,6 +48,7 @@ commander.command("deploy [path]")
     })
 
 commander.command("build [path]")
+    .description("runs the build task on a webdeploy project")
     .option("-p, --prod","Perform production build")
     .option("-d, --dev","Perform development build (default)")
     .option("-f, --force","Force full build without consulting dependencies")
@@ -79,12 +81,13 @@ commander.command("build [path]")
         }, reject).catch(reject);
     })
 
-commander.command("server")
-    .option("-p, --path","Unix domain socket path")
-    .action((cmd) => {
-        throw new Error("webdeploy server mode is not implemented yet");
-    })
-
 // Run the program.
 
-loadSysconfig().then(() => { commander.parse(process.argv); }).catch(reject);
+loadSysconfig().then(() => {
+    commander.parse(process.argv);
+
+    if (commander.args.length == 0) {
+        commander.help();
+    }
+
+}).catch(reject);
