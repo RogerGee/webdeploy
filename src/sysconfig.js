@@ -14,7 +14,7 @@ const DEFAULTS = {
     pluginDirectories: [],
     pluginCacheDir: "",
     webRepos: [],
-    npmNamespaces: []
+    npmRepos: []
 }
 
 var configLoaded = false;

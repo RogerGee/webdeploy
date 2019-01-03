@@ -42,7 +42,12 @@ that has the following form:
 
 ```json
 {
-  "id": "plugin-id"
+  "id": "plugin-id",
+  "version": "1.0.0",
+
+  // This property stores the set of plugins required by the deploy plugin. Each
+  // property maps a plugin ID to its required version.
+  requires: {}
 }
 ```
 

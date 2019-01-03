@@ -8,7 +8,6 @@ const sysconfig = require("./sysconfig").config;
 const pluginModule = require("./plugins");
 const pluginCache = require("./plugin-cache");
 const { WebdeployError } = require("./error");
-const logger = require("./logger");
 
 // Cache plugins that have been audited here. Plugins are keyed by their
 // fully-qualified names AND plugin kinds (i.e. build or deploy).
@@ -44,6 +43,34 @@ class PluginAuditor {
     constructor() {
         this.orders = [];
         this.plugins = { build:{}, deploy:{} };
+    }
+
+    /**
+     * Attaches a logger to the auditor. The auditor will write log messages to
+     * this logger as it audits/installs plugins.
+     *
+     * @param Object logger
+     */
+    attachLogger(logger) {
+        this.logger = logger;
+    }
+
+    log(a) {
+        if (this.logger) {
+            this.logger.log(a);
+        }
+    }
+
+    beginLog() {
+        if (this.logger) {
+            this.logger.pushIndent();
+        }
+    }
+
+    endLog() {
+        if (this.logger) {
+            this.logger.popIndent();
+        }
     }
 
     /**
@@ -101,12 +128,13 @@ class PluginAuditor {
         var queue = Object.values(this.plugins.build).concat(Object.values(this.plugins.deploy));
         queue.pop = Array.prototype.shift;
 
+        this.log("Auditing plugins");
+        this.beginLog();
+
         return new Promise((resolve,reject) => {
             var rejected = false;
 
-            nextfn();
-
-            function donefn(plugin) {
+            let donefn = (plugin) => {
                 // Load the plugin and attach to loader info. Enqueue any required plugins here.
                 plugin.pluginObject = addAuditedPlugin(plugin);
                 if (plugin.pluginObject.requires) {
@@ -141,6 +169,9 @@ class PluginAuditor {
                         order.callback(order.plugins);
                     })
 
+                    this.log("Done auditing plugins");
+                    this.endLog();
+
                     resolve();
                 }
                 else {
@@ -148,14 +179,14 @@ class PluginAuditor {
                 }
             }
 
-            function errfn(err) {
+            let errfn = (err) => {
                 if (!rejected) {
                     rejected = true;
                     reject(err);
                 }
             }
 
-            function nextfn() {
+            let nextfn = () => {
                 let pluginInfo = queue.pop();
                 let index = 0;
 
@@ -173,7 +204,7 @@ class PluginAuditor {
                     return;
                 }
 
-                function completefn() {
+                let completefn = () => {
                     if (rejected) {
                         return;
                     }
@@ -196,13 +227,15 @@ class PluginAuditor {
                                 format("Plugin '%s' must have a version constraint",pluginId)));
                         }
                         else {
-                            pluginCache.installPluginDirect(pluginInfo,() => donefn(pluginInfo),errfn);
+                            pluginCache.installPluginDirect(pluginInfo,() => donefn(pluginInfo),errfn,this.logger);
                         }
                     }
                 }
 
                 completefn();
             }
+
+            nextfn();
         })
     }
 }

@@ -131,6 +131,8 @@ function deployBuildStep(tree,options) {
         // will ensure all plugins are loadable or that we error out if a plugin
         // is not found.
 
+        auditor.attachLogger(logger);
+
         return auditor.audit();
 
     }).then(() => {

@@ -181,6 +181,18 @@ properties in their own custom plugin settings.
 ```js
 {
   id: "<plugin-id>",
+  
+  // This property stores the set of plugins required by the deploy plugin. Each
+  // property under 'build' and 'deploy' maps a plugin ID to its required
+  // version. This need not include the plugins defined in the 'chain'
+  // property but must include plugins that are dynamically chained using the
+  // context's chain method.
+  //
+  // NOTE: built-in plugins need not and should not be specified in requires.
+  requires: {
+    build: {},
+    deploy: {}
+  },
 
   // This property can contain a recursive deploy plugin settings object
   // denoting a default chain. An array of such objects will chain in sequence.

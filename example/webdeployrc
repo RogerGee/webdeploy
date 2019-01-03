@@ -1,0 +1,32 @@
+{
+  // Defines the default plugin directory(ies). These are used to pull 'latest'
+  // plugins.
+  "pluginDirectories": [
+    "/var/webdeploy/testplugins"
+  ],
+
+  // Defines the directory in which webdeploy caches downloaded plugins.
+  "pluginCacheDir": "/var/webdeploy/plugincache",
+
+  // Defines the configuration of zero or more web repositories from which
+  // plugins are downloaded.
+  "webRepos": [
+    {
+      "repoURL": "https://www.myorg.com/webdeploy/repo"
+    }
+  ],
+
+  // Defines the configuration of zero or more NPM repositories from which
+  // plugins are downloaded.
+  "npmRepos": [
+    {
+      "repoURL": "https://npm.example.com/repository",
+      "namespace": "@myorg"
+    },
+    {
+      "repoURL": "https://npm.example.com/other-repository",
+      "namespace": "@myotherorg",
+      "prefix": "webdeploy--"
+    }
+  ]
+}

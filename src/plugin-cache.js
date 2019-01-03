@@ -34,19 +34,21 @@ function makePlugin(pluginInfo) {
 }
 
 function makeRepo(type) {
-    return (repo) => {
+    return (options) => {
         return {
-            path: repo,
+            options,
             type
         }
     }
 }
 
-function installPluginFromRepos(plugin,repos,donefn,errfn,index) {
+function installPluginFromRepos(plugin,repos,logger,donefn,errfn,index) {
     index = index || 0;
 
     if (index >= repos.length) {
-        errfn(new WebdeployError("Couldn't find plugin package in any repository"));
+        errfn(new WebdeployError(
+            format("Couldn't find plugin package for '%s@%s' in any repository",
+                   plugin.id,plugin.version)));
         return;
     }
 
@@ -55,23 +57,31 @@ function installPluginFromRepos(plugin,repos,donefn,errfn,index) {
         installPluginFromRepos(plugin,repos,donefn,errfn,index+1);
     }
 
+    if (!repo.options.repoURL) {
+        throw new WebdeployError(
+            format("No 'repoURL' was configured in repository of type '%s'",
+                   repo.type));
+    }
+
     if (repo.type == 'web') {
-        installPluginFromWebRepo(plugin,repo.path,donefn,continuefn,errfn);
+        installPluginFromWebRepo(plugin,repo.options,donefn,continuefn,errfn,logger);
+    }
+    else if (repo.type == 'npm') {
+        installPluginFromNPMRepo(plugin,repo.options,donefn,continuefn,errfn,logger);
     }
     else {
         errfn(new WebdeployError(format("Repo having type '%s' at '%s' is not supported",
-                               repo.type,repo.path)));
+                               repo.type,repo.options.repoURL)));
     }
 }
 
-function installPluginFromWebRepo(plugin,baseURL,donefn,continuefn,errfn) {
-    var url = format("%s/%s/%s@%s.tar.gz",
-                     baseURL,
-                     plugin.id,
-                     plugin.id,
-                     plugin.version);
-
+function installPluginOverHttp(plugin,url,logger,donefn,continuefn,errfn,extractOptions) {
     var req = url.substring(0,5) == "https" ? https : http;
+    extractOptions = extractOptions || {};
+
+    if (logger) {
+        logger.log(format("Downloading %s...",url));
+    }
 
     req.get(url, (res) => {
         const { statusCode } = res;
@@ -88,11 +98,15 @@ function installPluginFromWebRepo(plugin,baseURL,donefn,continuefn,errfn) {
             return;
         }
 
-        if (!/application\/x-gzip/.test(contentType)) {
+        if (!/application\/x-gzip/.test(contentType) && !/application\/octet-stream/.test(contentType)) {
             errfn(new WebdeployError(
                 format("Server returned invalid package response type: '%s'",
                        contentType)));
             return;
+        }
+
+        if (logger) {
+            logger.log(format("Extracting archive..."));
         }
 
         fs.mkdir(plugin.path, (err) => {
@@ -101,21 +115,72 @@ function installPluginFromWebRepo(plugin,baseURL,donefn,continuefn,errfn) {
                 return;
             }
 
-            var tarstream = tar.x({
+            var tarstream = tar.x(Object.assign(extractOptions, {
                 cwd: plugin.path,
                 onerror(err) {
                     console.log(err);
                 }
-            })
+            }))
 
             tarstream.on('warn',errfn);
             tarstream.on('err',errfn);
             tarstream.on('end',() => {
+                if (logger) {
+                    logger.log(format("Executing 'npm install' on extracted plugin"));
+                }
+
                 runNpmOnPlugin(plugin,donefn,errfn);
             })
 
             res.pipe(tarstream);
         })
+    })
+}
+
+function installPluginFromWebRepo(plugin,options,donefn,continuefn,errfn,logger) {
+    var url = format("%s/%s/%s@%s.tar.gz",
+                     options.repoURL.replace(/\/$/,''),
+                     plugin.id,
+                     plugin.id,
+                     plugin.version);
+
+    if (logger) {
+        logger.pushIndent();
+    }
+
+    installPluginOverHttp(plugin,url,logger,donefn,continuefn,errfn);
+
+    if (logger) {
+        logger.popIndent();
+    }
+}
+
+function installPluginFromNPMRepo(plugin,options,donefn,continuefn,errfn,logger) {
+    var prefix = "";
+
+    if (options.namespace) {
+        // NOTE: The user must include the '@' in the namespace specifier.
+        prefix += options.namespace + "%2f";
+    }
+    if (options.prefix) {
+        prefix += options.prefix;
+    }
+
+    var url = format("%s/%s%s/-/%s%s-%s.tgz",
+                     options.repoURL.replace(/\/$/,''),
+                     prefix,
+                     plugin.id,
+                     options.prefix,
+                     plugin.id,
+                     plugin.version);
+
+    function localdonefn() {
+        var path = path.join(plugin.path,"package");
+
+    }
+
+    installPluginOverHttp(plugin,url,logger,donefn,continuefn,errfn, {
+        strip: 1
     })
 }
 
@@ -159,9 +224,9 @@ function loadPlugin(pluginInfo) {
     return false;
 }
 
-function installPluginDirect(pluginInfo,donefn,errfn) {
+function installPluginDirect(pluginInfo,donefn,errfn,logger) {
     var plugin = makePlugin(pluginInfo);
-    var repos = sysconfig.npmNamespaces.map(makeRepo('npm'))
+    var repos = sysconfig.npmRepos.map(makeRepo('npm'))
         .concat(sysconfig.webRepos.map(makeRepo('web')));
 
     if (repos.length == 0) {
@@ -169,10 +234,15 @@ function installPluginDirect(pluginInfo,donefn,errfn) {
         return;
     }
 
-    installPluginFromRepos(plugin,repos,donefn,errfn);
+    if (logger) {
+        logger.log(format("Installing plugin _%s@%s_ from repositories",
+                          plugin.id,plugin.version));
+    }
+
+    installPluginFromRepos(plugin,repos,logger,donefn,errfn);
 }
 
-function installPlugin(pluginInfo,donefn,errfn) {
+function installPlugin(pluginInfo,donefn,errfn,logger) {
     var plugin = makePlugin(pluginInfo);
 
     fs.stat(plugin.path, (err,stats) => {
@@ -188,11 +258,11 @@ function installPlugin(pluginInfo,donefn,errfn) {
             return;
         }
 
-        installPluginDirect(plugin,donefn,errfn);
+        installPluginDirect(plugin,donefn,errfn,logger);
     })
 }
 
-function ensurePlugin(pluginInfo,donefn,errfn) {
+function ensurePlugin(pluginInfo,donefn,errfn,logger) {
     // Attempt to install the plugin and succeed if the plugin already exists.
     installPlugin(pluginInfo,donefn,(err) => {
         if (err instanceof WebdeployError && err.code == PLUGIN_DIRECTORY_EXISTS) {
@@ -201,7 +271,7 @@ function ensurePlugin(pluginInfo,donefn,errfn) {
         else {
             errfn(err);
         }
-    })
+    }, logger)
 }
 
 module.exports = {
