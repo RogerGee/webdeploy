@@ -54,7 +54,7 @@ function installPluginFromRepos(plugin,repos,logger,donefn,errfn,index) {
 
     var repo = repos[index];
     var continuefn = function(plugin) {
-        installPluginFromRepos(plugin,repos,donefn,errfn,index+1);
+        installPluginFromRepos(plugin,repos,logger,donefn,errfn,index+1);
     }
 
     if (!repo.options.repoURL) {
