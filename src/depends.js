@@ -37,8 +37,8 @@ function loadFromFile(path) {
             }
 
             resolve(graph);
-        });
-    });
+        })
+    })
 }
 
 function loadFromConfig(repoTree) {
@@ -52,7 +52,7 @@ function loadFromConfig(repoTree) {
         loadBlank(graph);
 
         return graph;
-    });
+    })
 }
 
 function saveToFile(path,graph) {
@@ -71,12 +71,12 @@ function saveToFile(path,graph) {
             else {
                 resolve();
             }
-        });
-    });
+        })
+    })
 }
 
 function saveToConfig(repoTree,graph) {
-    return repoTree.writeConfigParameter(SAVE_CONFIG_KEY,JSON.stringify({map: graph.forwardMappings}));
+    return repoTree.writeConfigParameter(SAVE_CONFIG_KEY,JSON.stringify({ map:graph.forwardMappings }));
 }
 
 // These generic save/load routines detect which type of tree is passed in an
@@ -126,9 +126,9 @@ class DependencyGraph {
         var required = new Set();
         this.forwardMappings[node].forEach((product) => {
             if (product in this.reverseMappings) {
-                this.reverseMappings[product].forEach((x) => { required.add(x); });
+                this.reverseMappings[product].forEach((x) => { required.add(x) });
             }
-        });
+        })
 
         return Array.from(required);
     }
@@ -160,7 +160,7 @@ class DependencyGraph {
                 // Query each source blob's modification status.
                 sources.forEach((source) => {
                     innerPromises.push(tree.isBlobModified(source,mtime));
-                });
+                })
 
                 return Promise.all(innerPromises)
                     .then((modifs) => {
@@ -171,24 +171,23 @@ class DependencyGraph {
                         }
 
                         return false;
-                    });
-            });
+                    })
+            })
 
             promises.push(promise);
-        });
+        })
 
-        return Promise.all(promises)
-            .then((results) => {
-                var changes = [];
+        return Promise.all(promises).then((results) => {
+            var changes = [];
 
-                for (var i = 0;i < results.length;++i) {
-                    if (results[i]) {
-                        changes.push({ product: products[i], sources: results[i] });
-                    }
+            for (var i = 0;i < results.length;++i) {
+                if (results[i]) {
+                    changes.push({ product: products[i], sources: results[i] });
                 }
+            }
 
-                return changes;
-            });
+            return changes;
+        })
     }
 
     // Promise -> Set of string
@@ -200,20 +199,20 @@ class DependencyGraph {
 
         // Compute set of source nodes not reachable by the set of out-of-date
         // build products.
+
         var sourceSet = new Set(Object.keys(this.forwardMappings));
 
-        return this.getOutOfDateProducts(tree)
-            .then((products) => {
-                for (var i = 0;i < products.length;++i) {
-                    var entry = products[i];
+        return this.getOutOfDateProducts(tree).then((products) => {
+            for (var i = 0;i < products.length;++i) {
+                var entry = products[i];
 
-                    for (var j = 0;j < entry.sources.length;++j) {
-                        sourceSet.delete(entry.sources[j]);
-                    }
+                for (var j = 0;j < entry.sources.length;++j) {
+                    sourceSet.delete(entry.sources[j]);
                 }
+            }
 
-                return sourceSet;
-            });
+            return sourceSet;
+        })
     }
 
     // Determines if the specified source is a dependency of any product known
@@ -274,11 +273,11 @@ class DependencyGraph {
             }
 
             this.forwardMappings[node] = Array.from(leaves);
-        });
+        })
 
         // Remove all nodes in the found set to get just the top-level nodes in
         // the mappings.
-        found.forEach((node) => { delete this.forwardMappings[node]; });
+        found.forEach((node) => { delete this.forwardMappings[node] });
 
         this._calcReverseMappings();
     }
@@ -305,7 +304,7 @@ class DependencyGraph {
 
             bucket.forEach((elem) => {
                 stk.push(elem);
-            });
+            })
         }
 
         if (sync) {
@@ -370,8 +369,8 @@ class DependencyGraph {
                 else {
                     this.reverseMappings[x] = [node];
                 }
-            });
-        });
+            })
+        })
     }
 }
 
