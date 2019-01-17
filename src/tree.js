@@ -21,140 +21,6 @@ function normalizeTargetTree(targetTree) {
     return targetTree;
 }
 
-function repoTreeGetConfigObject($this) {
-    if ($this.gitConfig) {
-        return Promise.resolve($this.gitConfig);
-    }
-
-    return $this.repo.config().then((config) => {
-        $this.gitConfig = config;
-
-        return config;
-    })
-}
-
-function repoTreeGetConfig($this,param,useLocalConfig) {
-    // RepoTrees look up configuration parameters from the combined git-config
-    // and target tree configuration pools. The target tree configuration pool
-    // has precedence.
-
-    return new Promise((resolve,reject) => {
-        if ($this.config && $this.config[param]) {
-            resolve($this.config[param]);
-        }
-        else if (useLocalConfig && !$this.fileConfig) {
-            configuration.loadFromTree($this).then((config) => {
-                $this.fileConfig = config;
-                repoTreeGetConfig($this,param,useLocalConfig).then(resolve,reject);
-
-            }, reject)
-        }
-        else if (useLocalConfig && $this.fileConfig[param]) {
-            resolve($this.fileConfig[param]);
-        }
-        else {
-            repoTreeGetConfigObject($this).then((config) => {
-                return config.getStringBuf("webdeploy." + param);
-
-            }).then((buf) => {
-                $this.config[param] = buf.toString('utf8');
-                resolve($this.config[param]);
-
-            }).catch(reject);
-        }
-    })
-}
-
-function repoTreeGetDeployCommit($this) {
-    const COMMIT_ID = "HEAD";
-
-    if (COMMIT_ID in $this.deployCommits) {
-        return $this.deployCommits[COMMIT_ID];
-    }
-
-    var promise = repoTreeGetConfig($this,"deployBranch",false).then((deployBranch) => {
-        return $this.repo.getReference(deployBranch);
-
-    }).then((reference) => {
-        return git.Commit.lookup($this.repo, reference.target());
-    })
-
-    $this.deployCommits[COMMIT_ID] = promise;
-
-    return promise;
-}
-
-function repoTreeGetPreviousCommit($this) {
-    // NOTE: The promise resolves to null if the commit was not found. Rejection
-    // occurs on any other, unanticipated error.
-
-    const COMMIT_ID = "PREV";
-
-    if (COMMIT_ID in $this.deployCommits) {
-        return $this.deployCommits[COMMIT_ID];
-    }
-
-    var promise = repoTreeGetConfig($this,CONFIG_LAST_DEPLOY,false).then((previousCommitOid) => {
-        return $this.repo.getCommit(previousCommitOid);
-
-    }, (err) => {
-        return Promise.resolve(null);
-    })
-
-    $this.deployCommits[COMMIT_ID] = promise;
-
-    return promise;
-}
-
-function repoTreeGetTree($this,treePath,commit) {
-    function callback(commit) {
-        return commit.getTree().then((tree) => {
-            if (treePath == "") {
-                return tree;
-            }
-
-            return tree.getEntry(treePath);
-
-        }).then((entry) => {
-            if (!entry.isTree()) {
-                return Promise.reject(new WebdeployError("Path does not refer to tree"));
-            }
-
-            return entry.getTree();
-        })
-    }
-
-    if (!commit) {
-        // Default to current deploy commit.
-        return repoTreeGetDeployCommit($this).then(callback);
-    }
-
-    return callback(commit);
-}
-
-function repoTreeGetTargetTree($this,commit) {
-    if (commit) {
-        var commitId = commit.id().tostrS();
-    }
-    else {
-        var commitId = 'target';
-    }
-
-    if ($this.targetTrees[commitId]) {
-        return $this.targetTrees[commitId];
-    }
-
-    var promise = repoTreeGetConfig($this,'targetTree',false).then((targetTreePath) => {
-        return repoTreeGetTree($this,normalizeTargetTree(targetTreePath),commit);
-    },(err) => {
-        return repoTreeGetTree($this,normalizeTargetTree(),commit);
-    })
-
-    $this.targetTrees[commitId] = promise;
-
-    return promise;
-}
-
 function makeBlobStream(blob) {
     // Fake a stream for the content buffer. It doesn't seem nodegit provides
     // the ODB read stream yet (and the default ODB backends don't provide
@@ -164,71 +30,6 @@ function makeBlobStream(blob) {
     bufferStream.end(blob.content());
 
     return bufferStream;
-}
-
-function repoTreeGetBlob($this,blobPath,tree) {
-    return tree.getEntry(blobPath).then((entry) => {
-        if (!entry.isBlob()) {
-            return Promise.reject(new WebdeployError("Path does not refer to a blob"));
-        }
-
-        return entry.getBlob();
-
-    }).then(makeBlobStream)
-}
-
-function repoTreeWalkImpl($this,prefix,tree,callback,filter) {
-    return new Promise((resolve,reject) => {
-        let entries = tree.entries();
-        let outstanding = 1;
-
-        function attemptResolution() {
-            if (--outstanding <= 0) {
-                resolve();
-            }
-        }
-
-        for (let i = 0;i < entries.length;++i) {
-            let ent = entries[i];
-
-            if (ent.isBlob()) {
-                outstanding += 1;
-                $this.repo.getBlob(ent.oid()).then((blob) => {
-                    callback(prefix,ent.name(),() => { return makeBlobStream(blob) });
-                    attemptResolution();
-
-                }, reject)
-            }
-            else if (ent.isTree()) {
-                let newPrefix = path.join(prefix,ent.name());
-                if (!filter || filter(newPrefix)) {
-                    outstanding += 1;
-                    $this.repo.getTree(ent.oid()).then((nextTree) => {
-                        return repoTreeWalkImpl($this,newPrefix,nextTree,callback,filter);
-
-                    }, reject).then(attemptResolution)
-                }
-            }
-        }
-
-        attemptResolution();
-    })
-}
-
-function repoTreeWalk($this,callback,options) {
-    if (options.basePath) {
-        var prom = repoTreeGetTree($this,options.basePath);
-    }
-    else {
-        var prom = repoTreeGetTargetTree($this);
-    }
-
-    return prom.then(tree => {
-        var filter = options.filter || undefined;
-        var basePath = options.basePath || tree.path();
-
-        return repoTreeWalkImpl($this,basePath,tree,callback,filter);
-    })
 }
 
 /**
@@ -278,7 +79,7 @@ class RepoTree {
      *  parameter value.
      */
     getConfigParameter(param) {
-        return repoTreeGetConfig(this,param,true);
+        return this.getConfig(param,true);
     }
 
     /**
@@ -298,7 +99,7 @@ class RepoTree {
     getConfigSection(section) {
         section = "webdeploy." + section;
 
-        return repoTreeGetConfigObject(this).then((config) => {
+        return this.getConfigObject().then((config) => {
             // There is currently no way to implement this with nodegit. (We
             // need something like git_config_foreach_match().) We'll implement
             // this once more bindings are available...
@@ -323,12 +124,12 @@ class RepoTree {
         param = "webdeploy." + param;
 
         if (typeof value == 'Number') {
-            return repoTreeGetConfigObject(this).then((config) => {
+            return this.getConfigObject().then((config) => {
                 config.setInt64(param,value);
             })
         }
 
-        return repoTreeGetConfigObject(this).then((config) => {
+        return this.getConfigObject().then((config) => {
             return config.setString(param,value);
         })
     }
@@ -340,7 +141,7 @@ class RepoTree {
      *  The Promise resolves when the operation completes.
      */
     saveDeployCommit() {
-        return repoTreeGetDeployCommit(this).then((commit) => {
+        return this.getDeployCommit().then((commit) => {
             return this.writeConfigParameter(CONFIG_LAST_DEPLOY,commit.id().tostrS());
         })
     }
@@ -356,8 +157,8 @@ class RepoTree {
      *  Returns a Promise that resolves to a Stream.
      */
     getBlob(blobPath) {
-        return repoTreeGetTargetTree(this).then((targetTree) => {
-            return repoTreeGetBlob(this,blobPath,targetTree);
+        return this.getTargetTree().then((targetTree) => {
+            return this.getBlobImpl(blobPath,targetTree);
         })
     }
 
@@ -381,7 +182,7 @@ class RepoTree {
      *  The Promise resolves once all entries have been walked.
      */
     walk(callback,options) {
-        return repoTreeWalk(this,callback,options);
+        return this.walk(callback,options);
     }
 
     /**
@@ -396,12 +197,12 @@ class RepoTree {
      */
     isBlobModified(blobPath) {
         return Promise.all([
-            repoTreeGetPreviousCommit(this).then((commit) => {
+            this.getPreviousCommit().then((commit) => {
                 if (!commit) {
                     return null;
                 }
 
-                return repoTreeGetTargetTree(this,commit);
+                return this.getTargetTree(commit);
 
             }).then((tree) => {
                 return tree.entryByPath(blobPath);
@@ -413,7 +214,7 @@ class RepoTree {
                 return Promise.resolve(null);
             }),
 
-            repoTreeGetTargetTree(this).then((targetTree) => {
+            this.getTargetTree().then((targetTree) => {
                 return targetTree.entryByPath(blobPath);
             })
 
@@ -441,6 +242,209 @@ class RepoTree {
      */
     getMTime(blobPath) {
         return Promise.resolve(0);
+    }
+
+    ////////////////////////////////////////
+    // Helpers
+    ////////////////////////////////////////
+
+    getConfigObject() {
+        if (this.gitConfig) {
+            return Promise.resolve(this.gitConfig);
+        }
+
+        return this.repo.config().then((config) => {
+            this.gitConfig = config;
+
+            return config;
+        })
+    }
+
+    getConfig(param,useLocalConfig) {
+        // RepoTrees look up configuration parameters from the combined
+        // git-config and target tree configuration pools. The target tree
+        // configuration pool has precedence.
+
+        return new Promise((resolve,reject) => {
+            if (this.config && this.config[param]) {
+                resolve(this.config[param]);
+            }
+            else if (useLocalConfig && !this.fileConfig) {
+                configuration.loadFromTree(this).then((config) => {
+                    this.fileConfig = config;
+                    this.getConfig(param,useLocalConfig).then(resolve,reject);
+
+                }, reject)
+            }
+            else if (useLocalConfig && this.fileConfig[param]) {
+                resolve(this.fileConfig[param]);
+            }
+            else {
+                this.getConfigObject().then((config) => {
+                    return config.getStringBuf("webdeploy." + param);
+
+                }).then((buf) => {
+                    this.config[param] = buf.toString('utf8');
+                    resolve(this.config[param]);
+
+                }).catch(reject);
+            }
+        })
+    }
+
+    getDeployCommit() {
+        const COMMIT_ID = "HEAD";
+
+        if (COMMIT_ID in this.deployCommits) {
+            return this.deployCommits[COMMIT_ID];
+        }
+
+        var promise = this.getConfig("deployBranch",false).then((deployBranch) => {
+            return this.repo.getReference(deployBranch);
+
+        }).then((reference) => {
+            return git.Commit.lookup(this.repo, reference.target());
+        })
+
+        this.deployCommits[COMMIT_ID] = promise;
+
+        return promise;
+    }
+
+    getPreviousCommit() {
+        // NOTE: The promise resolves to null if the commit was not
+        // found. Rejection occurs on any other, unanticipated error.
+
+        const COMMIT_ID = "PREV";
+
+        if (COMMIT_ID in this.deployCommits) {
+            return this.deployCommits[COMMIT_ID];
+        }
+
+        var promise = this.getConfig(CONFIG_LAST_DEPLOY,false).then((previousCommitOid) => {
+            return this.repo.getCommit(previousCommitOid);
+
+        }, (err) => {
+            return Promise.resolve(null);
+        })
+
+        this.deployCommits[COMMIT_ID] = promise;
+
+        return promise;
+    }
+
+    getTree(treePath,commit) {
+        function callback(commit) {
+            return commit.getTree().then((tree) => {
+                if (treePath == "") {
+                    return tree;
+                }
+
+                return tree.getEntry(treePath).then((entry) => {
+                    if (!entry.isTree()) {
+                        return Promise.reject(new WebdeployError("Path does not refer to tree"));
+                    }
+
+                    return entry.getTree();
+                })
+            })
+        }
+
+        if (!commit) {
+            // Default to current deploy commit.
+            return this.getDeployCommit().then(callback);
+        }
+
+        return callback(commit);
+    }
+
+    getTargetTree(commit) {
+        if (commit) {
+            var commitId = commit.id().tostrS();
+        }
+        else {
+            var commitId = 'target';
+        }
+
+        if (this.targetTrees[commitId]) {
+            return this.targetTrees[commitId];
+        }
+
+        var promise = this.getConfig('targetTree',false).then((targetTreePath) => {
+            return this.getTree(normalizeTargetTree(targetTreePath),commit);
+
+        }, (err) => {
+            return this.getTree(normalizeTargetTree(),commit);
+        })
+
+        this.targetTrees[commitId] = promise;
+
+        return promise;
+    }
+
+    getBlobImpl(blobPath,tree) {
+        return tree.getEntry(blobPath).then((entry) => {
+            if (!entry.isBlob()) {
+                return Promise.reject(new WebdeployError("Path does not refer to a blob"));
+            }
+
+            return entry.getBlob();
+
+        }).then(makeBlobStream)
+    }
+
+    walkImpl(prefix,tree,callback,filter) {
+        return new Promise((resolve,reject) => {
+            let entries = tree.entries();
+            let outstanding = 1;
+
+            function attemptResolution() {
+                if (--outstanding <= 0) {
+                    resolve();
+                }
+            }
+
+            for (let i = 0;i < entries.length;++i) {
+                let ent = entries[i];
+
+                if (ent.isBlob()) {
+                    outstanding += 1;
+                    this.repo.getBlob(ent.oid()).then((blob) => {
+                        callback(prefix,ent.name(),() => { return makeBlobStream(blob) });
+                        attemptResolution();
+
+                    }, reject)
+                }
+                else if (ent.isTree()) {
+                    let newPrefix = path.join(prefix,ent.name());
+                    if (!filter || filter(newPrefix)) {
+                        outstanding += 1;
+                        this.repo.getTree(ent.oid()).then((nextTree) => {
+                            return this.walkImpl(newPrefix,nextTree,callback,filter);
+
+                        }, reject).then(attemptResolution)
+                    }
+                }
+            }
+
+            attemptResolution();
+        })
+    }
+
+    walk(callback,options) {
+        if (options.basePath) {
+            var prom = this.getTree(options.basePath);
+        }
+        else {
+            var prom = this.getTargetTree();
+        }
+
+        return prom.then(tree => {
+            var filter = options.filter || undefined;
+            var basePath = options.basePath || tree.path();
+
+            return this.walkImpl(basePath,tree,callback,filter);
+        })
     }
 }
 
