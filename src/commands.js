@@ -122,7 +122,8 @@ function deployBuildStep(tree,options) {
             callbacks: {
                 beforeChain: deployBeforeChainCallback,
                 afterChain: deployAfterChainCallback
-            }
+            },
+            tree
         }
 
         deployer = new Deployer(deployerOptions);
@@ -213,6 +214,7 @@ function deployBuildStep(tree,options) {
                     logger.log("add _" + newTarget.getSourceTargetPath() + "_");
                 }
             }
+
         }, {
             filter: (path) => {
                 // Ignore any hidden paths.
@@ -223,6 +225,7 @@ function deployBuildStep(tree,options) {
                 return true;
             },
             basePath: targetBasePath
+
         }).then(() => {
             return Promise.all(targetPromises);
         })
@@ -247,7 +250,6 @@ function deployBuildStep(tree,options) {
 
     }).then(() => {
         return deployDeployStep(deployer,builder,options);
-
     })
 }
 

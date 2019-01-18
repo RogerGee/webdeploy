@@ -16,6 +16,9 @@ class Deployer {
         if (!options.deployPlugin) {
             throw new WebdeployError("No deploy plugin is provided in deployment options");
         }
+        if (!options.tree) {
+            throw new WebdeployError("No tree specified in deployment options");
+        }
 
         this.context = null; // NOTE: DeployContext is created during execute() step.
         this.deployPlugin = options.deployPlugin;
@@ -25,6 +28,7 @@ class Deployer {
         this.currentPlugin = null;
         this.currentIndex = 0;
         this.state = DEPLOYER_STATE_INITIAL;
+        this.tree = options.tree;
     }
 
     /**
@@ -97,7 +101,7 @@ class Deployer {
             throw new WebdeployError("Deployer has invalid state: not finalized");
         }
 
-        this.context = new DeployContext(this.deployPath,builder);
+        this.context = new DeployContext(this.deployPath,builder,this.tree);
 
         // Hijack the chain() method so we can allow string plugin IDs that map
         // to the current deploy plugin's requires and issue the chain

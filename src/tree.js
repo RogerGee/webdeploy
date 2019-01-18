@@ -230,12 +230,15 @@ class RepoTree {
             }).then((entry) => {
                 return entry;
 
-            }, (err) => {
+            }).catch((err) => {
                 return Promise.resolve(null);
             }),
 
             this.getTargetTree().then((targetTree) => {
                 return targetTree.entryByPath(blobPath);
+
+            }).catch((err) => {
+                return Promise.resolve(null);
             })
 
         ]).then((entries) => {
@@ -243,6 +246,13 @@ class RepoTree {
             // modified.
             if (!entries[0]) {
                 return true;
+            }
+
+            // If the current entry doesn't exist (i.e. it was removed), then
+            // report that the blob was not modified (i.e. there is no action we
+            // should take on it).
+            if (!entries[1]) {
+                return false;
             }
 
             var ids = entries.map((x) => { return x.id() });
@@ -262,6 +272,57 @@ class RepoTree {
      */
     getMTime(blobPath) {
         return Promise.resolve(0);
+    }
+
+    /**
+     * Walks through all entries in the target tree.
+     *
+     * @param Function callback
+     * @param Object options
+     *
+     * @return Promise
+     *  The promise returns after all entries have been walked.
+     */
+    walk(callback,options) {
+        if (options.basePath) {
+            var prom = this.getTree(options.basePath);
+        }
+        else {
+            var prom = this.getTargetTree();
+        }
+
+        return prom.then((tree) => {
+            var filter = options.filter || undefined;
+            var basePath = options.basePath || tree.path();
+
+            return this.walkImpl(basePath,tree,callback,filter);
+        })
+    }
+
+    /**
+     * Walks through the previous commit and invokes the callback on each entry
+     * that exists in the previous commit but not in the current
+     * commit. Essentially this is called on all blobs that no longer exist.
+     *
+     * @param Function callback
+     *  Callback having signature: callback(path)
+     *
+     * @return Promise
+     *  Returns a Promise that resolves after all entries have been walked.
+     */
+    walkExtraneous(callback) {
+        var currentTree;
+
+        return this.getTargetTree().then((targetTree) => {
+            currentTree = targetTree;
+            return this.getPreviousCommit();
+
+        }).then((commit) => {
+            return this.getTargetTree(commit);
+
+        }).then((tree) => {
+            return this.walkExtraneousImpl(tree.path(),tree,currentTree,callback);
+        })
     }
 
     ////////////////////////////////////////
@@ -472,19 +533,55 @@ class RepoTree {
         })
     }
 
-    walk(callback,options) {
-        if (options.basePath) {
-            var prom = this.getTree(options.basePath);
-        }
-        else {
-            var prom = this.getTargetTree();
-        }
+    walkExtraneousImpl(prefix,tree,curTree,callback) {
+        return new Promise((resolve,reject) => {
+            let entries = tree.entries();
 
-        return prom.then(tree => {
-            var filter = options.filter || undefined;
-            var basePath = options.basePath || tree.path();
+            if (entries.length == 0) {
+                resolve();
+                return;
+            }
 
-            return this.walkImpl(basePath,tree,callback,filter);
+            let outstanding = entries.length;
+            function attemptResolution() {
+                if (--outstanding <= 0) {
+                    resolve();
+                }
+            }
+
+            for (let i = 0;i < entries.length;++i) {
+                let ent = entries[i];
+                let filePath = path.join(prefix,ent.name());
+
+                let evalfn = (curEnt) => {
+                    if (ent.isBlob()) {
+                        if (!curEnt) {
+                            callback(filePath,false);
+                        }
+
+                        attemptResolution();
+                    }
+                    else if (ent.isTree()) {
+                        let newPrefix = path.join(prefix,ent.name());
+
+                        this.repo.getTree(ent.oid()).then((nextTree) => {
+                            return this.walkExtraneousImpl(newPrefix,nextTree,curTree,callback);
+
+                        }).then(() => {
+                            if (!curEnt || !curEnt.isTree()) {
+                                callback(filePath,true);
+                            }
+
+                            attemptResolution();
+
+                        }).catch(reject);
+                    }
+                }
+
+                curTree.getEntry(filePath).then(evalfn, (err) => {
+                    evalfn(null);
+                })
+            }
         })
     }
 
@@ -674,6 +771,16 @@ class PathTree {
 
             fs.readdir(basePath,walkRecursive(this.basePath));
         })
+    }
+
+    /**
+     * This function has no effect for PathTree.
+     *
+     * @return Promise
+     *  A Promise that always resolves.
+     */
+    walkExtraneous() {
+        return Promise.resolve();
     }
 
     /**

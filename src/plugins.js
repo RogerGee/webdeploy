@@ -116,38 +116,86 @@ const DEFAULT_DEPLOY_PLUGINS = {
     write: {
         id: "write",
         exec: (context,settings) => {
-            if (typeof settings.mode == "undefined") {
-                settings.mode = 0o666;
-            }
-            else {
-                // Force Number to convert possible string values. This works
-                // for octal literals encoded as strings.
-                settings.mode = Number(settings.mode);
-            }
+            // Remove extraneous files first (if possible); then deploy all the
+            // output targets to the deploy path.
 
-            return new Promise((resolve,reject) => {
-                var pathset = new Set();
+            var promises = [];
 
-                // Make sure deploy path exists.
-                mkdirParents(context.deployPath);
-
-                for (var i = 0;i < context.targets.length;++i) {
-                    var target = context.targets[i];
-
-                    // Ensure parent directory exists.
-                    if (!pathset.has(target.sourcePath)) {
-                        pathset.add(target.sourcePath);
-                        mkdirParents(target.sourcePath,context.deployPath);
+            let removefn = function(path,isTree) {
+                fullPath = context.makeDeployPath(path);
+                promises.push(new Promise((resolve,reject) => {
+                    if (isTree) {
+                        fs.rmdir(fullPath, (err) => {
+                            if (err) {
+                                if (err.code == 'ENOENT') {
+                                    resolve();
+                                }
+                                else {
+                                    reject(err);
+                                }
+                            }
+                            else {
+                                context.logger.log("Removed _" + path  + "_");
+                                resolve();
+                            }
+                        })
                     }
+                    else {
+                        fs.unlink(fullPath, (err) => {
+                            if (err) {
+                                if (err.code == 'ENOENT') {
+                                    resolve();
+                                }
+                                else {
+                                    reject(err);
+                                }
+                            }
+                            else {
+                                context.logger.log("Removed _" + path + "_");
+                                resolve();
+                            }
+                        })
+                    }
+                }))
+            }
 
-                    // Write data to file.
-                    var outPath = target.getDeployTargetPath();
-                    var outStream = fs.createWriteStream(outPath,{ mode: settings.mode });
-                    target.stream.pipe(outStream);
-                    context.logger.log("Writing _" + outPath + "_");
+            return context.tree.walkExtraneous(removefn).then(() => {
+                return Promise.all(promises);
+
+            }).then(() => {
+                if (typeof settings.mode == "undefined") {
+                    settings.mode = 0o666;
+                }
+                else {
+                    // Force Number to convert possible string values. This works
+                    // for octal literals encoded as strings.
+                    settings.mode = Number(settings.mode);
                 }
 
-                resolve();
+                return new Promise((resolve,reject) => {
+                    var pathset = new Set();
+
+                    // Make sure deploy path exists.
+                    mkdirParents(context.deployPath);
+
+                    for (var i = 0;i < context.targets.length;++i) {
+                        var target = context.targets[i];
+
+                        // Ensure parent directory exists.
+                        if (!pathset.has(target.sourcePath)) {
+                            pathset.add(target.sourcePath);
+                            mkdirParents(target.sourcePath,context.deployPath);
+                        }
+
+                        // Write data to file.
+                        var outPath = target.getDeployTargetPath();
+                        var outStream = fs.createWriteStream(outPath,{ mode: settings.mode });
+                        target.stream.pipe(outStream);
+                        context.logger.log("Writing _" + outPath + "_");
+                    }
+
+                    resolve();
+                })
             })
         }
     }

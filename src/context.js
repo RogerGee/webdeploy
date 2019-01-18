@@ -1,5 +1,7 @@
 // context.js
 
+const pathModule = require("path");
+
 const targetModule = require("./target");
 const { lookupDeployPlugin } = require("./audit");
 
@@ -10,20 +12,26 @@ const { lookupDeployPlugin } = require("./audit");
  * for processing.
  */
 class DeployContext {
-    constructor(deployPath,builder) {
+    constructor(deployPath,builder,tree) {
         this.deployPath = deployPath;
         this.builder = builder;
         this.targets = builder.outputTargets;
         this.map = {};
         this.graph = builder.options.graph; // DependencyGraph
+        this.tree = tree; // git.Tree
         this.logger = require("./logger");
 
         // Create map for faster target lookup.
         this.targets.forEach((target) => {
             this.map[target.getSourceTargetPath()] = target;
-        });
+        })
 
         this.setTargetsDeployPath();
+    }
+
+    // Creates an absolute path with a relative path within the deploy path.
+    makeDeployPath(path) {
+        return pathModule.join(this.deployPath,path);
     }
 
     // Sets the deployment path for each target.
@@ -39,7 +47,7 @@ class DeployContext {
     executeBuilder() {
         return this.builder.execute().then(() => {
             this.setTargetsDeployPath();
-        });
+        })
     }
 
     // Gets Target. Creates a new target having the given path. The final
@@ -95,7 +103,7 @@ class DeployContext {
                 this.targets.splice(index,1);
                 delete this.map[elem.getSourceTargetPath()];
             }
-        });
+        })
     }
 
     // Resolves the set of "removeTargets" into a new target with the given
