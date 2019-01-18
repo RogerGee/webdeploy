@@ -12,6 +12,7 @@ const { PluginAuditor } = require("./audit");
 const depends = require("./depends");
 const logger = require("./logger");
 const { WebdeployError } = require("./error");
+const { prepareConfigPath } = require("./utils");
 
 const DEPLOY_TYPES = {
     // Uses the config's "build" deployment.
@@ -36,7 +37,7 @@ function printNewTargetsCallback(target,plugin,newTargets) {
         var prefix = "exec _" + target.targetName + "_"
             + " -> *" + plugin.id + "* -> ";
 
-        newTargetNames = newTargets.map((x) => { return x.targetName; });
+        newTargetNames = newTargets.map((x) => { return x.targetName });
         logger.log(prefix + "_" + newTargetNames[0] + "_");
         for (var j = 1;j < newTargetNames.length;++j) {
             logger.log(" ".repeat(prefix.length - 7) + "-> _"
@@ -254,6 +255,8 @@ function deployStartStep(tree,options) {
     assert(options.type == DEPLOY_TYPES.TYPE_BUILD
            || options.type == DEPLOY_TYPES.TYPE_DEPLOY);
 
+    var storeKey;
+
     // Obtain the deploy plugin name.
 
     return tree.getConfigParameter(options.type).then((deployPlugin) => {
@@ -285,9 +288,36 @@ function deployStartStep(tree,options) {
             options.buildPath = "";
         }
 
+        // For a TYPE_DEPLOY deployment, we need a deploy path. This may have
+        // been specified by the user in the options object, OR we lookup the
+        // default deploy path stored in the tree configuration.
+
+        if (options.type == DEPLOY_TYPES.TYPE_DEPLOY) {
+            if (!options.deployPath) {
+                return tree.getConfigParameter("deployPath");
+            }
+            else {
+                return Promise.resolve(options.deployPath);
+            }
+        }
+
+        // Otherwise for TYPE_BUILD deployments the deploy path is the same as
+        // the build path (since local builds deploy to the same location).
+
+        return Promise.resolve(options.buildPath);
+
+    }).then((deployPath) => {
+        // Set deploy path; also set the deploy path as the storage key for the
+        // tree. This is used by RepoTree's for config lookup purposes.
+
+        storeKey = prepareConfigPath(deployPath);
+
+        options.deployPath = deployPath;
+        tree.addOption('storeKey',storeKey);
+
         // Load up dependency graph.
 
-        return depends.loadFromTree(tree);
+        return depends.loadFromTree(tree,storeKey);
 
     }).then((graph) => {
         options.graph = graph;
@@ -296,34 +326,20 @@ function deployStartStep(tree,options) {
             options.graph.reset();
         }
 
-        // Obtain the deploy path. For TYPE_BUILD deployments, this is always
-        // the same as the build path. For TYPE_DEPLOY deployments, this is
-        // obtained from the configuration. Then execute the build pipe to begin
-        // the pipeline.
+        // Execute the build pipeline. This will chain to the deploy pipeline
+        // after the build.
 
-        return new Promise((resolve,reject) => {
-            if (options.type == DEPLOY_TYPES.TYPE_BUILD) {
-                options.deployPath = options.buildPath;
-                deployBuildStep(tree,options)
-                    .then(resolve,reject);
-            }
-            else {
-                tree.getConfigParameter("deployPath").then((configParam) => {
-                    options.deployPath = configParam;
-                    return deployBuildStep(tree,options);
-                },reject).then(resolve,reject);
-            }
-        })
+        return deployBuildStep(tree,options);
 
     }).then(() => {
         // Save the dependency graph if available.
         if (options.graph) {
-            return depends.saveToTree(tree,options.graph);
+            return depends.saveToTree(tree,options.graph,storeKey);
         }
 
     }).then(() => {
         if (tree.name == 'RepoTree') {
-            return tree.saveDeployCommit();
+            return tree.saveDeployCommit(options.deployPath);
         }
 
     })
@@ -340,7 +356,12 @@ function deployStartStep(tree,options) {
  *  completes or rejects when the operation fails.
  */
 function deployRepository(repo,options) {
-    return treeLoader.createRepoTree(repo).then((tree) => {
+    var treeOptions = {
+        deployBranch: options.deployBranch,
+        deployTag: options.deployTag
+    }
+
+    return treeLoader.createRepoTree(repo,treeOptions).then((tree) => {
         return deployStartStep(tree,options);
     })
 }
@@ -382,14 +403,16 @@ function deployLocal(path,options) {
  *  completes or rejects when the operation fails.
  */
 function deployDecide(path,options,decideCallback) {
-    return git.Repository.discover(path,0,pathModule.resolve(pathModule.join(path,"..")))
-        .then((repoPath) => {
-            decideCallback("repo");
-            return deployRepository(repoPath,options);
-        },(err) => {
-            decideCallback("local");
-            return deployLocal(path,options);
-        })
+    var prevPath = pathModule.resolve(pathModule.join(path,".."));
+
+    return git.Repository.discover(path,0,prevPath).then((repoPath) => {
+        decideCallback("repo");
+        return deployRepository(repoPath,options);
+
+    }, (err) => {
+        decideCallback("local");
+        return deployLocal(path,options);
+    })
 }
 
 module.exports = {

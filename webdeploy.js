@@ -7,6 +7,7 @@ const path = require("path");
 
 const logger = require("./src/logger");
 const commands = require("./src/commands");
+const { WebdeployError } = require("./src/error");
 const { load: loadSysconfig } = require("./src/sysconfig");
 const { VERSION } = require("./package.json")
 
@@ -24,10 +25,20 @@ commander.version(VERSION,"-v, --version");
 commander.command("deploy [path]")
     .description("runs the deploy task on a webdeploy project")
     .option("-f, --force","Force full deploy without consulting dependencies")
+    .option("-p, --deploy-path [path]","Denotes the deploy path destination on disk")
+    .option("-b, --deploy-branch [branch]","Denotes repository branch to deploy")
+    .option("-t, --deploy-tag [tag]","Denotes the repository tag to deploy")
     .action((sourcePath,cmd) => {
+        if (cmd.deployBranch && cmd.deployTag) {
+            throw new WebdeployError("Invalid arguments: specify one of deploy-branch and deploy-tag");
+        }
+
         var options = {
             type: commands.types.TYPE_DEPLOY,
-            force: cmd.force ? true : false
+            force: cmd.force ? true : false,
+            deployBranch: cmd.deployBranch,
+            deployTag: cmd.deployTag,
+            deployPath: cmd.deployPath
         }
 
         if (sourcePath) {
@@ -37,14 +48,15 @@ commander.command("deploy [path]")
             var localPath = path.resolve(".");
         }
 
-        commands.deployDecide(localPath,options,(type) => {
+        commands.deployDecide(localPath, options, (type) => {
             logger.log("*[DEPLOY]* _" + type + "_: exec " + localPath);
             logger.pushIndent();
-        }, reject)
-            .then(() => {
-                logger.popIndent();
-                logger.log("*[DONE]*");
-            }).catch(reject);
+
+        }, reject).then(() => {
+            logger.popIndent();
+            logger.log("*[DONE]*");
+
+        }).catch(reject)
     })
 
 commander.command("build [path]")

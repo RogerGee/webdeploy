@@ -3,6 +3,8 @@
 const fs = require("fs");
 const pathModule = require("path");
 const assert = require("assert");
+const { format } = require("util");
+
 const tree = require("./tree");
 
 const SAVE_CONFIG_KEY = "cache.depends";
@@ -41,13 +43,19 @@ function loadFromFile(path) {
     })
 }
 
-function loadFromConfig(repoTree) {
-    var graph = new DependencyGraph();
+function loadFromConfig(repoTree,key) {
+    // Lookup the dependency info from the tree's git-config. We always add the
+    // specified key to the section name to individualize the lookup since
+    // multiple caches can be stored at once.
 
-    return repoTree.getConfigParameter(SAVE_CONFIG_KEY).then((text) => {
+    var graph = new DependencyGraph();
+    var section = format("%s.%s",SAVE_CONFIG_KEY,key);
+
+    return repoTree.getConfigParameter(section).then((text) => {
         loadFromJson(graph,text);
 
         return graph;
+
     }, (err) => {
         loadBlank(graph);
 
@@ -75,8 +83,10 @@ function saveToFile(path,graph) {
     })
 }
 
-function saveToConfig(repoTree,graph) {
-    return repoTree.writeConfigParameter(SAVE_CONFIG_KEY,JSON.stringify({ map:graph.forwardMappings }));
+function saveToConfig(repoTree,graph,key) {
+    var section = format("%s.%s",SAVE_CONFIG_KEY,key);
+
+    return repoTree.writeConfigParameter(section,JSON.stringify({ map:graph.forwardMappings }));
 }
 
 // These generic save/load routines detect which type of tree is passed in an
@@ -84,23 +94,23 @@ function saveToConfig(repoTree,graph) {
 // (i.e. SAVE_FILE_NAME) under the tree. RepoTree instances store dependency
 // graphs in the git-config.
 
-function loadFromTree(tree) {
+function loadFromTree(tree,key) {
     if (tree.name == 'PathTree') {
         return loadFromFile(tree.getPath());
     }
     if (tree.name == 'RepoTree') {
-        return loadFromConfig(tree);
+        return loadFromConfig(tree,key);
     }
 }
 
-function saveToTree(tree,graph) {
+function saveToTree(tree,graph,key) {
     graph.resolve();
 
     if (tree.name == 'PathTree') {
         return saveToFile(tree.getPath(),graph);
     }
     if (tree.name == 'RepoTree') {
-        return saveToConfig(tree,graph);
+        return saveToConfig(tree,graph,key);
     }
 }
 

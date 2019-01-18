@@ -6,9 +6,9 @@ const pathModule = require("path");
 /**
  * Creates a directory and any parents that do not exist.
  *
- * @param string path
+ * @param {string} path
  *  The path to create.
- * @param string base
+ * @param {string} base
  *  Optional base path denoting the existing base. This merely optimizes the
  *  operation since the function assumes the base path already exists.
  */
@@ -38,4 +38,21 @@ module.exports.mkdirParents = function(path,base) {
             }
         }
     }
+}
+
+/**
+ * Prepares a path as a git-config key.
+ *
+ * @param {string} path
+ *  The path to create.
+ *
+ * @return {string}
+ */
+module.exports.prepareConfigPath = function(path) {
+    var result = path.replace(/\//g,'--').replace(/\./g,'-');
+    if (result[0] == '-') {
+        result = "PATH" + result;
+    }
+
+    return result;
 }

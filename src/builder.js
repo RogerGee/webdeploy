@@ -315,8 +315,8 @@ class Builder {
         }
 
         // Determine if the target is to be processed by the system if its path
-        // matches an include defined in the target tree
-        // configuration. Otherwise we only add the target if "force" is set.
+        // matches an include defined in the target tree configuration.
+        // Otherwise we only add the target if "force" is set.
 
         var include = this.findTargetInclude(newTarget.getSourceTargetPath());
         if (include) {

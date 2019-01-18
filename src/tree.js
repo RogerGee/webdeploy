@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path").posix;
 const git = require("nodegit");
 const stream = require("stream");
+const { format } = require("util");
 
 const configuration = require("./config.js");
 const { WebdeployError } = require("./error");
@@ -45,15 +46,32 @@ class RepoTree {
      *
      * @param Object repo
      *  The libgit2 repository object instance to wrap.
+     * @param Object options
+     * @param Object options.deployBranch
+     *  The branch (i.e. head reference) from which to load the deployment
+     *  commit.
+     * @param Object options.deployTag
+     *  The tag (i.e. tag reference) from which to load the deployment commit.
      */
-    constructor(repo) {
+    constructor(repo,options) {
         this.name = 'RepoTree';
         this.repo = repo;
         this.config = {}; // cache git-config entries here
+        this.options = options || {};
 
         // Cache Promises to certain, often-accessed resources.
         this.deployCommits = {};
         this.targetTrees = {};
+    }
+
+    /**
+     * Adds an option to the tree's internal list of options.
+     *
+     * @param String key
+     * @param String value
+     */
+    addOption(key,value) {
+        this.options[key] = value;
     }
 
     /**
@@ -140,9 +158,11 @@ class RepoTree {
      * @return Promise
      *  The Promise resolves when the operation completes.
      */
-    saveDeployCommit() {
+    saveDeployCommit(key) {
+        var section = this.getStoreSection(CONFIG_LAST_DEPLOY);
+
         return this.getDeployCommit().then((commit) => {
-            return this.writeConfigParameter(CONFIG_LAST_DEPLOY,commit.id().tostrS());
+            return this.writeConfigParameter(section,commit.id().tostrS());
         })
     }
 
@@ -293,20 +313,40 @@ class RepoTree {
     }
 
     getDeployCommit() {
-        const COMMIT_ID = "HEAD";
+        const COMMIT_KEY = "DEPLOY";
 
-        if (COMMIT_ID in this.deployCommits) {
-            return this.deployCommits[COMMIT_ID];
+        if (COMMIT_KEY in this.deployCommits) {
+            return this.deployCommits[COMMIT_KEY];
         }
 
-        var promise = this.getConfig("deployBranch",false).then((deployBranch) => {
-            return this.repo.getReference(deployBranch);
+        // Attempt to load the deploy commit reference from the options;
+        // otherwise we default to the "deployBranch" config value.
 
-        }).then((reference) => {
-            return git.Commit.lookup(this.repo, reference.target());
-        })
+        if (this.options.deployBranch) {
+            var head = format("refs/heads/%s",this.options.deployBranch);
+            var promise = this.repo.getReference(head).then((reference) => {
+                return git.Commit.lookup(this.repo, reference.target());
+            })
+        }
+        else if (this.options.deployTag) {
+            var tag = format("refs/tags/%s",this.options.deployTag);
+            var promise = this.repo.getReference(tag).then((reference) => {
+                return git.Commit.lookup(this.repo, reference.target());
+            })
+        }
+        else {
+            var promise = this.getConfig("deployBranch",false).then((deployBranch) => {
+                return this.repo.getReference(deployBranch);
 
-        this.deployCommits[COMMIT_ID] = promise;
+            }).then((reference) => {
+                return git.Commit.lookup(this.repo, reference.target());
+
+            }).catch((err) => {
+                throw new WebdeployError("Cannot determine the deploy branch or tag!");
+            })
+        }
+
+        this.deployCommits[COMMIT_KEY] = promise;
 
         return promise;
     }
@@ -315,20 +355,21 @@ class RepoTree {
         // NOTE: The promise resolves to null if the commit was not
         // found. Rejection occurs on any other, unanticipated error.
 
-        const COMMIT_ID = "PREV";
+        const COMMIT_KEY = "DEPLOY-PREV";
 
-        if (COMMIT_ID in this.deployCommits) {
-            return this.deployCommits[COMMIT_ID];
+        if (COMMIT_KEY in this.deployCommits) {
+            return this.deployCommits[COMMIT_KEY];
         }
 
-        var promise = this.getConfig(CONFIG_LAST_DEPLOY,false).then((previousCommitOid) => {
+        var section = this.getStoreSection(CONFIG_LAST_DEPLOY);
+        var promise = this.getConfig(section,false).then((previousCommitOid) => {
             return this.repo.getCommit(previousCommitOid);
 
         }, (err) => {
             return Promise.resolve(null);
         })
 
-        this.deployCommits[COMMIT_ID] = promise;
+        this.deployCommits[COMMIT_KEY] = promise;
 
         return promise;
     }
@@ -446,6 +487,14 @@ class RepoTree {
             return this.walkImpl(basePath,tree,callback,filter);
         })
     }
+
+    getStoreSection(section) {
+        if (this.options.storeKey) {
+            section = format("%s.%s",section,this.options.storeKey);
+        }
+
+        return section;
+    }
 }
 
 /**
@@ -460,13 +509,25 @@ class PathTree {
      *
      * @param String basePath
      *  The base path of the filesystem tree.
+     * @param Object options
      */
-    constructor(basePath) {
+    constructor(basePath,options) {
         this.name = 'PathTree';
         this.basePath = basePath;
+        this.options = options || {};
 
         // Caches Promise -> Number representing the mtime for a blob.
         this.mtimeCache = {};
+    }
+
+    /**
+     * Adds an option to the tree's internal list of options.
+     *
+     * @param String key
+     * @param String value
+     */
+    addOption(key,value) {
+        this.options[key] = value;
     }
 
     /**
@@ -670,18 +731,32 @@ class PathTree {
     }
 }
 
-// Gets a Promise -> RepoTree.
-function createRepoTree(repoPath) {
+/**
+ * Creates a new RepoTree for the specified repository.
+ *
+ * @param String repoPath
+ *  The path where the repository lives.
+ * @param Object options
+ *  Extra options for the RepoTree.
+ */
+function createRepoTree(repoPath,options) {
     return git.Repository.discover(repoPath,0,"").then((path) => {
         return git.Repository.open(path);
 
     }).then((repository) => {
-        return new RepoTree(repository);
+        return new RepoTree(repository,options);
     })
 }
 
-// Gets a Promise -> PathTree.
-function createPathTree(path) {
+/**
+ * Creates a new PathTree for the specified path in the filesystem.
+ *
+ * @param String path
+ *  The path to load.
+ * @param Object options
+ *  Extra options for the PathTree.
+ */
+function createPathTree(path,options) {
     return new Promise((resolve,reject) => {
         fs.stat(path,(err,stats) => {
             if (err) {
@@ -689,7 +764,7 @@ function createPathTree(path) {
                 return;
             }
 
-            resolve(new PathTree(path));
+            resolve(new PathTree(path,options));
         })
     })
 }
