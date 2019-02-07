@@ -124,6 +124,7 @@ function saveToTree(tree,graph,key) {
 class DependencyGraph {
     constructor() {
         this.connections = {};
+        this.hooks = [];
     }
 
     // For a target node N, obtain the complete required set of nodes that are
@@ -260,6 +261,44 @@ class DependencyGraph {
         }
     }
 
+    /**
+     * Callback for walking connections/mappings.
+     *
+     * @callback WalkCallback
+     * @param DependencyGraph graph
+     *  The graph that resolved.
+     * @param string node
+     *  The forward node.
+     * @param array nodelist
+     *  The mappings associated with the forward node. The callback may modify
+     *  this list.
+     */
+
+    /**
+     * Walks through each raw connection and invokes the specified callback.
+     *
+     * @param WalkCallback callback
+     */
+    walkConnections(callback) {
+        var keys = Object.keys(this.connections);
+
+        for (let i = 0;i < keys.length;++i) {
+            callback(this,keys[i],this.connections[keys[i]]);
+        }
+    }
+
+    /**
+     * Creates a resolution hook that will be invoked the next time the
+     * dependency graph resolves. The callback is only invoked at most one time.
+     *
+     * @param WalkCallback callback(graph,node,nodelist)
+     *  A walk connection callback that is called on the set of resolved
+     *  forward mappings.
+     */
+    addResolveHook(callback) {
+        this.hooks.push(callback);
+    }
+
     resolve() {
         var found = new Set();
 
@@ -288,6 +327,19 @@ class DependencyGraph {
         // Remove all nodes in the found set to get just the top-level nodes in
         // the mappings.
         found.forEach((node) => { delete this.forwardMappings[node] });
+
+        // Invoke post-resolve hooks.
+        if (this.hooks.length > 0) {
+            var keys = Object.keys(this.forwardMappings);
+
+            for (let i = 0;i < this.hooks.length;++i) {
+                for (let j = 0;j < keys.length;++j) {
+                    var node = keys[j];
+                    this.hooks[i](this,node,this.forwardMappings[node]);
+                }
+            }
+        }
+        this.hooks = [];
 
         this._calcReverseMappings();
     }
