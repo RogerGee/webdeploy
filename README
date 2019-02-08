@@ -1,4 +1,4 @@
-webdeploy - v0.2.0
+webdeploy - v0.3.0
 --------------------------------------------------------------------------------
 Webdeploy is a command-line tool for building and deploying websites from git
 repositories. It employs NodeJS and nodegit (node bindings for libgit2).

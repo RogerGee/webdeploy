@@ -9,7 +9,7 @@ const logger = require("./src/logger");
 const commands = require("./src/commands");
 const { WebdeployError } = require("./src/error");
 const { load: loadSysconfig } = require("./src/sysconfig");
-const { VERSION } = require("./package.json")
+const { version: VERSION } = require("./package.json")
 
 function reject(err) {
     logger.resetIndent();

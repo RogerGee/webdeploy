@@ -742,6 +742,7 @@ class PathTree {
 
         return new Promise((resolve,reject) => {
             let outstanding = 1;
+            let rejected = false;
 
             function attemptResolution() {
                 if (--outstanding <= 0) {
@@ -751,6 +752,14 @@ class PathTree {
 
             function walkRecursive(basePath) {
                 return (err,files) => {
+                    if (err) {
+                        reject(err);
+                        rejected = true;
+                    }
+                    if (rejected) {
+                        return;
+                    }
+
                     for (let i = 0;i < files.length;++i) {
                         let filePath = path.join(basePath,files[i]);
                         let stat = fs.lstatSync(filePath);

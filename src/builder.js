@@ -365,18 +365,40 @@ class Builder {
         assert(typeof delayed == "object" && "path" in delayed
                && "name" in delayed && 'createStream' in delayed);
 
-        // Resolve the delayed target information into a Target object.
-        var newTarget = new targetModule.Target(delayed.path,
-                                                delayed.name,
-                                                delayed.createStream());
+        var sourceTargetPath = pathModule.join(delayed.path,delayed.name);
+        var include = this.findTargetInclude(sourceTargetPath);
 
-        // Push target. If it was accepted, then count the target as initial.
-        var result = this.pushInitialTarget(newTarget,force);
-        if (result) {
-            this.initial.push(newTarget.getSourceTargetPath());
+        if (include) {
+            // Resolve the delayed target information into a Target object.
+            var newTarget = new targetModule.Target(
+                delayed.path,
+                delayed.name,
+                delayed.createStream());
+
+            newTarget.level = 1;
+            newTarget.setHandlers(include.handlers.slice(0));
+            newTarget.applyOptions(include.options);
+            this.targets.push(newTarget);
+            this.initial.push(sourceTargetPath);
+
+            return newTarget;
         }
 
-        return result;
+        if (force) {
+            // Resolve the delayed target information into a Target object.
+            var newTarget = new targetModule.Target(
+                delayed.path,
+                delayed.name,
+                delayed.createStream());
+
+            newTarget.level = 1;
+            this.targets.push(newTarget);
+            this.initial.push(sourceTargetPath);
+
+            return newTarget;
+        }
+
+        return false;
     }
 
     // Creates a new target with content loaded from the tree targeted by the
