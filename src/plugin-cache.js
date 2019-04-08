@@ -185,7 +185,14 @@ function installPluginFromNPMRepo(plugin,options,donefn,continuefn,errfn,logger)
 }
 
 function runNpmOnPlugin(plugin,donefn,errfn) {
-    var proc = child_process.spawn("npm",["install"], {
+    if (process.platform == 'win32') {
+        var command = 'npm.cmd';
+    }
+    else {
+        var command = 'npm';
+    }
+
+    var proc = child_process.spawn(command,["install"], {
         cwd: plugin.path,
         stdio: 'inherit'
     })
