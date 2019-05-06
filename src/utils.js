@@ -54,7 +54,7 @@ module.exports.mkdirParents = function(path,base) {
  * @return {string}
  */
 module.exports.prepareConfigPath = function(path) {
-    var result = path.replace(/\//g,'--').replace(/\./g,'-');
+    var result = path.replace(/\/|\\/g,'--').replace(/\./g,'-');
     if (result[0] == '-') {
         result = "PATH" + result;
     }
