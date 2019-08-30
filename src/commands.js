@@ -4,7 +4,7 @@ const assert = require("assert");
 const pathModule = require("path").posix;
 const git = require("nodegit");
 
-const treeLoader = require("./tree");
+const { createPathTree, createRepoTree } = require("./tree");
 const targetModule = require("./target");
 const Builder = require("./builder");
 const Deployer = require("./deployer");
@@ -363,7 +363,7 @@ function deployRepository(repo,options) {
         deployTag: options.deployTag
     }
 
-    return treeLoader.createRepoTree(repo,treeOptions).then((tree) => {
+    return createRepoTree(repo,treeOptions).then((tree) => {
         return deployStartStep(tree,options);
     })
 }
@@ -379,7 +379,7 @@ function deployRepository(repo,options) {
  *  completes or rejects when the operation fails.
  */
 function deployLocal(path,options) {
-    return treeLoader.createPathTree(path).then((tree) => {
+    return createPathTree(path).then((tree) => {
         return deployStartStep(tree,options);
     })
 }

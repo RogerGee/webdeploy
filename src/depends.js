@@ -5,8 +5,6 @@ const pathModule = require("path");
 const assert = require("assert");
 const { format } = require("util");
 
-const tree = require("./tree");
-
 const SAVE_CONFIG_KEY = "cache.depends";
 const SAVE_FILE_NAME = ".webdeploy.deps";
 
