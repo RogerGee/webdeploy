@@ -1,4 +1,8 @@
-// tree
+/**
+ * tree.js
+ *
+ * @module tree
+ */
 
 const fs = require("fs");
 
@@ -8,10 +12,12 @@ const PathTree = require("./path-tree");
 /**
  * Creates a new RepoTree for the specified repository.
  *
- * @param String repoPath
+ * @param {string} repoPath
  *  The path where the repository lives.
- * @param Object options
+ * @param {object} options
  *  Extra options for the RepoTree.
+ *
+ * @return {Promise<module:tree/repo-tree~RepoTree>}
  */
 function createRepoTree(repoPath,options) {
     return git.Repository.discover(repoPath,0,"").then((path) => {
@@ -25,10 +31,12 @@ function createRepoTree(repoPath,options) {
 /**
  * Creates a new PathTree for the specified path in the filesystem.
  *
- * @param String path
+ * @param {string} path
  *  The path to load.
- * @param Object options
+ * @param {object} options
  *  Extra options for the PathTree.
+ *
+ * @return {Promise<module:tree/path-tree~PathTree>}
  */
 function createPathTree(path,options) {
     return new Promise((resolve,reject) => {
@@ -44,6 +52,6 @@ function createPathTree(path,options) {
 }
 
 module.exports = {
-    createRepoTree: createRepoTree,
-    createPathTree: createPathTree
+    createRepoTree,
+    createPathTree
 }

@@ -1,4 +1,8 @@
-// builder.js
+/**
+ * builder.js
+ *
+ * @module builder
+ */
 
 const assert = require("assert");
 const pathModule = require("path").posix;
@@ -12,21 +16,47 @@ const BUILDER_STATE_INITIAL = 0;
 const BUILDER_STATE_FINALIZED = 1;
 
 /**
- * Builder
- *
- * Encapsulates target building invocation.
+ * Callback for new targets added during builder execution
+ * @callback module:builder~Builder~newTargetCallback
+ * @param {module:target~Target} target
+ *  The target currently being processed by the builder.
+ * @param {PLUGIN} plugin
+ *  The build plugin of the currently-executing handler.
+ * @param {module:target~Target[]} newTargets
+ *  List of new targets created by current handler operation.
+ */
+
+/**
+ * @typedef module:builder~Builder~builderCallbacks
+ * @type {object}
+ * @property {module:builder~Builder~newTargetCallback} newTarget
+ */
+
+/**
+ * @typedef module:builder~Builder~builderOptions
+ * @type {object}
+ * @property {string} type
+ *  One of 'build' or 'deploy'
+ * @property {boolean} dev
+ *  Determines if the builder skips non-development plugins; default is false
+ * @param {module:depends~DependencyGraph} options.graph 
+ *  The dependency graph for the run
+ * @property {module:builder~Builder~builderCallbacks=} callbacks
+ *  Optional callbacks for the builder to invoke at various stages.
+ */
+
+/**
+ * Encapsulates target building functionality.
  */
 class Builder {
     /**
      * Creates a new builder. A builder audits, loads and executes build plugins
      * against targets loaded from the specified tree.
      *
-     * @param Object tree      A RepoTree or PathTree instance
-     * @param Object options       List of builder options
-     * @param string options.type  One of "build" or "deploy"
-     * @param Boolean options.dev  Indicates if running development build
-     * @param DependencyGraph options.graph  The dependency graph for the run
-     * @param Function options.callbacks.newTarget  Callback for new targets during execution
+     * @param {module:tree/path-tree~PathTree|module:tree/repo-tree~RepoTree} tree
+     *  The tree used to load input targets for the build.
+     * @param {module:builder~Builder~builderOptions} options
+     *  List of builder options
      */
     constructor(tree,options) {
         options.callbacks = options.callbacks || {};
@@ -41,8 +71,14 @@ class Builder {
         this.state = BUILDER_STATE_INITIAL;
     }
 
-    // Determines if the specified target is an initial target. The 'target'
-    // parameter may be a Target or a string.
+    /**
+     * Determines if the specified target is an initial target.
+     *
+     * @param {module:target~Target|string}
+     *  The target to evaluate.
+     *
+     * @return {boolean}
+     */
     isInitialTarget(target) {
         if (target instanceof targetModule.Target) {
             target = target.getSourceTargetPath();
@@ -51,7 +87,12 @@ class Builder {
         return this.initial.some(x => { return x == target });
     }
 
-    // Pushes include configuration objects on the instance.
+    /**
+     * Pushes include configuration objects on the instance.
+     *
+     * @param {object[]} includes
+     *  List of include objects to add to the builder.
+     */
     pushIncludes(includes) {
         if (this.state != BUILDER_STATE_INITIAL) {
             throw new WebdeployError("Builder has invalid state: cannot push includes");
@@ -77,6 +118,14 @@ class Builder {
         }
     }
 
+    /**
+     * Finalizes the builder to prepare it for execution. The builder will be
+     * ready to execute once the auditor has completed auditing the build
+     * plugins.
+     *
+     * @param {module:audit~PluginAuditor} auditor
+     *  The auditor that will audit the plugins required for the build.
+     */
     finalize(auditor) {
         if (this.state != BUILDER_STATE_INITIAL) {
             throw new WebdeployError("Builder has invalid state: cannot finalize");
@@ -150,7 +199,7 @@ class Builder {
 
                 if (plugin.handler) {
                     if (plugin.id in this.plugins) {
-                        throw new Error("Plugin '" + plugin.id + "' is already loaded; cannot load inline plugin");
+                        throw new Error("Plugin '" + plugin.id + "' is already defined; cannot load inline plugin");
                     }
 
                     this.plugins[plugin.id] = { exec: plugin.handler };
@@ -168,7 +217,11 @@ class Builder {
         })
     }
 
-    // Gets the number of plugins that were loaded by this builder.
+    /**
+     * Gets the number of plugins that were loaded by this builder.
+     *
+     * @return {number}
+     */
     getPluginCount() {
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");
@@ -177,9 +230,15 @@ class Builder {
         return Object.keys(this.plugins).length;
     }
 
-    // Gets the include object corresponding to the candidate target. The
-    // candidate target is just the target source path. Returns false if no
-    // match was found.
+    /**
+     * Gets the first include object corresponding to a candidate target.
+     *
+     * @param {string} candidate
+     *  The target path of a candidate target.
+     *
+     * @return {object}
+     *  The include object.
+     */
     findTargetInclude(candidate) {
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");
@@ -247,12 +306,12 @@ class Builder {
     /**
      * Determines if the builder can use the specified handler based on its
      * build configuration. This may exclude a handler if it doesn't fit the
-     * current build settings such as dev or build.
+     * current build settings such as 'dev' or 'build'.
      *
-     * @param Object handler
+     * @param {object} handler
      *  The handler object that denotes the plugin.
      *
-     * @return Boolean
+     * @return {boolean}
      */
     acceptsHandler(handler) {
         // Apply defaults for core handler settings.
@@ -275,13 +334,20 @@ class Builder {
     }
 
     /**
-     * Adds plugin references to the builder so it can use plugins. The plugins
-     * are denoted by the specified handler objects.
+     * Ensures the specified list of handlers can execute by loading their
+     * required build plugins. You should only call this method after a builder
+     * has been finalized. NOTE: the build plugins referenced in the handlers
+     * must have already been audited, otherwise this method will throw an
+     * exception!
      *
-     * @param Array handlers
-     *  An array of handler objects.
+     * @param {object[]} handlers
+     *  A list of handler objects.
      */
-    addHandlers(handlers) {
+    ensureHandlers(handlers) {
+        if (this.state != BUILDER_STATE_FINALIZED) {
+            throw new WebdeployError("Builder has invalid state: not finalized");
+        }
+
         for (let i = 0;i < handlers.length;++i) {
             let plugin = handlers[i];
 
@@ -306,9 +372,20 @@ class Builder {
         }
     }
 
-    // Pushes an initial target into the builder's set of targets. This will
-    // employ the builder's includes to determine the set of handlers for the
-    // new target.
+    /**
+     * Pushes an initial target into the builder's set of targets. This will
+     * employ the builder's includes to determine the set of handlers for the
+     * new target.
+     *
+     * @param {module:target~Target} newTarget
+     *  The new target to add.
+     * @param {boolean} force
+     *  Forces the target to be added even if it doesn't match any of the
+     *  builder's includes.
+     *
+     * @return {module:target~Target|boolean}
+     *  Returns 'newTarget' upon success or false otherwise.
+     */
     pushInitialTarget(newTarget,force) {
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");
@@ -336,27 +413,48 @@ class Builder {
         return false;
     }
 
-    // Pushes a new, initial output target having the specified sequence of
-    // handlers.
+    /**
+     * Pushes a new, initial output target having the specified sequence of
+     * handlers. You can only call this on a finalized Builder.
+     *
+     * @param {module:target~Target} newTarget
+     * @param {object[]} handlers
+     *  The list of handlers to associate with the target.
+     *
+     * @return {module:target~Target}
+     *  Returns 'newTarget'
+     */
     pushInitialTargetWithHandlers(newTarget,handlers) {
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
         // Add the handler plugins if they are not currently in our list of
-        // plugins.
-        this.addHandlers(handlers);
+        // plugins. This also ensures the plugins have been audited.
+        this.ensureHandlers(handlers);
 
         newTarget.level = 1;
         newTarget.setHandlers(handlers.slice());
         this.targets.push(newTarget);
+
         return newTarget;
     }
 
-    // Pushes a new, initial output target. The target is specified in delayed
-    // form and is counted as an initial target from the loaded target
-    // tree. Delayed targets should therefore only be used to indicate targets
-    // loaded from the filesystem.
+    /**
+     * Pushes a new, initial output target. The target is specified in delayed
+     * form and is counted as an initial target from the loaded target
+     * tree. Delayed targets should therefore only be used to indicate targets
+     * loaded from the filesystem.
+     *
+     * @param {object} delayed
+     *  A delayed target object.
+     * @param {boolean} force
+     *  Forces the target to be added even if it doesn't match any of the
+     *  builder's includes.
+     *
+     * @return {module:target~Target|boolean}
+     *  Returns 'newTarget' upon success or false otherwise.
+     */
     pushInitialTargetDelayed(delayed,force) {
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");
@@ -401,9 +499,16 @@ class Builder {
         return false;
     }
 
-    // Creates a new target with content loaded from the tree targeted by the
-    // build process. This method returns a Promise that resolves to the new
-    // Target.
+    /**
+     * Creates a new target with content loaded from the tree associated with
+     * the builder. You can only call this method on a finalized Builder.
+     *
+     * @param {string} path
+     *  The path of the new target within the tree.
+     *
+     * @return {Promise<module:target~Target>}
+     *  Returns a Promise that resolves to the new target.
+     */
     pushInitialTargetFromTree(path) {
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");
@@ -418,7 +523,18 @@ class Builder {
         })
     }
 
-    // Pushes a new output target given the specified parent target.
+    /**
+     * Pushes a new output target given the specified parent target. This
+     * creates a dependency inside the associated dependency graph.
+     *
+     * @param {module:target~Target} parentTarget
+     *  The parent target used to inherit into the new target.
+     * @param {module:target~Target} newTarget
+     *  The new output target to push.
+     *
+     * @return {module:target~Target}
+     *  Returns the new output target instance.
+     */
     pushOutputTarget(parentTarget,newTarget) {
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");
@@ -462,11 +578,13 @@ class Builder {
         return newTarget;
     }
 
-    // Execute all available targets. Only execute the first specified
-    // handler. Any remaining handlers are executed recursively by child targets
-    // if at all.
-    //
-    // Returns Promise
+    /**
+     * Execute all available targets. This call only executes the first handler
+     * for each target. Any remaining handlers are executed recursively by child
+     * targets if at all. You can only call this method on a finalized Builder.
+     *
+     * @return {Promise}
+     */
     execute() {
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");

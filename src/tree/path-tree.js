@@ -1,4 +1,8 @@
-// tree/path-tree
+/**
+ * path-tree.js
+ *
+ * @module tree/path-tree
+ */
 
 const fs = require("fs");
 const path = require("path").posix;
@@ -8,8 +12,6 @@ const configuration = require("../config.js");
 const { WebdeployError } = require("../error");
 
 /**
- * PathTree
- *
  * Represents a tree of potential deploy targets that are sourced from the
  * filesystem (i.e. under a path on disk).
  */
@@ -17,9 +19,9 @@ class PathTree {
     /**
      * Creates a new PathTree instance.
      *
-     * @param String basePath
+     * @param {string} basePath
      *  The base path of the filesystem tree.
-     * @param Object options
+     * @param {object} options
      */
     constructor(basePath,options) {
         this.name = 'PathTree';
@@ -33,8 +35,8 @@ class PathTree {
     /**
      * Adds an option to the tree's internal list of options.
      *
-     * @param String key
-     * @param String value
+     * @param {string} key
+     * @param {string} value
      */
     addOption(key,value) {
         this.options[key] = value;
@@ -43,7 +45,7 @@ class PathTree {
     /**
      * Gets the base path to the tree.
      *
-     * @return String
+     * @return {string}
      */
     getPath() {
         return this.basePath;
@@ -53,11 +55,11 @@ class PathTree {
      * Looks up a configuration parameter from the local file configuration
      * located within the path.
      *
-     * @param String param
+     * @param {string} param
      *  The parameter to lookup.
      *
-     * @return Promise
-     *  Returns a Promise that resolves to a String containing the config
+     * @return {Promise<string>}
+     *  Returns a Promise that resolves to a string containing the config
      *  parameter value.
      */
     getConfigParameter(param) {
@@ -105,12 +107,12 @@ class PathTree {
     /**
      * Gets a blob's contents as a Stream.
      *
-     * @param String blobPath
+     * @param {string} blobPath
      *  The path denoting which blob to lookup. The path is relative to the
      *  configured path.
      *
-     * @return Promise
-     *  Returns a Promise that resolves to a Stream.
+     * @return {Promise<stream.Readable>}
+     *  Returns a Promise that resolves to a readable stream.
      */
     getBlob(blobPath) {
         // Qualify the blobPath with the tree's base path.
@@ -128,20 +130,20 @@ class PathTree {
     /**
      * Walks the tree recursively and calls the callback.
      *
-     * @param Function callback
+     * @param {Function} callback
      *  Function with signature: callback(path,name,streamFunc)
      *   The 'streamFunc' parameter is a function that creates a stream for the
      *   blob entry.
-     * @param Object options
-     * @param Function options.filter
+     * @param {object} options
+     * @param {Function} options.filter
      *  Function like 'filter(path)' such that 'filter(path) => false' heads off
      *  a particular branch path.
-     * @param String options.basePath
+     * @param {string} options.basePath
      *  The base path under the tree representing the starting place for the
      *  walk. NOTE: paths passed to the callback will still be relative to the
      *  target tree.
      *
-     * @return Promise
+     * @return {Promise}
      *  The Promise resolves once all entries have been walked.
      */
     walk(callback,options) {
@@ -198,7 +200,7 @@ class PathTree {
     /**
      * This function has no effect for PathTree.
      *
-     * @return Promise
+     * @return {Promise}
      *  A Promise that always resolves.
      */
     walkExtraneous() {
@@ -209,14 +211,15 @@ class PathTree {
      * Determines if the specified blob has been modified since its last
      * deployment (i.e. the last commit we deployed).
      *
-     * @param String blobPath
+     * @param {string} blobPath
      *  The blob path is relative to the configured target tree.
-     * @param Number mtime
+     * @param {Number} mtime
      *  The last modified time to use for comparison. The Promise will always
      *  resolve to true if this parameter is omitted.
      *
-     * @return Promise
-     *  Resolves to a Boolean
+     * @return {Promise<boolean>}
+     *  A Promise that resolves to a boolean representing if the blob was
+     *  modified.
      */
     isBlobModified(blobPath,mtime) {
         return this.getMTime(blobPath).then((tm) => {
@@ -231,10 +234,10 @@ class PathTree {
     /**
      * Gets the modified time of the specified blob.
      *
-     * @param String blobPath
+     * @param {string} blobPath
      *  The blob path is relative to base path of the tree.
      *
-     * @return Promise
+     * @return {Promise<number>}
      *  A Promise that resolves to an integer representing the mtime.
      */
     getMTime(blobPath) {

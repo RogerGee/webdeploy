@@ -1,4 +1,8 @@
-// tree/repo-tree
+/**
+ * repo-tree.js
+ *
+ * @module tree/repo-tree
+ */
 
 const path = require("path").posix;
 const git = require("nodegit");
@@ -32,8 +36,18 @@ function makeBlobStream(blob) {
 }
 
 /**
- * RepoTree
- *
+ * @typedef module:tree/repo-tree~repoTreeOptions
+ * @property {string} deployBranch
+ *  The branch (i.e. head reference) from which to load the deployment
+ *  commit.
+ * @property {string} deployTag
+ *  The tag (i.e. tag reference) from which to load the deployment commit.
+ * @property {string} storeKey
+ *  The storage key for all config values that require separation based on
+ *  storage path.
+ */
+
+/**
  * Represents a tree of potential deploy targets that are sourced from a git
  * repository using nodegit. The tree also can read configuration from the
  * repo's git-config.
@@ -42,14 +56,9 @@ class RepoTree {
     /**
      * Creates a new RepoTree instance.
      *
-     * @param Object repo
+     * @param {nodegit.Repository} repo
      *  The libgit2 repository object instance to wrap.
-     * @param Object options
-     * @param Object options.deployBranch
-     *  The branch (i.e. head reference) from which to load the deployment
-     *  commit.
-     * @param Object options.deployTag
-     *  The tag (i.e. tag reference) from which to load the deployment commit.
+     * @param {module:tree/repo-tree~repoTreeOptions} options
      */
     constructor(repo,options) {
         this.name = 'RepoTree';
@@ -65,8 +74,8 @@ class RepoTree {
     /**
      * Adds an option to the tree's internal list of options.
      *
-     * @param String key
-     * @param String value
+     * @param {string} key
+     * @param {string} value
      */
     addOption(key,value) {
         this.options[key] = value;
@@ -76,7 +85,7 @@ class RepoTree {
      * Gets the path to the tree; since this is a git-repository, this is always
      * null.
      *
-     * @return String
+     * @return {string}
      */
     getPath() {
         return null;
@@ -87,11 +96,11 @@ class RepoTree {
      * git-config). The parameter key is automatically qualified with the
      * "webdeploy" prefix.
      *
-     * @param String param
+     * @param {string} param
      *  The parameter to lookup.
      *
-     * @return Promise
-     *  Returns a Promise that resolves to a String containing the config
+     * @return {Promise<string>}
+     *  Returns a Promise that resolves to a string containing the config
      *  parameter value.
      */
     getConfigParameter(param) {
@@ -104,11 +113,11 @@ class RepoTree {
      *
      * Looks up an entire configuration section from the git-config.
      *
-     * @param String section
+     * @param {string} section
      *  The name of the section to lookup. The name is automatically qualified
      *  for webdeploy config.
      *
-     * @return Promise
+     * @return {Promise<object>}
      *  A Promise that resolves to an Object containing the configuration
      *  properties.
      */
@@ -127,13 +136,13 @@ class RepoTree {
     /**
      * Writes a config parameter (i.e. to the git-config).
      *
-     * @param String param
+     * @param {string} param
      *  The name of the config parameter; the name is automatically qualified
      *  for webdeploy config.
-     * @param String value
+     * @param {string} value
      *  The config parameter value.
      *
-     * @return Promise
+     * @return {Promise}
      */
     writeConfigParameter(param,value) {
         // Force param key under webdeploy section.
@@ -153,7 +162,7 @@ class RepoTree {
     /**
      * Saves the current deploy commit to the git-config.
      *
-     * @return Promise
+     * @return {Promise}
      *  The Promise resolves when the operation completes.
      */
     saveDeployCommit(key) {
@@ -167,12 +176,12 @@ class RepoTree {
     /**
      * Gets a blob's contents as a Stream.
      *
-     * @param String blobPath
+     * @param {string} blobPath
      *  The path denoting which blob to lookup. The path is relative to the
      *  configured target tree.
      *
-     * @return Promise
-     *  Returns a Promise that resolves to a Stream.
+     * @return {Promise<stream.readable>}
+     *  Returns a Promise that resolves to a readable stream.
      */
     getBlob(blobPath) {
         return this.getTargetTree().then((targetTree) => {
@@ -183,20 +192,20 @@ class RepoTree {
     /**
      * Walks the tree recursively and calls the callback.
      *
-     * @param Function callback
+     * @param {Function} callback
      *  Function with signature: callback(path,name,streamFunc)
      *   The 'streamFunc' parameter is a function that creates a stream for the
      *   blob entry.
-     * @param Object options
-     * @param Function options.filter
+     * @param {object} options
+     * @param {Function} options.filter
      *  Function like 'filter(path)' such that 'filter(path) => false' heads off
      *  a particular branch path.
-     * @param String options.basePath
+     * @param {string} options.basePath
      *  The base path under the tree representing the starting place for the
      *  walk. NOTE: paths passed to the callback will still be relative to the
      *  target tree.
      *
-     * @return Promise
+     * @return {Promise}
      *  The Promise resolves once all entries have been walked.
      */
     walk(callback,options) {
@@ -207,11 +216,12 @@ class RepoTree {
      * Determines if the specified blob has been modified since its last
      * deployment (i.e. the last commit we deployed).
      *
-     * @param String blobPath
+     * @param {string} blobPath
      *  The blob path is relative to the configured target tree.
      *
-     * @return Promise
-     *  Resolves to a Boolean
+     * @return {Promise<boolean>}
+     *  A Promise that resolves to a boolean representing if the blob was
+     *  modified.
      */
     isBlobModified(blobPath) {
         return Promise.all([
@@ -262,10 +272,10 @@ class RepoTree {
      * Gets the modified time of the specified blob. Note: this has no real use
      * for RepoTrees and will always produce an mtime of zero.
      *
-     * @param String blobPath
+     * @param {string} blobPath
      *  The blob path is relative to the configured target tree.
      *
-     * @return Promise
+     * @return {Promise<number>}
      *  A Promise that resolves to an integer representing the mtime.
      */
     getMTime(blobPath) {
@@ -275,10 +285,10 @@ class RepoTree {
     /**
      * Walks through all entries in the target tree.
      *
-     * @param Function callback
-     * @param Object options
+     * @param {Function} callback
+     * @param {object} options
      *
-     * @return Promise
+     * @return {Promise}
      *  The promise returns after all entries have been walked.
      */
     walk(callback,options) {
@@ -302,10 +312,10 @@ class RepoTree {
      * that exists in the previous commit but not in the current
      * commit. Essentially this is called on all blobs that no longer exist.
      *
-     * @param Function callback
+     * @param {Function} callback
      *  Callback having signature: callback(path)
      *
-     * @return Promise
+     * @return {Promise}
      *  Returns a Promise that resolves after all entries have been walked.
      */
     walkExtraneous(callback) {

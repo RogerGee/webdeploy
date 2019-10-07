@@ -1,4 +1,8 @@
-// depends.js
+/**
+ * depends.js
+ *
+ * @module depends
+ */
 
 const fs = require("fs");
 const pathModule = require("path");
@@ -92,6 +96,17 @@ function saveToConfig(repoTree,graph,key) {
 // (i.e. SAVE_FILE_NAME) under the tree. RepoTree instances store dependency
 // graphs in the git-config.
 
+/**
+ * Loads a DependencyGraph instance from a tree.
+ *
+ * @param {module:tree/path-tree~PathTree|module:tree/repo-tree~RepoTree} tree
+ *  The tree from which the dependency graph information is loaded.
+ * @param {string} key
+ *  The config key under which to load the graph state. (Only applies to
+ *  RepoTree's.)
+ *
+ * @return {module:depends~DependencyGraph}
+ */
 function loadFromTree(tree,key) {
     if (tree.name == 'PathTree') {
         return loadFromFile(tree.getPath());
@@ -99,8 +114,23 @@ function loadFromTree(tree,key) {
     if (tree.name == 'RepoTree') {
         return loadFromConfig(tree,key);
     }
+
+   assert(tree.name == 'PathTree' || tree.name == 'RepoTree');
 }
 
+/**
+ * Loads a DependencyGraph instance from a tree.
+ *
+ * @param {module:tree~PathTree~PathTree|module:tree~RepoTree~RepoTree} tree
+ *  The tree from which the dependency graph information is loaded.'
+ * @param {module:depends~DependencyGraph} graph
+ *  The graph to save.
+ * @param {string} key
+ *  The config key under which to save the graph state. (Only applies to
+ *  RepoTree's.)
+ *
+ * @return {Promise}
+ */
 function saveToTree(tree,graph,key) {
     graph.resolve();
 
@@ -110,23 +140,51 @@ function saveToTree(tree,graph,key) {
     if (tree.name == 'RepoTree') {
         return saveToConfig(tree,graph,key);
     }
+
+    assert(tree.name == 'PathTree' || tree.name == 'RepoTree');
 }
 
 /**
- * DependencyGraph
- *
+ * @typedef module:depends~productObject
+ *  Represents a build product result.
+ * @property {string} product
+ *  The build product node value
+ * @property {string[]} sources
+ *  The list of nodes that connect to the build product.
+ */
+
+/**
+ * @callback module:depends~walkCallback
+ *  Callback for walking connections/mappings.
+ * @param {module:depends~DependencyGraph} graph
+ *  The graph that resolved.
+ * @param {string} node
+ *  The forward node.
+ * @param {string[]} nodelist
+ *  The mappings associated with the forward node. The callback may modify
+ *  this list and the changes will be saved in the graph.
+ */
+
+/**
  * Stores target dependencies such that a set of source targets is associated
  * with a set of build products. The associations are always non-trivial,
  * meaning a dependency A -> A is never represented but A -> B is represented.
  */
 class DependencyGraph {
+    /**
+     * Creates a new DependencyGraph instance
+     */
     constructor() {
         this.connections = {};
         this.hooks = [];
     }
 
-    // For a target node N, obtain the complete required set of nodes that are
-    // dependencies of N's output nodes.
+    /**
+     * For a target node N, obtain the complete required set of nodes that are
+     * dependencies of N's output nodes.
+     *
+     * @return {string[]}
+     */
     calculateRequired(node) {
         if (!(node in this.forwardMappings)) {
             return [];
@@ -142,19 +200,32 @@ class DependencyGraph {
         return Array.from(required);
     }
 
+    /**
+     * Determines if the graph has been completely loaded from storage.
+     *
+     * @return {boolean}
+     */
     isLoaded() {
         return Boolean(this.forwardMappings && this.reverseMappings);
     }
 
+    /**
+     * Gets the list of build products as denoted by the dependency graph
+     * (i.e. the leaf nodes).
+     *
+     * @return {string[]}
+     */
     getProducts() {
         assert(this.isLoaded());
         return Object.keys(this.reverseMappings);
     }
 
-    // Promise -> Array of { product, sources }
-    //
-    // Determines the set of build product nodes that are out-of-date based on
-    // information from the tree.
+    /**
+     * Determines the set of build product nodes that are out-of-date based on
+     * information from the tree.
+     *
+     * @return {Promise<module:depends~productObject>}
+     */
     getOutOfDateProducts(tree) {
         assert(this.isLoaded());
 
@@ -199,10 +270,12 @@ class DependencyGraph {
         })
     }
 
-    // Promise -> Set of string
-    //
-    // Determines the set of sources that can safely be ignored since they are
-    // not reachable by any out-of-date build product.
+    /**
+     * Determines the set of sources that can safely be ignored since they are
+     * not reachable by any out-of-date build products.
+     *
+     * @return {Promise<Set<string>>}
+     */
     getIgnoreSources(tree) {
         assert(this.isLoaded());
 
@@ -224,26 +297,51 @@ class DependencyGraph {
         })
     }
 
-    // Determines if the specified source is a dependency of any product known
-    // to the DependencyTree. Returns false if the source wasn't found.
+    /**
+     * Determines if the specified source is a dependency of any product in the
+     * dependency graph.
+     *
+     * @return {boolean}
+     *  Returns false if the source wasn't found.
+     */
     hasProductForSource(source) {
         assert(this.isLoaded());
 
         return source in this.forwardMappings;
     }
 
+    /**
+     * Determines if the specified node has any forward mappings. This means
+     * there is at least one intermediate or final product associated with the
+     * node.
+     *
+     * @return {boolean}
+     */
     lookupForward(a) {
         assert(this.isLoaded());
 
         return this.forwardMappings[a];
     }
 
+    /**
+     * Determines if the specified node has any reverse mappings. This means
+     * there is at least one source associated with the node.
+     *
+     * @return {boolean}
+     */
     lookupReverse(b) {
         assert(this.isLoaded());
 
         return this.reverseMappings[b];
     }
 
+    /**
+     * Adds a raw connection to the dependency graph. The connection will denote
+     * 'a' => 'b'.
+     *
+     * @param {string} a
+     * @param {string} b
+     */
     addConnection(a,b) {
         // Collapse connections that are an identity, i.e. A -> A = A. This
         // avoids having trivial build products in the graph.
@@ -260,22 +358,9 @@ class DependencyGraph {
     }
 
     /**
-     * Callback for walking connections/mappings.
-     *
-     * @callback WalkCallback
-     * @param DependencyGraph graph
-     *  The graph that resolved.
-     * @param string node
-     *  The forward node.
-     * @param array nodelist
-     *  The mappings associated with the forward node. The callback may modify
-     *  this list.
-     */
-
-    /**
      * Walks through each raw connection and invokes the specified callback.
      *
-     * @param WalkCallback callback
+     * @param {module:depends~walkCallback} callback
      */
     walkConnections(callback) {
         var keys = Object.keys(this.connections);
@@ -289,7 +374,7 @@ class DependencyGraph {
      * Creates a resolution hook that will be invoked the next time the
      * dependency graph resolves. The callback is only invoked at most one time.
      *
-     * @param WalkCallback callback(graph,node,nodelist)
+     * @param {module:depends~walkCallback} callback
      *  A walk connection callback that is called on the set of resolved
      *  forward mappings.
      */
@@ -297,6 +382,10 @@ class DependencyGraph {
         this.hooks.push(callback);
     }
 
+    /**
+     * Calculates the forward and reverse mappings from the graph's internal
+     * list of connections required for most operations on the dependency graph.
+     */
     resolve() {
         var found = new Set();
 
@@ -342,14 +431,24 @@ class DependencyGraph {
         this._calcReverseMappings();
     }
 
+    /**
+     * Resets the dependency graph to an empty state.
+     */
     reset() {
         this.connections = {};
         delete this.forwardMappings;
         delete this.reverseMappings;
     }
 
-    // Removes the connection(s) between the specified source and all of its build
-    // products (in both directions).
+    /**
+     * Removes the connection(s) between the specified source and all of its
+     * build products (in both directions).
+     *
+     * @param {string} source
+     *  The value of the source node to search.
+     * @param {boolean} sync
+     *  If true, then the graph is resolved after making the changes.
+     */
     removeConnectionGivenSource(source,sync) {
         // Remove the raw connections.
         var stk = [source];
@@ -372,8 +471,15 @@ class DependencyGraph {
         }
     }
 
-    // Removes the connection(s) between the specified product and all of its
-    // build sources (in both directions).
+    /**
+     * Removes the connection(s) between the specified product and all of its
+     * build sources (in both directions).
+     *
+     * @param {string} product
+     *  The value of the product node to search.
+     * @param {boolean} sync
+     *  If true, then the graph is resolved after making the changes.
+     */
     removeConnectionGivenProduct(product,sync) {
         var removeRecursive = (level) => {
             // Recursively touch each node. Remove every connection that leads
@@ -435,8 +541,8 @@ class DependencyGraph {
 }
 
 module.exports = {
-    loadFromTree: loadFromTree,
-    saveToTree: saveToTree,
+    loadFromTree,
+    saveToTree,
 
-    DependencyGraph: DependencyGraph
+    DependencyGraph
 }
