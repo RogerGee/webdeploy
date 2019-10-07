@@ -135,7 +135,16 @@ function deployBuildStep(tree,options) {
 
         auditor.attachLogger(logger);
 
-        return auditor.audit();
+        return new Promise((resolve,reject) => {
+            auditor.audit(function(error) {
+                if (error) {
+                    reject(error);
+                }
+                else {
+                    resolve();
+                }
+            })
+        })
 
     }).then(() => {
         // Display message denoting number of build plugins loaded.
