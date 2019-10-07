@@ -1,4 +1,8 @@
-// utils.js
+/**
+ * utils.js
+ *
+ * @module utils
+ */
 
 const fs = require("fs");
 const pathModule = require("path");
@@ -52,6 +56,7 @@ module.exports.mkdirParents = function(path,base) {
  *  The path to create.
  *
  * @return {string}
+ *  The prepared path.
  */
 module.exports.prepareConfigPath = function(path) {
     var result = path.replace(/\/|\\/g,'--').replace(/\./g,'-');

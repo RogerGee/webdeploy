@@ -1,4 +1,8 @@
-// sysconf.js
+/**
+ * sysconf.js
+ *
+ * @module sysconf
+ */
 
 const fs = require("fs");
 const os = require("os");
@@ -23,7 +27,9 @@ const config = {};
 /**
  * Performs some initial setup on the system configuration state.
  *
- * @return Promise
+ * @return {Promise<object>}
+ *
+ * @ignore
  */
 function setupSystemConfig() {
     Object.assign(config,DEFAULTS);
@@ -44,8 +50,10 @@ function setupSystemConfig() {
  * Loads the system webdeploy configuration from disk. This optional
  * configuration is stored in a file in the user's home directory.
  *
- * @return Promise
+ * @return {Promise<object>}
  *  The promise resolves once the configuration has been loaded.
+ *
+ * @ignore
  */
 function loadSystemConfig() {
     const fileName = path.join(os.homedir(),USER_CONFIG_FILE);
@@ -85,13 +93,30 @@ function loadSystemConfig() {
     })
 }
 
+/**
+ * Performs final work on the system config object after loading.
+ *
+ * @ignore
+ */
 function finalizeSystemConfig() {
     config.pluginDirectories.push(config.pluginCacheDir);
 }
 
 module.exports = {
+    /**
+     * The loaded system config object. Since the system config is loaded at
+     * bootstrap time, this object is almost always guarenteed to be loaded.
+     *
+     * @type {object}
+     */
     config,
 
+    /**
+     * Ensures that the system config is loaded.
+     *
+     * @return {Promise<object>}
+     *  Returns a Promise that resolves to the loaded system config object.
+     */
     load() {
         if (configLoaded) {
             return Promise.resolve(config);
