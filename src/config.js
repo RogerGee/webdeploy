@@ -1,4 +1,8 @@
-// config.js - webdeploy
+/**
+ * config.js
+ *
+ * @module config
+ */
 
 const pathModule = require('path');
 const requireFromString = require('require-from-string');
@@ -17,9 +21,16 @@ class ConfigNotFoundError extends Error {
     }
 }
 
-// Gets a Promise -> object representing the configration. This attempts to load
-// the configuration from a number of different sources, either as a NodeJS
-// module or parsing JSON.
+/**
+ * Attempts to load the configuration from a number of different sources, either
+ * as a NodeJS module or parsing JSON.
+ *
+ * @param {module:tree/path-tree~PathTree|module:tree/repo-tree~RepoTree} tree
+ *  The tree from which the configuration is to be loaded.
+ *
+ * @return {Promise<object>}
+ *  Returns a promise that resolves to the loaded configuration.
+ */
 function loadFromTree(tree) {
     var sources = {
         // Modules: The module.exports is the config object.
@@ -142,5 +153,6 @@ module.exports = {
         JSON: "JSON",
         MODULE: "MODULE"
     },
-    loadFromTree: loadFromTree
+
+    loadFromTree
 }

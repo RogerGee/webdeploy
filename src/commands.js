@@ -1,4 +1,8 @@
-// commands.js
+/**
+ * commands.js
+ *
+ * @module commands
+ */
 
 const assert = require("assert");
 const pathModule = require("path").posix;
@@ -14,11 +18,14 @@ const logger = require("./logger");
 const { WebdeployError } = require("./error");
 const { prepareConfigPath } = require("./utils");
 
-const DEPLOY_TYPES = {
-    // Uses the config's "build" deployment.
+/**
+ * Enumerates the configuation types supported by webdeploy.
+ */
+const CONFIG_TYPES = {
+    // Uses the config's "build" configuration.
     TYPE_BUILD: 'build',
 
-    // Uses the config's "deploy" deployment.
+    // Uses the config's "deploy" configuration.
     TYPE_DEPLOY: 'deploy'
 }
 
@@ -53,7 +60,7 @@ function deployDeployStep(deployer,builder,options) {
     if (builder.outputTargets.length == 0) {
         if (options.ignored) {
             logger.pushIndent();
-            if (options.type == DEPLOY_TYPES.TYPE_BUILD) {
+            if (options.type == CONFIG_TYPES.TYPE_BUILD) {
                 logger.log("*All Targets Ignored - Build Up-to-date*");
             }
             else {
@@ -263,8 +270,8 @@ function deployBuildStep(tree,options) {
 }
 
 function deployStartStep(tree,options) {
-    assert(options.type == DEPLOY_TYPES.TYPE_BUILD
-           || options.type == DEPLOY_TYPES.TYPE_DEPLOY);
+    assert(options.type == CONFIG_TYPES.TYPE_BUILD
+           || options.type == CONFIG_TYPES.TYPE_DEPLOY);
 
     var storeKey;
 
@@ -303,7 +310,7 @@ function deployStartStep(tree,options) {
         // been specified by the user in the options object, OR we lookup the
         // default deploy path stored in the tree configuration.
 
-        if (options.type == DEPLOY_TYPES.TYPE_DEPLOY) {
+        if (options.type == CONFIG_TYPES.TYPE_DEPLOY) {
             if (!options.deployPath) {
                 return tree.getConfigParameter("deployPath");
             }
@@ -359,12 +366,16 @@ function deployStartStep(tree,options) {
 /**
  * Initiates a deployment using the specified git repository.
  *
- * @param {string} repo - The path to the git repository to load
- * @param {Object} options - The list of options to pass to the commands
- * @param {String} options.type - One of the commands.types enumerators
+ * @param {string} repo
+ *  The path to the git repository to load.
+ * @param {object} options
+ *  The list of options to pass to the commands.
+ * @param {string} options.type
+ *  One of the commands.types enumerators.
  *
- * @return {Promise} - Returns a Promise that resolves when the operation
- *  completes or rejects when the operation fails.
+ * @return {Promise}
+ *  Returns a Promise that resolves when the operation completes or rejects when
+ *  the operation fails.
  */
 function deployRepository(repo,options) {
     var treeOptions = {
@@ -380,12 +391,16 @@ function deployRepository(repo,options) {
 /**
  * Initiates a deployment using the specified tree from the local filesystem.
  *
- * @param {string} path - The path to the tree to deploy.
- * @param {Object} options - The list of options to pass to the commands
- * @param {String} options.type - One of the commands.types enumerators
+ * @param {string} path
+ *  The path to the tree to deploy.
+ * @param {object} options
+ *  The list of options to pass to the commands.
+ * @param {string} options.type
+ *  One of the commands.types enumerators.
  *
- * @return {Promise} - Returns a Promise that resolves when the operation
- *  completes or rejects when the operation fails.
+ * @return {Promise}
+ *  Returns a Promise that resolves when the operation completes or rejects when
+ *  the operation fails.
  */
 function deployLocal(path,options) {
     return createPathTree(path).then((tree) => {
@@ -394,24 +409,28 @@ function deployLocal(path,options) {
 }
 
 /**
- * Callback for deployDecide function.
- *
- * @callback decideCallback
- * @param {string} type - Either "repo" or "local"
+ * Callback for 'deployDecide' function.
+ * @callback module:commands~decideCallback
+ * @param {string} type
+ *  One of either "repo" or "local".
  */
 
 /**
  * Initiates a deployment, deciding whether or not to use a local directory or a
  * git repository. Git repositories have precedence.
  *
- * @param {string} path - The path to the a git repository or local path
- * @param {Object} options - The list of options to pass to the commands
- * @param {String} options.type - One of the commands.types enumerators
- * @param {decideCallback} decideCallback - A callback that is passed the
- *   decision that was made.
+ * @param {string} path
+ *  The path to the a git repository or local path.
+ * @param {object} options
+ *  The list of options to pass to the commands.
+ * @param {string} options.type
+ *  One of the CONFIG_TYPES enumerators.
+ * @param {module:commands~decideCallback} decideCallback
+ *  A callback that is passed the decision that was made.
  *
- * @return {Promise} - Returns a Promise that resolves when the operation
- *  completes or rejects when the operation fails.
+ * @return {Promise}
+ *  Returns a Promise that resolves when the operation completes or rejects when
+ *  the operation fails.
  */
 function deployDecide(path,options,decideCallback) {
     var prevPath = pathModule.resolve(pathModule.join(path,".."));
@@ -427,9 +446,9 @@ function deployDecide(path,options,decideCallback) {
 }
 
 module.exports = {
-    deployRepository: deployRepository,
-    deployLocal: deployLocal,
-    deployDecide: deployDecide,
+    deployRepository,
+    deployLocal,
+    deployDecide,
 
-    types: DEPLOY_TYPES
+    CONFIG_TYPES
 }
