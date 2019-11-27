@@ -1,12 +1,16 @@
 {
   "name": "@tccl/webdeploy",
-  "version": "0.3.1",
+  "version": "0.4.0-dev",
   "description": "A utility for building and deploying websites from git repositories",
   "main": "webdeploy.js",
-  "scripts": {},
+  "author": "Roger Gee",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://tccl-apps/git/webdeploy/webdeploy.git"
+  },
+  "scripts": {
+    "generate-docs": "jsdoc -d doc/jsdocs -c jsdoc.conf.json README.md -r"
   },
   "bin": {
     "webdeploy": "./webdeploy.js"
@@ -14,8 +18,6 @@
   "engines": {
     "node": ">=9.0.0"
   },
-  "author": "Roger Gee",
-  "license": "MIT",
   "dependencies": {
     "colors": "^1.4.0",
     "commander": "^2.20.3",

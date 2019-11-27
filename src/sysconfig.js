@@ -1,7 +1,7 @@
 /**
- * sysconf.js
+ * sysconfig.js
  *
- * @module sysconf
+ * @module sysconfig
  */
 
 const fs = require("fs");
