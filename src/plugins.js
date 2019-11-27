@@ -1,4 +1,8 @@
-// plugins.js
+/**
+ * plugins.js
+ *
+ * @module plugins
+ */
 
 const fs = require("fs");
 const pathModule = require("path");
@@ -8,11 +12,33 @@ const sysconfig = require("./sysconfig").config;
 const { mkdirParents } = require("./utils");
 const { WebdeployError } = require("./error");
 
+/**
+ * Enumerates the various plugins kinds defined in webdeploy.
+ */
 const PLUGIN_KINDS = {
+    /**
+     * A build plugin is used to translate a single target from one state to
+     * another in a build.
+     */
     BUILD_PLUGIN: 0,
+
+    /**
+     * A deploy plugin is used to translate one or more targets from one state
+     * to another during a deploy.
+     */
     DEPLOY_PLUGIN: 1
 }
 
+/**
+ * Creates a fully-qualified plugin ID.
+ *
+ * @param {object} pluginInfo
+ *  Plugin descriptor representing plugin to load.
+ * @param {string} pluginInfo.pluginId
+ * @param {string} pluginInfo.pluginVersion
+ *
+ * @return {string}
+ */
 function makeFullPluginId(pluginInfo) {
     var { pluginId, pluginVersion } = pluginInfo;
 
@@ -23,6 +49,13 @@ function makeFullPluginId(pluginInfo) {
     return pluginId;
 }
 
+/**
+ * Converts a fully-qualified plugin ID into a plugin descriptor.
+ *
+ * @param {string} pluginIdString
+ *
+ * @return {object}
+ */
 function parseFullPluginId(pluginIdString) {
     var parts = pluginIdString.split('@');
 
@@ -222,64 +255,82 @@ function lookupDefaultPlugin(pluginInfo,kind) {
     }
 }
 
+/**
+ * Determines if the plugin is a default plugin.
+ *
+ * @param {object} pluginInfo
+ *  Plugin descriptor representing plugin to load.
+ * @param {string} pluginInfo.pluginId
+ * @param {string} pluginInfo.pluginVersion
+ *
+ * @return {boolean}
+ */
+function isDefaultPlugin(pluginInfo) {
+    if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS
+        || pluginInfo.pluginId in DEFAULT_DEPLOY_PLUGINS)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Loads a plugin by kind.
+ *
+ * @param {object} pluginInfo
+ *  Plugin descriptor representing plugin to load.
+ * @param {string} pluginInfo.pluginId
+ * @param {string} pluginInfo.pluginVersion
+ * @param {number} kind
+ *  One of the PLUGIN_KIND constants.
+ *
+ * @return {object}
+ */
+function loadPluginByKind(pluginInfo,kind) {
+    var plugin = lookupDefaultPlugin(pluginInfo,kind);
+    if (!plugin) {
+        plugin = requirePlugin(pluginInfo,kind);
+    }
+
+    return plugin;
+}
+
+/**
+ * Looks up a default build plugin.
+ *
+ * @param {object} pluginInfo
+ *  Plugin descriptor representing plugin to load.
+ * @param {string} pluginInfo.pluginId
+ * @param {string} pluginInfo.pluginVersion
+ *
+ * @return {object}
+ */
+function lookupDefaultBuildPlugin(pluginInfo) {
+    return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
+}
+
+/**
+ * Looks up a default deploy plugin.
+ *
+ * @param {object} pluginInfo
+ *  Plugin descriptor representing plugin to load.
+ * @param {string} pluginInfo.pluginId
+ * @param {string} pluginInfo.pluginVersion
+ *
+ * @return {object}
+ */
+function lookupDefaultDeployPlugin(pluginInfo) {
+    return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
+}
+
 module.exports = {
     PLUGIN_KINDS,
 
-    // Determines if the plugin is a default plugin.
-    isDefaultPlugin(pluginInfo) {
-        if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS
-            || pluginInfo.pluginId in DEFAULT_DEPLOY_PLUGINS)
-        {
-            return true;
-        }
-
-        return false;
-    },
-
-    // Loads a build plugin object.
-    loadBuildPlugin(pluginInfo) {
-        if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS) {
-            if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
-                // TODO Warn about default plugin not having latest version.
-            }
-
-            return DEFAULT_BUILD_PLUGINS[pluginInfo.pluginId];
-        }
-
-        return plugin;
-    },
-
-    // Loads a deploy plugin object.
-    loadDeployPlugin(pluginInfo) {
-        if (pluginInfo.pluginId in DEFAULT_DEPLOY_PLUGINS) {
-            if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
-                // TODO Warn about default plugin not having latest version.
-            }
-
-            return DEFAULT_DEPLOY_PLUGINS[pluginInfo.pluginId];
-        }
-
-        return plugin;
-    },
-
-    loadPluginByKind(pluginInfo,kind) {
-        var plugin = lookupDefaultPlugin(pluginInfo,kind);
-        if (!plugin) {
-            plugin = requirePlugin(pluginInfo,kind);
-        }
-
-        return plugin;
-    },
-
-    // Looks up a default build plugin.
-    lookupDefaultBuildPlugin(pluginInfo) {
-        return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
-    },
-
-    // Looks up a default deploy plugin.
-    lookupDefaultDeployPlugin(pluginInfo) {
-        return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
-    },
+    isDefaultPlugin,
+    loadPluginByKind,
+    lookupDefaultBuildPlugin,
+    lookupDefaultDeployPlugin,
 
     makeFullPluginId,
     parseFullPluginId

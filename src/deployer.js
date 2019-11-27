@@ -1,4 +1,8 @@
-// deployer.js
+/**
+ * deployer.js
+ *
+ * @module deployer
+ */
 
 const pluginLoader = require("./plugins");
 const audit = require("./audit");
@@ -8,7 +12,22 @@ const { WebdeployError } = require("./error");
 const DEPLOYER_STATE_INITIAL = 0;
 const DEPLOYER_STATE_FINALIZED = 1;
 
+/**
+ * Encapsulates core deploy operations.
+ */
 class Deployer {
+    /**
+     * Creates a new Deployer instance.
+     *
+     * @param {object} options
+     *  Options used to configure the deployer
+     * @param {string} options.deployPath
+     *  The deploy path to configure for the deployment.
+     * @param {object} options.deployPlugin
+     *  The deploy plugin to utilize for the deployment.
+     * @param {nodegit.Tree} options.tree
+     *  The git tree instance associated with the deployment.
+     */
     constructor(options) {
         if (!options.deployPath) {
             throw new WebdeployError("No deploy path is provided in deployment options");
@@ -32,12 +51,12 @@ class Deployer {
     }
 
     /**
-     * Prepares the deployer for finalization. The object is not actually
-     * finalized until the plugins have been audited and the auditor invokes the
+     * Prepares the deployer for execution. The object is not actually finalized
+     * until the plugins have been audited and the auditor invokes the
      * finalization callback.
      *
-     * @param Object auditor
-     *  The PluginAuditor instance globally auditing all plugins.
+     * @param {module:audit~PluginAuditor} auditor
+     *  The plugin auditor globally auditing all plugins.
      */
     finalize(auditor) {
         if (this.state != DEPLOYER_STATE_INITIAL) {
@@ -49,6 +68,7 @@ class Deployer {
 
         var plugins = [];
 
+        // Add configured deploy plugin first.
         plugins.push({
             pluginId: this.deployPlugin.id,
             pluginVersion: this.deployPlugin.version,
@@ -96,9 +116,21 @@ class Deployer {
         })
     }
 
+    /**
+     * Executes the deployment.
+     *
+     * @param {module:builder~Builder} builder
+     *  The builder used to build the deployment.
+     *
+     * @return {boolean|Promise}
+     *  Returns a Promise which resolves when the execution is finished.
+     */
     execute(builder) {
         if (this.state != DEPLOYER_STATE_FINALIZED) {
             throw new WebdeployError("Deployer has invalid state: not finalized");
+        }
+        if (this.plugins.length == 0) {
+            throw new WebdeployError("Deployer has no deploy plugins");
         }
 
         this.context = new DeployContext(this.deployPath,builder,this.tree);

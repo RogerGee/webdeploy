@@ -1,4 +1,8 @@
-// plugin-cache.js
+/**
+ * plugin-cache.js
+ *
+ * @module plugin-cache
+ */
 
 const fs = require("fs");
 const path = require("path");
@@ -216,10 +220,13 @@ function runNpmOnPlugin(plugin,donefn,errfn) {
 /**
  * Loads a plugin if it is available in the plugin cache.
  *
- * @param string pluginInfo.pluginId
- * @param string pluginInfo.pluginVersion
+ * @param {object} pluginInfo
+ *  Plugin descriptor representing plugin to load.
+ * @param {string} pluginInfo.pluginId
+ * @param {string} pluginInfo.pluginVersion
  *
- * @return mixed
+ * @return {object}
+ *  Returns the loaded plugin object.
  */
 function loadPlugin(pluginInfo) {
     var plugin = makePlugin(pluginInfo);
@@ -231,6 +238,18 @@ function loadPlugin(pluginInfo) {
     return false;
 }
 
+/**
+ * Installs a plugin directly without checking if it already exists.
+ *
+ * @param {object} pluginInfo
+ *  Plugin descriptor representing plugin to load.
+ * @param {string} pluginInfo.pluginId
+ * @param {string} pluginInfo.pluginVersion
+ * @param {function} donefn
+ * @param {function} errfn
+ * @param {module:logger=} logger
+ *  If provided, then the installation process will be logged.
+ */
 function installPluginDirect(pluginInfo,donefn,errfn,logger) {
     var plugin = makePlugin(pluginInfo);
     var repos = sysconfig.npmRepos.map(makeRepo('npm'))
@@ -249,6 +268,18 @@ function installPluginDirect(pluginInfo,donefn,errfn,logger) {
     installPluginFromRepos(plugin,repos,logger,donefn,errfn);
 }
 
+/**
+ * Installs a plugin but first checks to see if it already exists.
+ *
+ * @param {object} pluginInfo
+ *  Plugin descriptor representing plugin to load.
+ * @param {string} pluginInfo.pluginId
+ * @param {string} pluginInfo.pluginVersion
+ * @param {function} donefn
+ * @param {function} errfn
+ * @param {module:logger=} logger
+ *  If provided, then the installation process will be logged.
+ */
 function installPlugin(pluginInfo,donefn,errfn,logger) {
     var plugin = makePlugin(pluginInfo);
 
@@ -269,15 +300,33 @@ function installPlugin(pluginInfo,donefn,errfn,logger) {
     })
 }
 
+/**
+ * Ensures that a plugin is installed.
+ *
+ * @param {object} pluginInfo
+ *  Plugin descriptor representing plugin to load.
+ * @param {string} pluginInfo.pluginId
+ * @param {string} pluginInfo.pluginVersion
+ * @param {function} donefn
+ *  Callback when operation completes successfully; the function is passed a
+ *  boolean denoting whether the plugin had to be installed.
+ * @param {function} errfn
+ * @param {module:logger=} logger
+ *  If provided, then the installation process will be logged.
+ */
 function ensurePlugin(pluginInfo,donefn,errfn,logger) {
     // Attempt to install the plugin and succeed if the plugin already exists.
-    installPlugin(pluginInfo,donefn,(err) => {
+    installPlugin(pluginInfo,function() {
+        donefn(true);
+
+    },function(err) {
         if (err instanceof WebdeployError && err.code == PLUGIN_DIRECTORY_EXISTS) {
-            donefn();
+            donefn(false);
         }
         else {
             errfn(err);
         }
+
     }, logger)
 }
 
