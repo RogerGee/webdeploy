@@ -1,109 +1,163 @@
-Target
-======
+# Targets
 
-The `Target` object encapsulates the state of a build target. A `Target`
-corresponds to a single blob from the target tree which is to be included in a
-deployment.
+Targets are a core concept in `webdeploy`. A target is the representation of an input blob as it moves through and is manipulated by the `webdeploy` pipeline.
 
-Targets are created at the beginning of the deployment pipeline during the build
-phase. The [config object](config.md)'s `includes` section determines which
-targets are created during this phase.
+The `Target` class encapsulates the state of a build target. An initial build `Target` corresponds to a single blob from the target tree which is to be included in a deployment. These kinds of targets are created at the beginning of the pipeline during the build phase. The target tree config object's `includes` section selects the file blobs from which the initial input targets are created during this phase.
 
-To use targets manually from a plugin,
+A build consists of taking a set of input targets and converting them into a set of output targets. Intermediate output targets may also be created depending on the complexity of the build. In some cases, output targets are simply the same input target instance that has been passed through.
+
+Most of the time, a plugin will interact with targets that have already been created and that are passed to the plugin. To use targets manually from a plugin, you can require the target module from the core codebase:
 
 ```js
-const targetModule = require("../src/target");
+const { makeOutputTarget, Target } = webdeploy_require("target");
 ```
 
-## Structure
+<a name="module_target"></a>
 
-A `Target` object has the following properties:
+## API Documentation
+target.js
 
-#### `Target.stream` [stream.PassThrough]
 
-The stream for reading/writing a target's content.
+* [target](#module_target)
+    * [~Target](#module_target..Target)
+        * [new Target(sourcePath, targetName, stream, options)](#new_module_target..Target_new)
+        * [.loadContent()](#module_target..Target+loadContent) ⇒ <code>Promise</code>
+        * [.getSourceTargetPath()](#module_target..Target+getSourceTargetPath) ⇒ <code>string</code>
+        * [.getDeployTargetPath()](#module_target..Target+getDeployTargetPath) ⇒ <code>string</code>
+        * [.setDeployPath(basePath)](#module_target..Target+setDeployPath)
+        * [.makeOutputTarget()](#module_target..Target+makeOutputTarget) ⇒ [<code>Target</code>](#module_target..Target)
+        * [.pass([newTargetName], [newTargetPath])](#module_target..Target+pass) ⇒ [<code>Target</code>](#module_target..Target)
+        * [.applySettings()](#module_target..Target+applySettings)
+        * [.applyOptions(options)](#module_target..Target+applyOptions)
+        * [.setHandlers(handlers)](#module_target..Target+setHandlers)
+    * [~makeOutputTarget(newTargetPath, newTargetName, options)](#module_target..makeOutputTarget) ⇒ [<code>Target</code>](#module_target..Target)
 
-The target's content stream has its encoding set to UTF-8. Currently the
-implementation has all streams keep data buffered in memory.
+<a name="module_target..Target"></a>
 
-#### `Target.content` [String]
+### target~Target
+Encapsulates output target functionality
 
-The content as read from `Target.stream`. This property is only set if a
-`loadContent` method call resolved successfully.
+**Kind**: inner class of [<code>target</code>](#module_target)  
 
-#### `Target.sourcePath` [String]
+* [~Target](#module_target..Target)
+    * [new Target(sourcePath, targetName, stream, options)](#new_module_target..Target_new)
+    * [.loadContent()](#module_target..Target+loadContent) ⇒ <code>Promise</code>
+    * [.getSourceTargetPath()](#module_target..Target+getSourceTargetPath) ⇒ <code>string</code>
+    * [.getDeployTargetPath()](#module_target..Target+getDeployTargetPath) ⇒ <code>string</code>
+    * [.setDeployPath(basePath)](#module_target..Target+setDeployPath)
+    * [.makeOutputTarget()](#module_target..Target+makeOutputTarget) ⇒ [<code>Target</code>](#module_target..Target)
+    * [.pass([newTargetName], [newTargetPath])](#module_target..Target+pass) ⇒ [<code>Target</code>](#module_target..Target)
+    * [.applySettings()](#module_target..Target+applySettings)
+    * [.applyOptions(options)](#module_target..Target+applyOptions)
+    * [.setHandlers(handlers)](#module_target..Target+setHandlers)
 
-The relative path under the target tree to the target, not including the target
-name. For example, if the full target path is `path/to/target`, then the source
-path is `path/to`. The source path is empty if the target is top-level within
-the directory hierarchy.
+<a name="new_module_target..Target_new"></a>
 
-Since the source path is relative, it will never have a leading path separator.
-POSIX path separators are always used for source paths.
+#### new Target(sourcePath, targetName, stream, options)
+Creates a new Target instance.
 
-#### `Target.deployPath` [String]
 
-The absolute path to a target under the deploy tree, not including the target
-name. This property is not set until the deploy phase.
+| Param | Type | Description |
+| --- | --- | --- |
+| sourcePath | <code>string</code> |  |
+| targetName | <code>string</code> |  |
+| stream | <code>stream.Readable</code> | The stream from which the target's content is read |
+| options | <code>object</code> | Options passed for the target (and any child target) |
 
-#### `Target.targetName` [String]
+<a name="module_target..Target+loadContent"></a>
 
-The target name; this corresponds to the blob file name. If the full target path
-is `path/to/target` then the target name is `target`.
+#### target.loadContent() ⇒ <code>Promise</code>
+Reads all target content into a single string. The content is assigned to
+the 'content' property on the Target object once this operation
+completes.
 
-#### `Target.options` [Object]
+**Kind**: instance method of [<code>Target</code>](#module_target..Target)  
+**Returns**: <code>Promise</code> - Returns a Promise that evaluates to the loaded content.  
+<a name="module_target..Target+getSourceTargetPath"></a>
 
-Plugin-specific options. The functionality may write extra options here if
-required. The options are initially loaded from the `include` config but may
-be modified by build/deploy plugins if required.
+#### target.getSourceTargetPath() ⇒ <code>string</code>
+Gets the path to the target relative to the target's source tree. This
+includes the target name.
 
-## Functionality
+**Kind**: instance method of [<code>Target</code>](#module_target..Target)  
+<a name="module_target..Target+getDeployTargetPath"></a>
 
-A `Target` object has the following functions:
+#### target.getDeployTargetPath() ⇒ <code>string</code>
+Gets the path to an output target in a deployment.
 
-#### `Target.loadContent` -> Promise
+**Kind**: instance method of [<code>Target</code>](#module_target..Target)  
+**Returns**: <code>string</code> - The absolute path that includes the target name.  
+<a name="module_target..Target+setDeployPath"></a>
 
-Loads all content from the target data stream. The `Target.content` property will
-be set after this operation finished. The content is loaded once the Promise
-resolves. The Promise resolve handler is passed the content variable as well.
+#### target.setDeployPath(basePath)
+Updates the deploy path for the target.
 
-#### `Target.getSourceTargetPath()` -> String
+**Kind**: instance method of [<code>Target</code>](#module_target..Target)  
 
-Obtains the full target source path, e.g. `path/to/target`. This is just a join
-of the target source path and name.
+| Param | Type | Description |
+| --- | --- | --- |
+| basePath | <code>string</code> | The base path to which the target's deploy path will be relative. |
 
-#### `Target.getDeployTargetPath()` -> String
+<a name="module_target..Target+makeOutputTarget"></a>
 
-Obtains the full target deploy path, e.g. `path/to/deploy/target`. This is just
-a join of the target deploy path and name.
+#### target.makeOutputTarget() ⇒ [<code>Target</code>](#module_target..Target)
+Creates an output target that inherits from the parent target.
 
-#### `Target.setDeployPath(deployPath)` -> String
+**Kind**: instance method of [<code>Target</code>](#module_target..Target)  
+<a name="module_target..Target+pass"></a>
 
-Sets the deploy path for a target. This is typically called by the
-implementation during the deploy phase.
+#### target.pass([newTargetName], [newTargetPath]) ⇒ [<code>Target</code>](#module_target..Target)
+Moves the target through the pipeline unchanged. You may optionally
+change the target name/path if desired. The content will always pass
+through though.
 
-#### `Target.makeOutputTarget(newTargetName,newTargetPath,recursive)` -> Target
+**Kind**: instance method of [<code>Target</code>](#module_target..Target)  
 
-Creates a new `Target` based on the called target. If `newTargetName` or
-`newTargetPath` are `null`, then they inherit the properties of the called
-target. If `recursive` is `true`, then the new target is marked recursive and
-will be processed by the build system recursively upon a plugin resolving its
-output targets.
+| Param | Type | Description |
+| --- | --- | --- |
+| [newTargetName] | <code>string</code> | A new name to assign to the target. |
+| [newTargetPath] | <code>string</code> | A new path to assign to the target. |
 
-The new target inherits the options object of the called target.
+<a name="module_target..Target+applySettings"></a>
 
-#### `Target.pass()` -> Target
+#### target.applySettings()
+Applies the default plugin settings to the target.
 
-Creates a new `Target` that is an exact copy of the called target. This is
-useful for passing a target along unchanged. Calling this function is normally
-not necessary as you can just pass along the original target.
+**Kind**: instance method of [<code>Target</code>](#module_target..Target)  
+<a name="module_target..Target+applyOptions"></a>
 
-Calling `pass` does not duplicate the stream content but just passes the stream
-along to the child target.
+#### target.applyOptions(options)
+Applies additional options to the target's list of options. The provided
+options add to or override existing options.
 
-#### `Target.applySettings(pluginSettings)`
+**Kind**: instance method of [<code>Target</code>](#module_target..Target)  
 
-Applies default plugin settings. This is mostly used internally by the
-implementation. Supported settings include:
+| Param | Type |
+| --- | --- |
+| options | <code>object</code> | 
 
-  * `path` - an alternative base deploy path for a target
+<a name="module_target..Target+setHandlers"></a>
+
+#### target.setHandlers(handlers)
+Sets the handlers that should process the target.
+
+**Kind**: instance method of [<code>Target</code>](#module_target..Target)  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| handlers | <code>Array.&lt;object&gt;</code> | The list of handlers to associate with the target. |
+
+<a name="module_target..makeOutputTarget"></a>
+
+### target~makeOutputTarget(newTargetPath, newTargetName, options) ⇒ [<code>Target</code>](#module_target..Target)
+Creates a new output target.
+
+**Kind**: inner method of [<code>target</code>](#module_target)  
+
+| Param | Type | Description |
+| --- | --- | --- |
+| newTargetPath | <code>string</code> | The path for the new output target. |
+| newTargetName | <code>string</code> | The name of the new output target. |
+| options | <code>object</code> | The options assigned to the new output target. |
+
+
