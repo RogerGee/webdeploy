@@ -1,5 +1,5 @@
 /**
- * builder.js
+ * index.js
  *
  * @module builder
  */
@@ -7,10 +7,11 @@
 const assert = require("assert");
 const pathModule = require("path").posix;
 
-const targetModule = require("./target");
-const pluginLoader = require("./plugins");
-const audit = require("./audit");
-const { WebdeployError } = require("./error");
+const { BuildInclude } = require("./build-include");
+const targetModule = require("../target");
+const pluginLoader = require("../plugins");
+const audit = require("../audit");
+const { WebdeployError } = require("../error");
 
 const BUILDER_STATE_INITIAL = 0;
 const BUILDER_STATE_FINALIZED = 1;
@@ -33,19 +34,6 @@ const BUILDER_STATE_FINALIZED = 1;
  */
 
 /**
- * @typedef module:builder~Builder~builderOptions
- * @type {object}
- * @property {string} type
- *  One of 'build' or 'deploy'
- * @property {boolean} dev
- *  Determines if the builder skips non-development plugins; default is false
- * @param {module:depends~DependencyGraph} options.graph 
- *  The dependency graph for the run
- * @property {module:builder~Builder~builderCallbacks=} callbacks
- *  Optional callbacks for the builder to invoke at various stages.
- */
-
-/**
  * Encapsulates target building functionality.
  */
 class Builder {
@@ -55,8 +43,16 @@ class Builder {
      *
      * @param {module:tree/path-tree~PathTree|module:tree/repo-tree~RepoTree} tree
      *  The tree used to load input targets for the build.
-     * @param {module:builder~Builder~builderOptions} options
+     * @param {object} options
      *  List of builder options
+     * @param {string} options.type
+     *  One of 'build' or 'deploy'.
+     * @param {boolean} options.dev
+     *  Determines if the builder skips non-development plugins; default is false
+     * @param {module:depends~DependencyGraph} options.graph 
+     *  The dependency graph to use for the run
+     * @param {module:builder~Builder~builderCallbacks} [options.callbacks]
+     *  Callbacks for the builder to invoke at various stages.
      */
     constructor(tree,options) {
         options.callbacks = options.callbacks || {};
@@ -91,7 +87,7 @@ class Builder {
      * Pushes include configuration objects on the instance.
      *
      * @param {object[]} includes
-     *  List of include objects to add to the builder.
+     *  List of raw build include objects to add to the builder.
      */
     pushIncludes(includes) {
         if (this.state != BUILDER_STATE_INITIAL) {
@@ -99,15 +95,7 @@ class Builder {
         }
 
         for (var i = 0;i < includes.length;++i) {
-            var include = Object.assign({},includes[i]);
-
-            // Apply defaults for core include object settings.
-            if (typeof include.build == "undefined") {
-                include.build = true;
-            }
-            if (!include.handlers) {
-                include.handlers = [];
-            }
+            var include = new BuildInclude((i+1).toString(),includes[i]);
 
             // Skip loading if not for build and we are doing a build run.
             if (this.options.type == "build" && !include.build) {
@@ -236,8 +224,9 @@ class Builder {
      * @param {string} candidate
      *  The target path of a candidate target.
      *
-     * @return {object}
-     *  The include object.
+     * @return {module:builder/build-include~BuildInclude}
+     *  Returns the include object that was matched; otherwise false is
+     *  returned.
      */
     findTargetInclude(candidate) {
         if (this.state != BUILDER_STATE_FINALIZED) {
@@ -246,55 +235,8 @@ class Builder {
 
         var i = 0;
         while (i < this.includes.length) {
-            // Make sure the candidate is not excluded.
-
-            if (this.includes[i].exclude) {
-                if (Array.isArray(this.includes[i].exclude)) {
-                    var excludes = this.includes[i].exclude;
-                }
-                else {
-                    var excludes = [this.includes[i].exclude];
-                }
-
-                for (var j = 0;j < excludes.length;++j) {
-                    if (candidate.match(excludes[j])) {
-                        return false;
-                    }
-                }
-            }
-
-            // Try matches (exact match).
-
-            if (this.includes[i].match) {
-                if (Array.isArray(this.includes[i].match)) {
-                    var matches = this.includes[i].match;
-                }
-                else {
-                    var matches = [this.includes[i].match];
-                }
-
-                for (var j = 0;j < matches.length;++j) {
-                    if (candidate == matches[j]) {
-                        return this.includes[i];
-                    }
-                }
-            }
-
-            // Try patterns (regex match).
-
-            if (this.includes[i].pattern) {
-                if (Array.isArray(this.includes[i].pattern)) {
-                    var patterns = this.includes[i].pattern;
-                }
-                else {
-                    var patterns = [this.includes[i].pattern];
-                }
-
-                for (var j = 0;j < patterns.length;++j) {
-                    if (candidate.match(patterns[j])) {
-                        return this.includes[i];
-                    }
-                }
+            if (this.includes[i].doesInclude(candidate)) {
+                return this.includes[i];
             }
 
             i += 1;
@@ -656,4 +598,6 @@ class Builder {
     }
 }
 
-module.exports = Builder;
+module.exports = {
+    Builder
+}

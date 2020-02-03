@@ -10,7 +10,7 @@ const git = require("nodegit");
 
 const { createPathTree, createRepoTree } = require("./tree");
 const targetModule = require("./target");
-const Builder = require("./builder");
+const { Builder } = require("./builder");
 const Deployer = require("./deployer");
 const { PluginAuditor } = require("./audit");
 const depends = require("./depends");
