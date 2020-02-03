@@ -34,7 +34,7 @@ commander.command("deploy [path]")
         }
 
         var options = {
-            type: commands.types.TYPE_DEPLOY,
+            type: commands.CONFIG_TYPES.TYPE_DEPLOY,
             force: cmd.force ? true : false,
             deployBranch: cmd.deployBranch,
             deployTag: cmd.deployTag,
@@ -72,7 +72,7 @@ commander.command("build [path]")
 
         var options = {
             dev: cmd.dev || !cmd.prod,
-            type: commands.types.TYPE_BUILD,
+            type: commands.CONFIG_TYPES.TYPE_BUILD,
             force: cmd.force ? true : false
         }
 
