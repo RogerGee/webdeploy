@@ -6,6 +6,7 @@
 
 const { format } = require("util");
 
+const { BuildHandler } = require("./build-handler");
 const { WebdeployError } = require("../error");
 
 /**
@@ -13,6 +14,8 @@ const { WebdeployError } = require("../error");
  */
 class BuildInclude {
     /**
+     * @param {string} key
+     *  Key to help identify the include object in context.
      * @param {object} settings
      *  Properties to assign to the build include object.
      * @param {string|string[]} [settings.match]
@@ -33,14 +36,23 @@ class BuildInclude {
         Object.assign(this,settings);
 
         // Apply defaults.
+
         if (typeof this.build == "undefined") {
             this.build = true;
         }
+
         if (typeof this.handlers == "undefined") {
             this.handlers = [];
         }
+
         if (typeof this.options == "undefined") {
             this.options = {};
+        }
+
+        // Convert handlers into BuildHandler instances.
+
+        for (let i = 0;i < this.handlers.length;++i) {
+            this.handlers[i] = new BuildHandler(format("%s.%d",key,i),this.handlers[i]);
         }
 
         // Normalize and validate properties.

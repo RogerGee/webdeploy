@@ -6,8 +6,10 @@
 
 const assert = require("assert");
 const pathModule = require("path").posix;
+const { format } = require("util");
 
 const { BuildInclude } = require("./build-include");
+const { BuildHandler } = require("./build-handler");
 const targetModule = require("../target");
 const pluginLoader = require("../plugins");
 const audit = require("../audit");
@@ -141,16 +143,6 @@ class Builder {
                     continue;
                 }
 
-                // If the plugin doesn't supply an inline handler, then we assume it
-                // is to be loaded.
-                if (!plugin.handler) {
-                    plugin.loaderInfo = {
-                        pluginId: plugin.id,
-                        pluginVersion: plugin.version,
-                        pluginKind: pluginLoader.PLUGIN_KINDS.BUILD_PLUGIN
-                    }
-                }
-
                 keep.push(plugin);
                 handlers[plugin.id] = plugin;
             }
@@ -187,10 +179,13 @@ class Builder {
 
                 if (plugin.handler) {
                     if (plugin.id in this.plugins) {
-                        throw new Error("Plugin '" + plugin.id + "' is already defined; cannot load inline plugin");
+                        throw new WebdeployError(
+                            format("Plugin '%s' is already defined: cannot define inline plugin handler",
+                                   plugin.id)
+                        );
                     }
 
-                    this.plugins[plugin.id] = { exec: plugin.handler };
+                    this.plugins[plugin.id] = plugin.makeInlinePlugin();
                 }
             }
 
@@ -198,7 +193,7 @@ class Builder {
 
         }, (err) => {
             if (err instanceof WebdeployError) {
-                return Promise.reject("Failed to audit build plugins: " + err);
+                return Promise.reject(format("Failed to audit build plugins: %s",err));
             }
 
             throw err;
@@ -256,14 +251,6 @@ class Builder {
      * @return {boolean}
      */
     acceptsHandler(handler) {
-        // Apply defaults for core handler settings.
-        if (typeof handler.dev === 'undefined') {
-            handler.dev = false;
-        }
-        if (typeof handler.build === 'undefined') {
-            handler.build = true;
-        }
-
         // Skip handler if dev and build settings do not align.
         if (!handler.dev && this.options.dev) {
             return false;
@@ -297,18 +284,20 @@ class Builder {
                 continue;
             }
 
-            if (!(plugin.id in this.plugins)) {
-                // Create inline plugin if needed.
+            if (plugin.id in this.plugins) {
                 if (plugin.handler) {
-                    this.plugins[plugin.id] = { exec: plugin.handler };
+                    throw new WebdeployError(
+                        format("Plugin '%s' is already defined: cannot define inline plugin handler",
+                               plugin.id)
+                    );
+                }
+            }
+            else {
+                if (plugin.handler) {
+                    this.plugins[plugin.id] = plugin.makeInlinePlugin();
                 }
                 else {
-                    let pluginInfo = {
-                        pluginId: plugin.id,
-                        pluginVersion: plugin.version
-                    }
-
-                    this.plugins[plugin.id] = audit.lookupBuildPlugin(pluginInfo);
+                    this.plugins[plugin.id] = audit.lookupBuildPlugin(plugin.loaderInfo);
                 }
             }
         }
@@ -340,7 +329,7 @@ class Builder {
         var include = this.findTargetInclude(newTarget.getSourceTargetPath());
         if (include) {
             newTarget.level = 1;
-            newTarget.setHandlers(include.handlers.slice(0));
+            newTarget.setHandlers(include.handlers.slice());
             newTarget.applyOptions(include.options);
             this.targets.push(newTarget);
             return newTarget;
@@ -371,12 +360,14 @@ class Builder {
             throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
+        handlers = handlers.map((settings,index) => new BuildHandler((index+1).toString(),settings));
+
         // Add the handler plugins if they are not currently in our list of
         // plugins. This also ensures the plugins have been audited.
         this.ensureHandlers(handlers);
 
         newTarget.level = 1;
-        newTarget.setHandlers(handlers.slice());
+        newTarget.setHandlers(handlers);
         this.targets.push(newTarget);
 
         return newTarget;
@@ -416,7 +407,7 @@ class Builder {
                 delayed.createStream());
 
             newTarget.level = 1;
-            newTarget.setHandlers(include.handlers.slice(0));
+            newTarget.setHandlers(include.handlers.slice());
             newTarget.applyOptions(include.options);
             this.targets.push(newTarget);
             this.initial.push(sourceTargetPath);
