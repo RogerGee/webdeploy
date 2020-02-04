@@ -10,6 +10,12 @@ const targetModule = require("./target");
 const { lookupDeployPlugin } = require("./audit");
 
 /**
+ * @callback module:context~DeployContext~TargetCallback
+ * @param {module:target~Target} target
+ *  The current target being selected for this iteration.
+ */
+
+/**
  * DeployContext
  *
  * The context passed in to deploy plugins. It stores a list of output targets
@@ -118,6 +124,28 @@ class DeployContext {
             this.map[newTargetPath] = target;
         }
         return target;
+    }
+
+    /**
+     * Gets a list of all targets in the context.
+     *
+     * @return {module:target~Target[]}
+     */
+    getTargets() {
+        return this.targets.slice();
+    }
+
+    /**
+     * Iterates through all targets in the context and invokes the specified
+     * callback.
+     *
+     * @param {module:context~DeployContext~TargetCallback} callback
+     *  The callback to invoke.
+     */
+    forEachTarget(callback) {
+        for (let i = 0;i < this.targets.length;++i) {
+            callback(this.targets[i]);
+        }
     }
 
     /**
