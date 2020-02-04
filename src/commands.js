@@ -11,7 +11,7 @@ const git = require("nodegit");
 const { createPathTree, createRepoTree } = require("./tree");
 const targetModule = require("./target");
 const { Builder } = require("./builder");
-const Deployer = require("./deployer");
+const { Deployer } = require("./deployer");
 const { PluginAuditor } = require("./audit");
 const depends = require("./depends");
 const logger = require("./logger");
@@ -55,7 +55,7 @@ function printNewTargetsCallback(target,plugin,newTargets) {
 }
 
 function deployDeployStep(deployer,builder,options) {
-    logger.log("Deploying targets: _" + deployer.deployPlugin.id + "_");
+    logger.log("Deploying targets: _" + deployer.deployConfig.id + "_");
 
     if (builder.outputTargets.length == 0) {
         if (options.ignored) {
@@ -124,7 +124,7 @@ function deployBuildStep(tree,options) {
         // required plugins will be sent to the auditor
 
         const deployerOptions = {
-            deployPlugin: options.deployPlugin,
+            deployConfig: options.deployConfig,
             deployPath: options.deployPath,
             callbacks: {
                 beforeChain: deployBeforeChainCallback,
@@ -277,26 +277,26 @@ function deployStartStep(tree,options) {
 
     // Obtain the deploy plugin name.
 
-    return tree.getConfigParameter(options.type).then((deployPlugin) => {
-        if (typeof deployPlugin !== "object") {
+    return tree.getConfigParameter(options.type).then((deployConfig) => {
+        if (typeof deployConfig !== "object") {
             throw new WebdeployError("Config parameter '" + options.type + "' must be a plugin object");
         }
-        if (!deployPlugin.id) {
+        if (!deployConfig.id) {
             throw new WebdeployError("Config parameter '" + options.type + "' must have plugin id");
         }
 
-        options.deployPlugin = deployPlugin;
+        options.deployConfig = deployConfig;
 
         // Load up any extra deploy plugin options from the git-config.
 
-        return tree.getConfigSection(deployPlugin.id);
+        return tree.getConfigSection(deployConfig.id);
 
     }).then((sectionConfig) => {
         // Augment existing plugin object with discovered config section.
         var keys = Object.keys(sectionConfig);
         for (var i = 0;i < keys.length;++i) {
             asset(keys[i] != "id");
-            options.deployPlugin[keys[i]] = sectionConfig[keys[i]];
+            options.deployConfig[keys[i]] = sectionConfig[keys[i]];
         }
 
         // Set build path. RepoTrees will return an empty string.

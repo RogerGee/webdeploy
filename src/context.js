@@ -40,6 +40,7 @@ class DeployContext {
         this.graph = builder.options.graph; // DependencyGraph
         this.tree = tree; // git.Tree
         this.logger = require("./logger");
+        this.currentPlugin = null;
 
         // Create map for faster target lookup.
         this.targets.forEach((target) => {
@@ -226,6 +227,21 @@ class DeployContext {
     }
 
     /**
+     * Executes the specified deploy plugin.
+     *
+     * @param {object} plugin
+     * @param {module:plugin/deploy-plugin~DeployPlugin} settings
+     *  The deploy plugin configuration object to pass to the deploy plugin.
+     *
+     * @return {Promise}
+     */
+    execute(plugin,settings) {
+        this.currentPlugin = plugin;
+
+        return plugin.exec(this,settings || {});
+    }
+
+    /**
      * Sends control to another deploy plugin.
      *
      * @param {object} nextPlugin
@@ -239,11 +255,18 @@ class DeployContext {
         // Execute plugin directly if it is an already-loaded plugin
         // object. This is just anything that has an exec property.
 
-        if (nextPlugin.exec) {
-            return nextPlugin.exec(this,settings || {});
+        var plugin;
+
+        if (!nextPlugin.exec) {
+            plugin = lookupDeployPlugin(nextPlugin);
+        }
+        else {
+            plugin = nextPlugin;
         }
 
-        return lookupDeployPlugin(nextPlugin).exec(this,settings || {});
+        this.currentPlugin = plugin;
+
+        return plugin.exec(this,settings || {});
     }
 }
 
