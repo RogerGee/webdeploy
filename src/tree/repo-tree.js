@@ -6,6 +6,7 @@
 
 const path = require("path").posix;
 const git = require("nodegit");
+const stream = require("stream");
 const { format } = require("util");
 
 const configuration = require("../config");

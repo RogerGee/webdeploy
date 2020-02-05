@@ -104,7 +104,11 @@ class Deployer {
                 plugin = nextPlugin;
             }
             else {
-                plugin = parseFullPluginId(nextPlugin);
+                var desc = parseFullPluginId(nextPlugin);
+                plugin = {
+                    id: desc.pluginId,
+                    version: desc.pluginVersion
+                }
             }
 
             if (this.callbacks.beforeChain) {

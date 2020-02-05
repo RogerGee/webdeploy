@@ -258,7 +258,10 @@ class DeployContext {
         var plugin;
 
         if (!nextPlugin.exec) {
-            plugin = lookupDeployPlugin(nextPlugin);
+            plugin = lookupDeployPlugin({
+                pluginId: nextPlugin.id,
+                pluginVersion: nextPlugin.version
+            })
         }
         else {
             plugin = nextPlugin;

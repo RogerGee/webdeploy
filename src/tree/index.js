@@ -5,6 +5,7 @@
  */
 
 const fs = require("fs");
+const git = require("nodegit");
 
 const RepoTree = require("./repo-tree");
 const PathTree = require("./path-tree");
