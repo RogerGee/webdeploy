@@ -11,6 +11,17 @@ const process = require("process");
 const { WebdeployError } = require("./error");
 
 /**
+ * Makes a stream instance suitable for manipulating target content data.
+ *
+ * @return {stream}
+ */
+function makeTargetStream() {
+    // For now, just create a duplex, transform stream for storing the target
+    // data. This just keeps the data in main memory.
+    return new stream.PassThrough();
+}
+
+/**
  * Creates a new output target.
  *
  * @param {string} newTargetPath
@@ -31,9 +42,7 @@ function makeOutputTarget(newTargetPath,newTargetName,options) {
         newTargetName = parsed.base;
     }
 
-    // Create a duplex, Transform stream for storing the target data. Currently
-    // this just keeps the data in main memory.
-    var memoryStream = new stream.PassThrough();
+    var memoryStream = makeTargetStream();
     var newTarget = new Target(newTargetPath,newTargetName,memoryStream,options);
 
     return newTarget;
@@ -88,6 +97,9 @@ class Target {
 
         // Used by the implementation to track target handlers.
         this.handlers = undefined;
+
+        // Used by the implementation to track graph depth.
+        this.level = 1;
     }
 
     /**
@@ -219,9 +231,72 @@ class Target {
     setHandlers(handlers) {
         this.handlers = handlers;
     }
+
+    /**
+     * Sets the target's handlers to match the parent target. The parent
+     * target's handlers are then unset.
+     *
+     * @param {module:target~Target} parentTarget
+     */
+    setFromParent(parentTarget) {
+        // Let this target inherit the remaining handlers from the parent
+        // target. This allows for chaining handlers from the parent to the
+        // child.
+        this.level = parentTarget.level + 1;
+        if (this !== parentTarget) {
+            this.setHandlers(parentTarget.handlers);
+            delete parentTarget.handlers;
+        }
+    }
+}
+
+/**
+ * @callback module:target~CreateStreamFunction
+ * @return {stream.Transform}
+ *  Returns a transform stream suitable for the target.
+ */
+
+/**
+ * Represents a delayed target
+ */
+class DelayedTarget {
+    /**
+     * @param {string} path
+     *  The leading path for the target.
+     * @param {string} name
+     *  The target name.
+     * @param {object} settings
+     * @param {module:target~CreateStreamFunction} [settings.createStreamFn]
+     *  A function that generates the stream for the target.
+     */
+    constructor(path,name,settings) {
+        this.path = path;
+        this.name = name;
+        this.createStreamFn = settings.createStreamFn || makeTargetStream;
+    }
+
+    /**
+     * Gets the full target source path.
+     *
+     * @return {string}
+     */
+    getSourceTargetPath() {
+        return pathModule.posix.join(this.path,this.name);
+    }
+
+    /**
+     * Creates an actual target from the delayed target.
+     *
+     * @return {module:target~Target}
+     */
+    makeTarget() {
+        return new Target(this.path,this.name,this.createStreamFn());
+    }
 }
 
 module.exports = {
     Target,
+    DelayedTarget,
+    makeTargetStream,
     makeOutputTarget
 }

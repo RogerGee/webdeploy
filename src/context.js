@@ -6,7 +6,7 @@
 
 const pathModule = require("path");
 
-const targetModule = require("./target");
+const { makeOutputTarget } = require("./target");
 const { lookupDeployPlugin } = require("./audit");
 
 /**
@@ -118,7 +118,7 @@ class DeployContext {
             }
         }
 
-        var target = targetModule.makeOutputTarget(newTargetPath);
+        var target = makeOutputTarget(newTargetPath);
         target.setDeployPath(this.deployPath);
         if (isOutputTarget) {
             this.targets.push(target);

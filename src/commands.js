@@ -8,13 +8,13 @@ const assert = require("assert");
 const pathModule = require("path").posix;
 const git = require("nodegit");
 
+const depends = require("./depends");
+const logger = require("./logger");
 const { createPathTree, createRepoTree } = require("./tree");
-const targetModule = require("./target");
+const { DelayedTarget } = require("./target");
 const { Builder } = require("./builder");
 const { Deployer } = require("./deployer");
 const { PluginAuditor } = require("./audit");
-const depends = require("./depends");
-const logger = require("./logger");
 const { WebdeployError } = require("./error");
 const { prepareConfigPath } = require("./utils");
 
@@ -200,11 +200,9 @@ function deployBuildStep(tree,options) {
 
             // Create a delayed target object and attempt to add it to the
             // builder.
-            var delayedTarget = {
-                path: relativePath,
-                name: name,
-                createStream: createInputStream
-            }
+            var delayedTarget = new DelayedTarget(relativePath,name,{
+                createStreamFn: createInputStream
+            });
 
             // If a potential target does not have a build product (i.e. is a
             // trivial product), then check to see if it is modified and should

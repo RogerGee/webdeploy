@@ -6,10 +6,10 @@
 
 const path = require("path").posix;
 const git = require("nodegit");
-const stream = require("stream");
 const { format } = require("util");
 
 const configuration = require("../config");
+const { makeTargetStream } = require("../target");
 const { WebdeployError } = require("../error");
 
 const CONFIG_LAST_DEPLOY = "cache.lastDeploy";
@@ -30,7 +30,7 @@ function makeBlobStream(blob) {
     // the ODB read stream yet (and the default ODB backends don't provide
     // streaming capabilities anyways).
 
-    var bufferStream = new stream.PassThrough();
+    var bufferStream = makeTargetStream();
     bufferStream.end(blob.content());
 
     return bufferStream;

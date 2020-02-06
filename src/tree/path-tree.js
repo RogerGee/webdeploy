@@ -6,7 +6,6 @@
 
 const fs = require("fs");
 const path = require("path").posix;
-const stream = require("stream");
 
 const configuration = require("../config.js");
 const { WebdeployError } = require("../error");

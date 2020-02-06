@@ -8,11 +8,10 @@ const assert = require("assert");
 const pathModule = require("path").posix;
 const { format } = require("util");
 
+const audit = require("../audit");
 const { BuildInclude } = require("./build-include");
 const { BuildHandler } = require("./build-handler");
-const targetModule = require("../target");
-const pluginLoader = require("../plugin");
-const audit = require("../audit");
+const { Target } = require("../target");
 const { WebdeployError } = require("../error");
 
 const BUILDER_STATE_INITIAL = 0;
@@ -78,7 +77,7 @@ class Builder {
      * @return {boolean}
      */
     isInitialTarget(target) {
-        if (target instanceof targetModule.Target) {
+        if (target instanceof Target) {
             target = target.getSourceTargetPath();
         }
 
@@ -245,7 +244,7 @@ class Builder {
      * build configuration. This may exclude a handler if it doesn't fit the
      * current build settings such as 'dev' or 'build'.
      *
-     * @param {object} handler
+     * @param {module:builder/build-handler~BuildHandler} handler
      *  The handler object that denotes the plugin.
      *
      * @return {boolean}
@@ -269,7 +268,7 @@ class Builder {
      * must have already been audited, otherwise this method will throw an
      * exception!
      *
-     * @param {object[]} handlers
+     * @param {module:builder/build-handler~BuildHandler[]} handlers
      *  A list of handler objects.
      */
     ensureHandlers(handlers) {
@@ -328,7 +327,6 @@ class Builder {
 
         var include = this.findTargetInclude(newTarget.getSourceTargetPath());
         if (include) {
-            newTarget.level = 1;
             newTarget.setHandlers(include.handlers.slice());
             newTarget.applyOptions(include.options);
             this.targets.push(newTarget);
@@ -336,7 +334,6 @@ class Builder {
         }
 
         if (force) {
-            newTarget.level = 1;
             this.targets.push(newTarget);
             return newTarget;
         }
@@ -366,7 +363,6 @@ class Builder {
         // plugins. This also ensures the plugins have been audited.
         this.ensureHandlers(handlers);
 
-        newTarget.level = 1;
         newTarget.setHandlers(handlers);
         this.targets.push(newTarget);
 
@@ -374,12 +370,11 @@ class Builder {
     }
 
     /**
-     * Pushes a new, initial output target. The target is specified in delayed
-     * form and is counted as an initial target from the loaded target
-     * tree. Delayed targets should therefore only be used to indicate targets
-     * loaded from the filesystem.
+     * Pushes a new, initial output target. The target is provided as a
+     * DelayedTarget instance which is used to generate an actual Target
+     * instance.
      *
-     * @param {object} delayed
+     * @param {module:target~DelayedTarget} delayed
      *  A delayed target object.
      * @param {boolean} force
      *  Forces the target to be added even if it doesn't match any of the
@@ -393,22 +388,14 @@ class Builder {
             throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
-        assert(typeof delayed == "object" && "path" in delayed
-               && "name" in delayed && 'createStream' in delayed);
-
-        var sourceTargetPath = pathModule.join(delayed.path,delayed.name);
+        var sourceTargetPath = delayed.getSourceTargetPath();
         var include = this.findTargetInclude(sourceTargetPath);
 
         if (include) {
-            // Resolve the delayed target information into a Target object.
-            var newTarget = new targetModule.Target(
-                delayed.path,
-                delayed.name,
-                delayed.createStream());
-
-            newTarget.level = 1;
+            var newTarget = delayed.makeTarget();
             newTarget.setHandlers(include.handlers.slice());
             newTarget.applyOptions(include.options);
+
             this.targets.push(newTarget);
             this.initial.push(sourceTargetPath);
 
@@ -417,12 +404,8 @@ class Builder {
 
         if (force) {
             // Resolve the delayed target information into a Target object.
-            var newTarget = new targetModule.Target(
-                delayed.path,
-                delayed.name,
-                delayed.createStream());
+            var newTarget = delayed.makeTarget();
 
-            newTarget.level = 1;
             this.targets.push(newTarget);
             this.initial.push(sourceTargetPath);
 
@@ -449,10 +432,9 @@ class Builder {
 
         return this.tree.getBlob(path).then((blobStream) => {
             var parsed = pathModule.parse(path);
-            var newTarget = new targetModule.Target(parsed.dir,parsed.base,blobStream);
+            var newTarget = new Target(parsed.dir,parsed.base,blobStream);
 
-            this.pushInitialTarget(newTarget,true);
-            return newTarget;
+            return this.pushInitialTarget(newTarget,true);
         })
     }
 
@@ -488,18 +470,11 @@ class Builder {
         }
 
         // If the parentTarget has a non-empty list of handlers, then let the
-        // newTarget reference the list of remaining handlers.
+        // newTarget derive from the parent target. This means the new target
+        // will execute the remaining handlers.
 
         if (parentTarget.handlers.length > 0) {
-            // Let the newTarget inherit the remaining handlers from the parent
-            // target. This allows for chaining handlers from the parent to the
-            // child.
-            newTarget.level = parentTarget.level + 1;
-            if (newTarget !== parentTarget) {
-                newTarget.setHandlers(parentTarget.handlers);
-                delete parentTarget.handlers;
-            }
-
+            newTarget.setFromParent(parentTarget);
             this.targets.push(newTarget);
             return newTarget;
         }
