@@ -19,6 +19,7 @@
     "node": ">=9.0.0"
   },
   "dependencies": {
+    "better-sqlite3": "^5.4.3",
     "colors": "^1.4.0",
     "commander": "^2.20.3",
     "nodegit": "^0.26.2",

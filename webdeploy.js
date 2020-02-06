@@ -8,6 +8,7 @@ const path = require("path");
 const logger = require("./src/logger");
 const commands = require("./src/commands");
 const sysconfig = require("./src/sysconfig");
+const storage = require("./src/storage");
 const { WebdeployError } = require("./src/error");
 const { version: VERSION } = require("./package.json")
 
@@ -96,6 +97,8 @@ commander.command("build [path]")
 // Run the program.
 
 sysconfig.load((config) => {
+    storage.load();
+
     commander.parse(process.argv);
 
     if (commander.args.length == 0) {

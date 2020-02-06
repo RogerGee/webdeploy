@@ -10,16 +10,23 @@ const path = require("path");
 
 const { mkdirParents } = require("./utils");
 
-const BASEDIR = '.webdeploy';
+const HOMEDIR = os.homedir();
+const BASEDIR = path.join(HOMEDIR,'.webdeploy');
 const USER_CONFIG_FILE = path.join(BASEDIR,'webdeployrc');
 const USER_PLUGIN_DIR = path.join(BASEDIR,'plugin-cache');
+const USER_STORAGE_FILE = path.join(BASEDIR,'storage.db');
 
 const DEFAULTS = {
     pluginDirectories: [],
-    pluginCacheDir: "",
+    pluginCacheDir: USER_PLUGIN_DIR,
     webRepos: [],
-    npmRepos: []
+    npmRepos: [],
+    storageFile: USER_STORAGE_FILE
 }
+
+// Make sure the default user plugin directory exists. (This also indirectly
+// makes sure the base directory exists.)
+mkdirParents(USER_PLUGIN_DIR,HOMEDIR);
 
 /**
  * Represents the system configuration parameters.
@@ -32,25 +39,17 @@ class Sysconfig {
         // Apply defaults.
         Object.assign(this,DEFAULTS);
 
-        // Create default plugin directories.
+        // Add the 'plugins' directory under the webdeploy distribution to the
+        // list of plugin directories.
         var defaultPluginDir = path.resolve(path.join(__dirname,"../plugins"));
         this.pluginDirectories.push(defaultPluginDir);
-
-        // Create default plugin cache directory path.
-        var homedir = os.homedir();
-        var userPluginDir = path.join(homedir,USER_PLUGIN_DIR);
-        this.pluginCacheDir = userPluginDir;
-
-        // Make sure the default user plugin directory exists. (This also makes
-        // sure the base directory exists.)
-        mkdirParents(path.relative(homedir,userPluginDir),homedir);
     }
 
     /**
      * Loads the system webdeploy configuration from disk. This optional
      * configuration is stored in a file in the user's home directory.
      *
-     * @param {} donefn
+     * @param {function} donefn
      * @param {function} errfn
      */
     load(donefn,errfn) {
@@ -83,7 +82,15 @@ class Sysconfig {
                 }
             }
 
+            // Finalize: ensure plugin cache directory is ordered last in plugin
+            // directories list.
             this.pluginDirectories.push(this.pluginCacheDir);
+
+            // Finalize: ensure storage file is absolute path.
+            if (!path.isAbsolute(this.storageFile)) {
+                this.storageFile = path.join(BASEDIR,this.storageFile);
+            }
+
             donefn(this);
         })
     }
