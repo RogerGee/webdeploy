@@ -13,7 +13,7 @@ const urlparse = require("url").parse;
 const child_process = require("child_process");
 const tar = require("tar");
 
-const sysconfig = require("../sysconfig").config;
+const sysconfig = require("../sysconfig");
 const { WebdeployError } = require("../error");
 
 const PLUGIN_DIRECTORY_EXISTS = 100;

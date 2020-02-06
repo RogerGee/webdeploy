@@ -21,114 +21,77 @@ const DEFAULTS = {
     npmRepos: []
 }
 
-var configLoaded = false;
-const config = {};
-
 /**
- * Performs some initial setup on the system configuration state.
- *
- * @return {Promise<object>}
- *
- * @ignore
+ * Represents the system configuration parameters.
  */
-function setupSystemConfig() {
-    Object.assign(config,DEFAULTS);
+class Sysconfig {
+    /**
+     * Creates a new Sysconfig instance.
+     */
+    constructor() {
+        // Apply defaults.
+        Object.assign(this,DEFAULTS);
 
-    var defaultPluginDir = path.resolve(path.join(__dirname,"../plugins"));
-    config.pluginDirectories.push(defaultPluginDir);
+        // Create default plugin directories.
+        var defaultPluginDir = path.resolve(path.join(__dirname,"../plugins"));
+        this.pluginDirectories.push(defaultPluginDir);
 
-    var homedir = os.homedir();
-    var userPluginDir = path.join(homedir,USER_PLUGIN_DIR);
-    config.pluginCacheDir = userPluginDir;
+        // Create default plugin cache directory path.
+        var homedir = os.homedir();
+        var userPluginDir = path.join(homedir,USER_PLUGIN_DIR);
+        this.pluginCacheDir = userPluginDir;
 
-    mkdirParents(path.relative(homedir,userPluginDir),homedir);
+        // Make sure the default user plugin directory exists. (This also makes
+        // sure the base directory exists.)
+        mkdirParents(path.relative(homedir,userPluginDir),homedir);
+    }
 
-    return Promise.resolve(config);
-}
+    /**
+     * Loads the system webdeploy configuration from disk. This optional
+     * configuration is stored in a file in the user's home directory.
+     *
+     * @param {} donefn
+     * @param {function} errfn
+     */
+    load(donefn,errfn) {
+        const fileName = path.join(os.homedir(),USER_CONFIG_FILE);
 
-/**
- * Loads the system webdeploy configuration from disk. This optional
- * configuration is stored in a file in the user's home directory.
- *
- * @return {Promise<object>}
- *  The promise resolves once the configuration has been loaded.
- *
- * @ignore
- */
-function loadSystemConfig() {
-    const fileName = path.join(os.homedir(),USER_CONFIG_FILE);
-
-    return new Promise((resolve,reject) => {
         fs.readFile(fileName, (err,data) => {
             if (err) {
                 if (err.code != 'ENOENT') {
-                    reject(err);
-                    return;
+                    return errfn(err);
                 }
             }
             else {
                 try {
                     var configPayload = JSON.parse(data);
                 } catch (error) {
-                    reject(error);
-                    return;
+                    return errfn(error);
                 }
 
                 // Merge file-based configuration into the global config.
 
-                for (var key in config) {
+                for (var key in this) {
                     if (key in configPayload) {
-                        if (Array.isArray(config[key])) {
-                            config[key] = config[key].concat(configPayload[key]);
+                        if (Array.isArray(this[key])) {
+                            this[key] = this[key].concat(configPayload[key]);
                         }
                         else {
-                            config[key] = configPayload[key];
+                            this[key] = configPayload[key];
                         }
                     }
                 }
             }
 
-            resolve(config);
-        })
-    })
-}
-
-/**
- * Performs final work on the system config object after loading.
- *
- * @ignore
- */
-function finalizeSystemConfig() {
-    config.pluginDirectories.push(config.pluginCacheDir);
-}
-
-module.exports = {
-    /**
-     * The loaded system config object. Since the system config is loaded at
-     * bootstrap time, this object is almost always guarenteed to be loaded.
-     *
-     * @type {object}
-     */
-    config,
-
-    /**
-     * Ensures that the system config is loaded.
-     *
-     * @return {Promise<object>}
-     *  Returns a Promise that resolves to the loaded system config object.
-     */
-    load() {
-        if (configLoaded) {
-            return Promise.resolve(config);
-        }
-
-        return setupSystemConfig().then((config) => {
-            return loadSystemConfig();
-        }).then((config) => {
-            finalizeSystemConfig();
-
-            configLoaded = true;
-            return config;
+            this.pluginDirectories.push(this.pluginCacheDir);
+            donefn(this);
         })
     }
 }
+
+/**
+ * The singleton system configuration instance.
+ *
+ * @type {module:sysconfig~Sysconfig}
+ */
+module.exports = new Sysconfig();

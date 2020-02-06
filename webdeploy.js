@@ -7,8 +7,8 @@ const path = require("path");
 
 const logger = require("./src/logger");
 const commands = require("./src/commands");
+const sysconfig = require("./src/sysconfig");
 const { WebdeployError } = require("./src/error");
-const { load: loadSysconfig } = require("./src/sysconfig");
 const { version: VERSION } = require("./package.json")
 
 function reject(err) {
@@ -95,11 +95,11 @@ commander.command("build [path]")
 
 // Run the program.
 
-loadSysconfig().then(() => {
+sysconfig.load((config) => {
     commander.parse(process.argv);
 
     if (commander.args.length == 0) {
         commander.help();
     }
 
-}).catch(reject);
+}, reject);

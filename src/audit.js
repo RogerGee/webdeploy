@@ -8,7 +8,7 @@ const fs = require("fs");
 const pathModule = require("path");
 const { format } = require("util");
 
-const sysconfig = require("./sysconfig").config;
+const sysconfig = require("./sysconfig");
 const { makeFullPluginId,
         PLUGIN_KINDS,
         loadPluginByKind,
