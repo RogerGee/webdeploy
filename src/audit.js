@@ -9,8 +9,14 @@ const pathModule = require("path");
 const { format } = require("util");
 
 const sysconfig = require("./sysconfig").config;
-const pluginModule = require("./plugins");
-const pluginCache = require("./plugin-cache");
+const { makeFullPluginId,
+        PLUGIN_KINDS,
+        loadPluginByKind,
+        parseFullPluginId,
+        isDefaultPlugin,
+        lookupDefaultBuildPlugin,
+        lookupDefaultDeployPlugin } = require("./plugin");
+const { installPluginDirect } = require("./plugin/cache");
 const { WebdeployError } = require("./error");
 
 // Cache plugins that have been audited here. Plugins are keyed such that
@@ -18,9 +24,8 @@ const { WebdeployError } = require("./error");
 // 'deploy' and the ID is the fully-qualified plugin ID.
 const AUDITED_PLUGINS = {
     build: {},
-    deploy:{}
+    deploy: {}
 }
-
 
 /**
  * @typedef pluginDescription
@@ -39,9 +44,9 @@ const AUDITED_PLUGINS = {
  */
 function addAuditedPlugin(pluginInfo) {
     var bucket;
-    var pluginId = pluginModule.makeFullPluginId(pluginInfo);
+    var pluginId = makeFullPluginId(pluginInfo);
 
-    if (pluginInfo.pluginKind == pluginModule.PLUGIN_KINDS.BUILD_PLUGIN) {
+    if (pluginInfo.pluginKind == PLUGIN_KINDS.BUILD_PLUGIN) {
         bucket = AUDITED_PLUGINS.build;
     }
     else {
@@ -52,7 +57,7 @@ function addAuditedPlugin(pluginInfo) {
         return bucket[pluginId];
     }
 
-    var pluginObject = pluginModule.loadPluginByKind(pluginInfo,pluginInfo.pluginKind);
+    var pluginObject = loadPluginByKind(pluginInfo,pluginInfo.pluginKind);
     bucket[pluginId] = pluginObject;
 
     return pluginObject;
@@ -137,9 +142,9 @@ class PluginAuditor {
         for (let i = 0;i < plugins.length;++i) {
             var bucket;
             var plugin = plugins[i];
-            var pluginId = pluginModule.makeFullPluginId(plugin,plugin);
+            var pluginId = makeFullPluginId(plugin,plugin);
 
-            if (plugin.pluginKind == pluginModule.PLUGIN_KINDS.BUILD_PLUGIN) {
+            if (plugin.pluginKind == PLUGIN_KINDS.BUILD_PLUGIN) {
                 bucket = this.plugins.build;
             }
             else {
@@ -182,20 +187,20 @@ class PluginAuditor {
                 if (requires.build) {
                     for (let i = 0;i < requires.build.length;++i) {
                         var newPlugin = {
-                            pluginKind: pluginModule.PLUGIN_KINDS.BUILD_PLUGIN
+                            pluginKind: PLUGIN_KINDS.BUILD_PLUGIN
                         }
 
-                        Object.assign(newPlugin,pluginModule.parseFullPluginId(requires.build[i]));
+                        Object.assign(newPlugin,parseFullPluginId(requires.build[i]));
                         queue.push(newPlugin);
                     }
                 }
                 if (requires.deploy) {
                     for (let i = 0;i < requires.deploy.length;++i) {
                         var newPlugin = {
-                            pluginKind: pluginModule.PLUGIN_KINDS.DEPLOY_PLUGIN
+                            pluginKind: PLUGIN_KINDS.DEPLOY_PLUGIN
                         }
 
-                        Object.assign(newPlugin,pluginModule.parseFullPluginId(requires.deploy[i]));
+                        Object.assign(newPlugin,parseFullPluginId(requires.deploy[i]));
                         queue.push(newPlugin);
                     }
                 }
@@ -235,10 +240,10 @@ class PluginAuditor {
             // latest; this allows us to maintain latest and versioned
             // separately.
             if (pluginVersion && pluginVersion != "latest") {
-                pluginId = pluginModule.makeFullPluginId(pluginInfo);
+                pluginId = makeFullPluginId(pluginInfo);
             }
 
-            if (pluginModule.isDefaultPlugin(pluginInfo)) {
+            if (isDefaultPlugin(pluginInfo)) {
                 donefn(pluginInfo);
                 return;
             }
@@ -266,7 +271,7 @@ class PluginAuditor {
                             format("Plugin '%s' must have a version constraint",pluginId)));
                     }
                     else {
-                        pluginCache.installPluginDirect(pluginInfo,() => donefn(pluginInfo),errfn,this.logger);
+                        installPluginDirect(pluginInfo,() => donefn(pluginInfo),errfn,this.logger);
                     }
                 }
             }
@@ -293,9 +298,9 @@ class PluginAuditor {
  */
 
 function lookupBuildPlugin(pluginInfo) {
-    var plugin = pluginModule.lookupDefaultBuildPlugin(pluginInfo);
+    var plugin = lookupDefaultBuildPlugin(pluginInfo);
     if (!plugin) {
-        var pluginId = pluginModule.makeFullPluginId(pluginInfo);
+        var pluginId = makeFullPluginId(pluginInfo);
         if (!(pluginId in AUDITED_PLUGINS.build)) {
             throw new Error("Plugin '" + pluginId + "' was not in the set of audited plugins");
         }
@@ -307,9 +312,9 @@ function lookupBuildPlugin(pluginInfo) {
 }
 
 function lookupDeployPlugin(pluginInfo) {
-    var plugin = pluginModule.lookupDefaultDeployPlugin(pluginInfo);
+    var plugin = lookupDefaultDeployPlugin(pluginInfo);
     if (!plugin) {
-        var pluginId = pluginModule.makeFullPluginId(pluginInfo);
+        var pluginId = makeFullPluginId(pluginInfo);
         if (!(pluginId in AUDITED_PLUGINS.deploy)) {
             throw new Error("Plugin '" + pluginId + "' was not in the set of audited plugins");
         }

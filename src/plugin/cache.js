@@ -1,7 +1,7 @@
 /**
- * plugin-cache.js
+ * cache.js
  *
- * @module plugin-cache
+ * @module plugin/cache
  */
 
 const fs = require("fs");
@@ -11,11 +11,10 @@ const http = require("http");
 const https = require("https");
 const urlparse = require("url").parse;
 const child_process = require("child_process");
-
 const tar = require("tar");
 
-const sysconfig = require("./sysconfig").config;
-const { WebdeployError } = require("./error");
+const sysconfig = require("../sysconfig").config;
+const { WebdeployError } = require("../error");
 
 const PLUGIN_DIRECTORY_EXISTS = 100;
 

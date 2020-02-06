@@ -5,7 +5,7 @@
  */
 
 const { DeployConfig } = require("./deploy-config");
-const { parseFullPluginId } = require("../plugins");
+const { parseFullPluginId } = require("../plugin");
 const audit = require("../audit");
 const DeployContext = require("../context");
 const { WebdeployError } = require("../error");

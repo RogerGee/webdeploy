@@ -6,7 +6,7 @@
 
 const { format } = require("util");
 
-const { PLUGIN_KINDS } = require("../plugins");
+const { PLUGIN_KINDS } = require("../plugin");
 const { WebdeployError } = require("../error");
 
 /**

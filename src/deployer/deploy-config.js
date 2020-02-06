@@ -4,7 +4,7 @@
  * @module deployer/deploy-config
  */
 
-const { PLUGIN_KINDS, parseFullPluginId } = require("../plugins");
+const { PLUGIN_KINDS, parseFullPluginId } = require("../plugin");
 const { WebdeployError } = require("../error");
 
 /**

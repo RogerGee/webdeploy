@@ -1,16 +1,16 @@
 /**
- * plugins.js
+ * index.js
  *
- * @module plugins
+ * @module plugin
  */
 
 const fs = require("fs");
 const pathModule = require("path");
 const { format } = require("util");
 
-const sysconfig = require("./sysconfig").config;
-const { mkdirParents } = require("./utils");
-const { WebdeployError } = require("./error");
+const sysconfig = require("../sysconfig").config;
+const { mkdirParents } = require("../utils");
+const { WebdeployError } = require("../error");
 
 /**
  * Enumerates the various plugins kinds defined in webdeploy.

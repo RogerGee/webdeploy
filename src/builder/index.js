@@ -11,7 +11,7 @@ const { format } = require("util");
 const { BuildInclude } = require("./build-include");
 const { BuildHandler } = require("./build-handler");
 const targetModule = require("../target");
-const pluginLoader = require("../plugins");
+const pluginLoader = require("../plugin");
 const audit = require("../audit");
 const { WebdeployError } = require("../error");
 
