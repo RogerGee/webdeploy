@@ -6,11 +6,13 @@
 
 const assert = require("assert");
 const pathModule = require("path").posix;
+const fs = require("fs");
 const git = require("nodegit");
 
 const depends = require("./depends");
 const logger = require("./logger");
-const { createPathTree, createRepoTree } = require("./tree");
+const RepoTree = require("./tree/repo-tree");
+const PathTree = require("./tree/path-tree");
 const { DelayedTarget } = require("./target");
 const { Builder } = require("./builder");
 const { Deployer } = require("./deployer");
@@ -82,7 +84,7 @@ function deployDeployStep(deployer,builder,options) {
     return deployer.execute(builder).then(() => {
         logger.popIndent();
         return true;
-    })
+    });
 }
 
 function deployBuildStep(tree,options) {
@@ -91,17 +93,17 @@ function deployBuildStep(tree,options) {
     var auditor = new PluginAuditor();
     var targetBasePath = "";
 
-    return tree.getConfigParameter("info").then((configInfo) => {
+    return tree.getTargetConfig("info").then((configInfo) => {
         logger.log("Loaded target tree config from _" + configInfo.file + "_");
 
         // Load base path from config. This config parameter is optional.
 
-        return tree.getConfigParameter("basePath").then((theBasePath) => {
+        return tree.getTargetConfig("basePath").then((theBasePath) => {
             targetBasePath = theBasePath;
-        }, (e) => {})
+        }, (e) => {});
 
     }).then(() => {
-        return tree.getConfigParameter("includes");
+        return tree.getTargetConfig("includes");
 
     }).then((includes) => {
         // Create builder required for the run. Finalize the builder so that all
@@ -150,8 +152,8 @@ function deployBuildStep(tree,options) {
                 else {
                     resolve();
                 }
-            })
-        })
+            });
+        });
 
     }).then(() => {
         // Display message denoting number of build plugins loaded.
@@ -180,7 +182,7 @@ function deployBuildStep(tree,options) {
 
         var targetPromises = [];
 
-        return tree.walk((path,name,createInputStream) => {
+        var walkcb = (path,name,createInputStream) => {
             // Normalize path relative to configured target base path.
             if (targetBasePath) {
                 path = pathModule.relative(targetBasePath,path);
@@ -228,9 +230,10 @@ function deployBuildStep(tree,options) {
                     logger.log("add _" + newTarget.getSourceTargetPath() + "_");
                 }
             }
+        };
 
-        }, {
-            filter: (path) => {
+        var walkopts = {
+            filter: function(path) {
                 // Ignore any hidden paths.
                 if (path[0] == ".") {
                     return false;
@@ -239,10 +242,11 @@ function deployBuildStep(tree,options) {
                 return true;
             },
             basePath: targetBasePath
+        };
 
-        }).then(() => {
+        return tree.walk(walkcb,walkopts).then(() => {
             return Promise.all(targetPromises);
-        })
+        });
 
     }).then(() => {
         if (builder.targets.length == 0) {
@@ -264,7 +268,7 @@ function deployBuildStep(tree,options) {
 
     }).then(() => {
         return deployDeployStep(deployer,builder,options);
-    })
+    });
 }
 
 function deployStartStep(tree,options) {
@@ -275,7 +279,7 @@ function deployStartStep(tree,options) {
 
     // Obtain the deploy plugin name.
 
-    return tree.getConfigParameter(options.type).then((deployConfig) => {
+    return tree.getTargetConfig(options.type).then((deployConfig) => {
         if (typeof deployConfig !== "object") {
             throw new WebdeployError("Config parameter '" + options.type + "' must be a plugin object");
         }
@@ -284,18 +288,6 @@ function deployStartStep(tree,options) {
         }
 
         options.deployConfig = deployConfig;
-
-        // Load up any extra deploy plugin options from the git-config.
-
-        return tree.getConfigSection(deployConfig.id);
-
-    }).then((sectionConfig) => {
-        // Augment existing plugin object with discovered config section.
-        var keys = Object.keys(sectionConfig);
-        for (var i = 0;i < keys.length;++i) {
-            asset(keys[i] != "id");
-            options.deployConfig[keys[i]] = sectionConfig[keys[i]];
-        }
 
         // Set build path. RepoTrees will return an empty string.
 
@@ -310,7 +302,7 @@ function deployStartStep(tree,options) {
 
         if (options.type == CONFIG_TYPES.TYPE_DEPLOY) {
             if (!options.deployPath) {
-                return tree.getConfigParameter("deployPath");
+                return tree.getTargetConfig("deployPath");
             }
             else {
                 return Promise.resolve(options.deployPath);
@@ -357,8 +349,49 @@ function deployStartStep(tree,options) {
         if (tree.name == 'RepoTree') {
             return tree.saveDeployCommit(options.deployPath);
         }
+    });
+}
 
-    })
+/**
+ * Creates a new RepoTree for the specified repository.
+ *
+ * @param {string} repoPath
+ *  The path where the repository lives.
+ * @param {object} options
+ *  Extra options for the RepoTree.
+ *
+ * @return {Promise<module:tree/repo-tree~RepoTree>}
+ */
+function createRepoTree(repoPath,options) {
+    return git.Repository.discover(repoPath,0,"").then((path) => {
+        return git.Repository.open(path);
+
+    }).then((repository) => {
+        return new RepoTree(repository,options);
+    });
+}
+
+/**
+ * Creates a new PathTree for the specified path in the filesystem.
+ *
+ * @param {string} path
+ *  The path to load.
+ * @param {object} options
+ *  Extra options for the PathTree.
+ *
+ * @return {Promise<module:tree/path-tree~PathTree>}
+ */
+function createPathTree(path,options) {
+    return new Promise((resolve,reject) => {
+        fs.stat(path,(err,stats) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+
+            resolve(new PathTree(path,options));
+        });
+    });
 }
 
 /**
@@ -383,7 +416,7 @@ function deployRepository(repo,options) {
 
     return createRepoTree(repo,treeOptions).then((tree) => {
         return deployStartStep(tree,options);
-    })
+    });
 }
 
 /**
@@ -403,7 +436,7 @@ function deployRepository(repo,options) {
 function deployLocal(path,options) {
     return createPathTree(path).then((tree) => {
         return deployStartStep(tree,options);
-    })
+    });
 }
 
 /**
@@ -440,7 +473,7 @@ function deployDecide(path,options,decideCallback) {
     }, (err) => {
         decideCallback("local");
         return deployLocal(path,options);
-    })
+    });
 }
 
 module.exports = {

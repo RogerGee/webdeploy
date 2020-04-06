@@ -12,14 +12,16 @@ const { format } = require("util");
 const SAVE_CONFIG_KEY = "cache.depends";
 const SAVE_FILE_NAME = ".webdeploy.deps";
 
-function loadFromJson(graph,json) {
-    var parsed = JSON.parse(json);
-
+function loadFromObject(graph,parsed) {
     // The set of raw connections and forward mappings are the same
     // initially. Then all that's left is to compute the reverse mappings.
     graph.connections = parsed.map;
     graph.forwardMappings = Object.assign({},parsed.map);
     graph._calcReverseMappings();
+}
+
+function loadFromJson(graph,json) {
+    loadFromObject(graph,JSON.parse(json));
 }
 
 function loadBlank(graph) {
@@ -41,8 +43,8 @@ function loadFromFile(path) {
             }
 
             resolve(graph);
-        })
-    })
+        });
+    });
 }
 
 function loadFromConfig(repoTree,key) {
@@ -53,8 +55,8 @@ function loadFromConfig(repoTree,key) {
     var graph = new DependencyGraph();
     var section = format("%s.%s",SAVE_CONFIG_KEY,key);
 
-    return repoTree.getConfigParameter(section).then((text) => {
-        loadFromJson(graph,text);
+    return repoTree.getStorageConfig(section).then((parsed) => {
+        loadFromObject(graph,parsed);
 
         return graph;
 
@@ -62,7 +64,7 @@ function loadFromConfig(repoTree,key) {
         loadBlank(graph);
 
         return graph;
-    })
+    });
 }
 
 function saveToFile(path,graph) {
@@ -81,14 +83,17 @@ function saveToFile(path,graph) {
             else {
                 resolve();
             }
-        })
-    })
+        });
+    });
 }
 
 function saveToConfig(repoTree,graph,key) {
     var section = format("%s.%s",SAVE_CONFIG_KEY,key);
+    var repr = {
+        map: graph.forwardMappings
+    };
 
-    return repoTree.writeConfigParameter(section,JSON.stringify({ map:graph.forwardMappings }));
+    return repoTree.writeStorageConfig(section,repr);
 }
 
 // These generic save/load routines detect which type of tree is passed in an
@@ -195,7 +200,7 @@ class DependencyGraph {
             if (product in this.reverseMappings) {
                 this.reverseMappings[product].forEach((x) => { required.add(x) });
             }
-        })
+        });
 
         return Array.from(required);
     }
@@ -240,7 +245,7 @@ class DependencyGraph {
                 // Query each source blob's modification status.
                 sources.forEach((source) => {
                     innerPromises.push(tree.isBlobModified(source,mtime));
-                })
+                });
 
                 return Promise.all(innerPromises)
                     .then((modifs) => {
@@ -251,11 +256,11 @@ class DependencyGraph {
                         }
 
                         return false;
-                    })
-            })
+                    });
+            });
 
             promises.push(promise);
-        })
+        });
 
         return Promise.all(promises).then((results) => {
             var changes = [];
@@ -267,7 +272,7 @@ class DependencyGraph {
             }
 
             return changes;
-        })
+        });
     }
 
     /**
@@ -294,7 +299,7 @@ class DependencyGraph {
             }
 
             return sourceSet;
-        })
+        });
     }
 
     /**
@@ -409,7 +414,7 @@ class DependencyGraph {
             }
 
             this.forwardMappings[node] = Array.from(leaves);
-        })
+        });
 
         // Remove all nodes in the found set to get just the top-level nodes in
         // the mappings.
@@ -463,7 +468,7 @@ class DependencyGraph {
 
             bucket.forEach((elem) => {
                 stk.push(elem);
-            })
+            });
         }
 
         if (sync) {
@@ -535,8 +540,8 @@ class DependencyGraph {
                 else {
                     this.reverseMappings[x] = [node];
                 }
-            })
-        })
+            });
+        });
     }
 }
 

@@ -8,6 +8,7 @@ const path = require("path").posix;
 const git = require("nodegit");
 const { format } = require("util");
 
+const { TreeBase } = require("./");
 const configuration = require("../config");
 const { makeTargetStream } = require("../target");
 const { WebdeployError } = require("../error");
@@ -53,7 +54,7 @@ function makeBlobStream(blob) {
  * repository using nodegit. The tree also can read configuration from the
  * repo's git-config.
  */
-class RepoTree {
+class RepoTree extends TreeBase {
     /**
      * Creates a new RepoTree instance.
      *
@@ -62,236 +63,84 @@ class RepoTree {
      * @param {module:tree/repo-tree~repoTreeOptions} options
      */
     constructor(repo,options) {
+        super(options);
+
         this.name = 'RepoTree';
         this.repo = repo;
-        this.config = {}; // cache git-config entries here
-        this.options = options || {};
+        this.gitConfig = null;
+        this.gitConfigCache = {};
 
         // Cache Promises to certain, often-accessed resources.
         this.deployCommits = {};
         this.targetTrees = {};
     }
 
-    /**
-     * Adds an option to the tree's internal list of options.
-     *
-     * @param {string} key
-     * @param {string} value
-     */
-    addOption(key,value) {
-        this.options[key] = value;
+    // Implements TreeBase.getStorageConfig().
+    getStorageConfig(param) {
+        // Gets a config value from the git-config.
+
+        return new Promise((resolve,reject) => {
+            if (param in this.gitConfigCache) {
+                resolve(this.gitConfigCache[param]);
+                return;
+            }
+
+            this.getConfigObject().then((config) => {
+                return config.getStringBuf("webdeploy." + param);
+
+            }).then((buf) => {
+                var value = buf.toString('utf8');
+                try {
+                    value = JSON.parse(value);
+                } catch (ex) {
+                    // leave value as-is if parsing fails
+                }
+
+                this.gitConfigCache[param] = value;
+                resolve(value);
+
+            }).catch(reject);
+        });
     }
 
-    /**
-     * Gets the path to the tree; since this is a git-repository, this is always
-     * null.
-     *
-     * @return {string}
-     */
-    getPath() {
-        return null;
-    }
+    // Implements TreeBase.writeStorageConfig().
+    writeStorageConfig(param,value) {
+        if (typeof value === 'object') {
+            value = JSON.stringify(value);
+        }
 
-    /**
-     * Looks up a configuration parameter from the repository (i.e. the
-     * git-config). The parameter key is automatically qualified with the
-     * "webdeploy" prefix.
-     *
-     * @param {string} param
-     *  The parameter to lookup.
-     *
-     * @return {Promise<string>}
-     *  Returns a Promise that resolves to a string containing the config
-     *  parameter value.
-     */
-    getConfigParameter(param) {
-        return this.getConfig(param,true);
-    }
-
-    /**
-     * NOTE: This method is currently not implemented due to lack of required
-     * functionality in nodegit.
-     *
-     * Looks up an entire configuration section from the git-config.
-     *
-     * @param {string} section
-     *  The name of the section to lookup. The name is automatically qualified
-     *  for webdeploy config.
-     *
-     * @return {Promise<object>}
-     *  A Promise that resolves to an Object containing the configuration
-     *  properties.
-     */
-    getConfigSection(section) {
-        section = "webdeploy." + section;
-
-        return this.getConfigObject().then((config) => {
-            // There is currently no way to implement this with nodegit. (We
-            // need something like git_config_foreach_match().) We'll implement
-            // this once more bindings are available...
-
-            return {};
-        })
-    }
-
-    /**
-     * Writes a config parameter (i.e. to the git-config).
-     *
-     * @param {string} param
-     *  The name of the config parameter; the name is automatically qualified
-     *  for webdeploy config.
-     * @param {string} value
-     *  The config parameter value.
-     *
-     * @return {Promise}
-     */
-    writeConfigParameter(param,value) {
         // Force param key under webdeploy section.
         param = "webdeploy." + param;
 
         if (typeof value == 'Number') {
             return this.getConfigObject().then((config) => {
                 config.setInt64(param,value);
-            })
+            });
         }
 
         return this.getConfigObject().then((config) => {
             return config.setString(param,value);
-        })
+        });
     }
 
-    /**
-     * Saves the current deploy commit to the git-config.
-     *
-     * @return {Promise}
-     *  The Promise resolves when the operation completes.
-     */
+    // Implements TreeBase.saveDeployCommit().
     saveDeployCommit(key) {
         var section = this.getStoreSection(CONFIG_LAST_DEPLOY);
 
         return this.getDeployCommit().then((commit) => {
-            return this.writeConfigParameter(section,commit.id().tostrS());
-        })
+            var value = commit.id().tostrS();
+            return this.writeStorageConfig(section,value);
+        });
     }
 
-    /**
-     * Gets a blob's contents as a Stream.
-     *
-     * @param {string} blobPath
-     *  The path denoting which blob to lookup. The path is relative to the
-     *  configured target tree.
-     *
-     * @return {Promise<stream.readable>}
-     *  Returns a Promise that resolves to a readable stream.
-     */
+    // Implements TreeBase.getBlob().
     getBlob(blobPath) {
         return this.getTargetTree().then((targetTree) => {
             return this.getBlobImpl(blobPath,targetTree);
-        })
+        });
     }
 
-    /**
-     * Walks the tree recursively and calls the callback.
-     *
-     * @param {Function} callback
-     *  Function with signature: callback(path,name,streamFunc)
-     *   The 'streamFunc' parameter is a function that creates a stream for the
-     *   blob entry.
-     * @param {object} options
-     * @param {Function} options.filter
-     *  Function like 'filter(path)' such that 'filter(path) => false' heads off
-     *  a particular branch path.
-     * @param {string} options.basePath
-     *  The base path under the tree representing the starting place for the
-     *  walk. NOTE: paths passed to the callback will still be relative to the
-     *  target tree.
-     *
-     * @return {Promise}
-     *  The Promise resolves once all entries have been walked.
-     */
-    walk(callback,options) {
-        return this.walk(callback,options);
-    }
-
-    /**
-     * Determines if the specified blob has been modified since its last
-     * deployment (i.e. the last commit we deployed).
-     *
-     * @param {string} blobPath
-     *  The blob path is relative to the configured target tree.
-     *
-     * @return {Promise<boolean>}
-     *  A Promise that resolves to a boolean representing if the blob was
-     *  modified.
-     */
-    isBlobModified(blobPath) {
-        return Promise.all([
-            this.getPreviousCommit().then((commit) => {
-                if (!commit) {
-                    return null;
-                }
-
-                return this.getTargetTree(commit);
-
-            }).then((tree) => {
-                return tree.entryByPath(blobPath);
-
-            }).then((entry) => {
-                return entry;
-
-            }).catch((err) => {
-                return Promise.resolve(null);
-            }),
-
-            this.getTargetTree().then((targetTree) => {
-                return targetTree.entryByPath(blobPath);
-
-            }).catch((err) => {
-                return Promise.resolve(null);
-            })
-
-        ]).then((entries) => {
-            // If the previous entry wasn't found, then report that the blob was
-            // modified.
-            if (!entries[0]) {
-                return true;
-            }
-
-            // If the current entry doesn't exist (i.e. it was removed), then
-            // report that the blob was not modified (i.e. there is no action we
-            // should take on it).
-            if (!entries[1]) {
-                return false;
-            }
-
-            var ids = entries.map((x) => { return x.id() });
-            return !ids[0].equal(ids[1]);
-        })
-    }
-
-    /**
-     * Gets the modified time of the specified blob. Note: this has no real use
-     * for RepoTrees and will always produce an mtime of zero.
-     *
-     * @param {string} blobPath
-     *  The blob path is relative to the configured target tree.
-     *
-     * @return {Promise<number>}
-     *  A Promise that resolves to an integer representing the mtime.
-     */
-    getMTime(blobPath) {
-        return Promise.resolve(0);
-    }
-
-    /**
-     * Walks through all entries in the target tree.
-     *
-     * @param {Function} callback
-     * @param {object} options
-     *
-     * @return {Promise}
-     *  The promise returns after all entries have been walked.
-     */
+    // Implements TreeBase.walk().
     walk(callback,options) {
         if (options.basePath) {
             var prom = this.getTree(options.basePath);
@@ -305,21 +154,15 @@ class RepoTree {
             var basePath = options.basePath || tree.path();
 
             return this.walkImpl(basePath,tree,callback,filter);
-        })
+        });
     }
 
-    /**
-     * Walks through the previous commit and invokes the callback on each entry
-     * that exists in the previous commit but not in the current
-     * commit. Essentially this is called on all blobs that no longer exist.
-     *
-     * @param {Function} callback
-     *  Callback having signature: callback(path)
-     *
-     * @return {Promise}
-     *  Returns a Promise that resolves after all entries have been walked.
-     */
+    // Implements TreeBase.walkExtraneous().
     walkExtraneous(callback) {
+        // Walks through the previous commit and invokes the callback on each
+        // entry that exists in the previous commit but not in the current
+        // commit. Essentially this is called on all blobs that no longer exist.
+
         var currentTree;
 
         return this.getTargetTree().then((targetTree) => {
@@ -331,7 +174,57 @@ class RepoTree {
 
         }).then((tree) => {
             return this.walkExtraneousImpl(tree.path(),tree,currentTree,callback);
-        })
+        });
+    }
+
+    // Implements TreeBase.isBlobModified().
+    isBlobModified(blobPath,mtime) {
+        var prevreq = this.getPreviousCommit().then((commit) => {
+            if (!commit) {
+                return null;
+            }
+
+            return this.getTargetTree(commit);
+
+        }).then((tree) => {
+            return tree.entryByPath(blobPath);
+
+        }).then((entry) => {
+            return entry;
+
+        }).catch((err) => {
+            return Promise.resolve(null);
+        });
+
+        var currentreq = this.getTargetTree().then((targetTree) => {
+            return targetTree.entryByPath(blobPath);
+
+        }).catch((err) => {
+            return Promise.resolve(null);
+        });
+
+        return Promise.all([prevreq,currentreq]).then(([ previousBlob, currentBlob ]) => {
+            // If the previous entry wasn't found, then report that the blob was
+            // modified.
+            if (!previousBlob) {
+                return true;
+            }
+
+            // If the current entry doesn't exist (i.e. it was removed), then
+            // report that the blob was not modified (i.e. there is no action we
+            // should take on it).
+            if (!currentBlob) {
+                return false;
+            }
+
+            return !previousBlob.id().equal(currentBlob.id());
+        });
+    }
+
+    // Implements TreeBase.getMTime().
+    getMTime(blobPath) {
+        // A RepoTree cannot provide a modified timestamp so we always return 0.
+        return Promise.resolve(0);
     }
 
     ////////////////////////////////////////
@@ -345,41 +238,8 @@ class RepoTree {
 
         return this.repo.config().then((config) => {
             this.gitConfig = config;
-
             return config;
-        })
-    }
-
-    getConfig(param,useLocalConfig) {
-        // RepoTrees look up configuration parameters from the combined
-        // git-config and target tree configuration pools. The target tree
-        // configuration pool has precedence.
-
-        return new Promise((resolve,reject) => {
-            if (this.config && this.config[param]) {
-                resolve(this.config[param]);
-            }
-            else if (useLocalConfig && !this.fileConfig) {
-                configuration.loadFromTree(this).then((config) => {
-                    this.fileConfig = config;
-                    this.getConfig(param,useLocalConfig).then(resolve,reject);
-
-                }, reject)
-            }
-            else if (useLocalConfig && this.fileConfig[param]) {
-                resolve(this.fileConfig[param]);
-            }
-            else {
-                this.getConfigObject().then((config) => {
-                    return config.getStringBuf("webdeploy." + param);
-
-                }).then((buf) => {
-                    this.config[param] = buf.toString('utf8');
-                    resolve(this.config[param]);
-
-                }).catch(reject);
-            }
-        })
+        });
     }
 
     getDeployCommit() {
@@ -396,16 +256,16 @@ class RepoTree {
             var head = format("refs/heads/%s",this.options.deployBranch);
             var promise = this.repo.getReference(head).then((reference) => {
                 return git.Commit.lookup(this.repo, reference.target());
-            })
+            });
         }
         else if (this.options.deployTag) {
             var tag = format("refs/tags/%s",this.options.deployTag);
             var promise = this.repo.getReference(tag).then((reference) => {
                 return git.Commit.lookup(this.repo, reference.target());
-            })
+            });
         }
         else {
-            var promise = this.getConfig("deployBranch",false).then((deployBranch) => {
+            var promise = this.getStorageConfig("deployBranch").then((deployBranch) => {
                 return this.repo.getReference(deployBranch);
 
             }).then((reference) => {
@@ -413,7 +273,7 @@ class RepoTree {
 
             }).catch((err) => {
                 throw new WebdeployError("Cannot determine the deploy branch or tag!");
-            })
+            });
         }
 
         this.deployCommits[COMMIT_KEY] = promise;
@@ -432,12 +292,12 @@ class RepoTree {
         }
 
         var section = this.getStoreSection(CONFIG_LAST_DEPLOY);
-        var promise = this.getConfig(section,false).then((previousCommitOid) => {
+        var promise = this.getStorageConfig(section).then((previousCommitOid) => {
             return this.repo.getCommit(previousCommitOid);
 
         }, (err) => {
             return Promise.resolve(null);
-        })
+        });
 
         this.deployCommits[COMMIT_KEY] = promise;
 
@@ -457,8 +317,8 @@ class RepoTree {
                     }
 
                     return entry.getTree();
-                })
-            })
+                });
+            });
         }
 
         if (!commit) {
@@ -481,12 +341,12 @@ class RepoTree {
             return this.targetTrees[commitId];
         }
 
-        var promise = this.getConfig('targetTree',false).then((targetTreePath) => {
+        var promise = this.getStorageConfig('targetTree').then((targetTreePath) => {
             return this.getTree(normalizeTargetTree(targetTreePath),commit);
 
         }, (err) => {
             return this.getTree(normalizeTargetTree(),commit);
-        })
+        });
 
         this.targetTrees[commitId] = promise;
 
@@ -501,7 +361,7 @@ class RepoTree {
 
             return entry.getBlob();
 
-        }).then(makeBlobStream)
+        }).then(makeBlobStream);
     }
 
     walkImpl(prefix,tree,callback,filter) {
@@ -521,7 +381,12 @@ class RepoTree {
                 if (ent.isBlob()) {
                     outstanding += 1;
                     this.repo.getBlob(ent.oid()).then((blob) => {
-                        callback(prefix,ent.name(),() => { return makeBlobStream(blob) });
+                        try {
+                            callback(prefix,ent.name(),() => { return makeBlobStream(blob); });
+                        } catch (ex) {
+                            reject(ex);
+                            return;
+                        }
                         attemptResolution();
 
                     }, reject)
@@ -533,13 +398,13 @@ class RepoTree {
                         this.repo.getTree(ent.oid()).then((nextTree) => {
                             return this.walkImpl(newPrefix,nextTree,callback,filter);
 
-                        }, reject).then(attemptResolution)
+                        }, reject).then(attemptResolution);
                     }
                 }
             }
 
             attemptResolution();
-        })
+        });
     }
 
     walkExtraneousImpl(prefix,tree,curTree,callback) {
@@ -589,9 +454,9 @@ class RepoTree {
 
                 curTree.getEntry(filePath).then(evalfn, (err) => {
                     evalfn(null);
-                })
+                });
             }
-        })
+        });
     }
 
     getStoreSection(section) {
