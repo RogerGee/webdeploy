@@ -5,6 +5,7 @@
  */
 
 const configuration = require("../config.js");
+const { prepareConfigPath } = require("../utils");
 const { WebdeployError } = require("../error");
 
 /**
@@ -18,6 +19,21 @@ class TreeBase {
     }
 
     /**
+     * Gets an option stored in the tree's internal options list.
+     *
+     * @param {string} key
+     *
+     * @return {mixed}
+     */
+    option(key) {
+        if (key in this.options) {
+            return this.options[key];
+        }
+
+        throw new WebdeployError("Tree option '" + key + "' not found");
+    }
+
+    /**
      * Adds an option to the tree's internal list of options.
      *
      * @param {string} key
@@ -28,14 +44,23 @@ class TreeBase {
     }
 
     /**
-     * Gets the path to the tree.
+     * Sets the tree deployment.
+     *
+     * @param {string} deployPath
+     *  The path to the particular deployment.
+     */
+    setDeployment(deployPath) {
+        this.addOption("deployPath",deployPath);
+        this.addOption("storeKey",prepareConfigPath(deployPath));
+    }
+
+    /**
+     * Gets the unique path to the tree.
      *
      * @return {string}
-     *  The path may be null if the tree implementation does not have a base
-     *  path.
      */
     getPath() {
-        return null;
+        throw new WebdeployError("TreeBase.getPath() must be implemented");
     }
 
     /**

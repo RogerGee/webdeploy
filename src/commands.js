@@ -18,7 +18,6 @@ const { Builder } = require("./builder");
 const { Deployer } = require("./deployer");
 const { PluginAuditor } = require("./audit");
 const { WebdeployError } = require("./error");
-const { prepareConfigPath } = require("./utils");
 
 /**
  * Enumerates the configuation types supported by webdeploy.
@@ -186,6 +185,7 @@ function deployBuildStep(tree,options) {
             // Normalize path relative to configured target base path.
             if (targetBasePath) {
                 path = pathModule.relative(targetBasePath,path);
+                path = pathModule.resolve('/',path).substring(1);
             }
 
             var relativePath = pathModule.relative(options.buildPath,path);
@@ -289,20 +289,22 @@ function deployStartStep(tree,options) {
 
         options.deployConfig = deployConfig;
 
-        // Set build path. RepoTrees will return an empty string.
+        // Set build path. RepoTrees always have a root build path.
 
-        options.buildPath = tree.getPath();
-        if (!options.buildPath) {
+        if (tree instanceof RepoTree) {
             options.buildPath = "";
+        }
+        else {
+            options.buildPath = tree.getPath();
         }
 
         // For a TYPE_DEPLOY deployment, we need a deploy path. This may have
         // been specified by the user in the options object, OR we lookup the
-        // default deploy path stored in the tree configuration.
+        // default deploy path stored in the tree storage configuration.
 
         if (options.type == CONFIG_TYPES.TYPE_DEPLOY) {
             if (!options.deployPath) {
-                return tree.getTargetConfig("deployPath");
+                return tree.getStorageConfig("deployPath");
             }
             else {
                 return Promise.resolve(options.deployPath);
@@ -315,17 +317,14 @@ function deployStartStep(tree,options) {
         return Promise.resolve(options.buildPath);
 
     }).then((deployPath) => {
-        // Set deploy path; also set the deploy path as the storage key for the
-        // tree. This is used by RepoTree's for config lookup purposes.
+        // Set tree deployment and save deploy path to local options.
 
-        storeKey = prepareConfigPath(deployPath);
-
+        tree.setDeployment(deployPath);
         options.deployPath = deployPath;
-        tree.addOption('storeKey',storeKey);
 
-        // Load up dependency graph.
+        // Load up dependency graph from tree deployment.
 
-        return depends.loadFromTree(tree,storeKey);
+        return depends.loadFromTree(tree);
 
     }).then((graph) => {
         options.graph = graph;
@@ -342,11 +341,11 @@ function deployStartStep(tree,options) {
     }).then(() => {
         // Save the dependency graph if available.
         if (options.graph) {
-            return depends.saveToTree(tree,options.graph,storeKey);
+            return depends.saveToTree(tree,options.graph);
         }
 
     }).then(() => {
-        if (tree.name == 'RepoTree') {
+        if (tree instanceof RepoTree) {
             return tree.saveDeployCommit(options.deployPath);
         }
     });

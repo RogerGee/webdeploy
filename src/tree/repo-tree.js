@@ -75,6 +75,11 @@ class RepoTree extends TreeBase {
         this.targetTrees = {};
     }
 
+    // Implements TreeBase.getPath().
+    getPath() {
+        return this.repo.path();
+    }
+
     // Implements TreeBase.getStorageConfig().
     getStorageConfig(param) {
         // Gets a config value from the git-config.
@@ -389,7 +394,7 @@ class RepoTree extends TreeBase {
                         }
                         attemptResolution();
 
-                    }, reject)
+                    }, reject);
                 }
                 else if (ent.isTree()) {
                     let newPrefix = path.join(prefix,ent.name());

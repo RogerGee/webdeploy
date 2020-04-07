@@ -47,13 +47,13 @@ function loadFromFile(path) {
     });
 }
 
-function loadFromConfig(repoTree,key) {
+function loadFromConfig(repoTree) {
     // Lookup the dependency info from the tree's git-config. We always add the
     // specified key to the section name to individualize the lookup since
     // multiple caches can be stored at once.
 
     var graph = new DependencyGraph();
-    var section = format("%s.%s",SAVE_CONFIG_KEY,key);
+    var section = format("%s.%s",SAVE_CONFIG_KEY,repoTree.option("storeKey"));
 
     return repoTree.getStorageConfig(section).then((parsed) => {
         loadFromObject(graph,parsed);
@@ -87,8 +87,8 @@ function saveToFile(path,graph) {
     });
 }
 
-function saveToConfig(repoTree,graph,key) {
-    var section = format("%s.%s",SAVE_CONFIG_KEY,key);
+function saveToConfig(repoTree,graph) {
+    var section = format("%s.%s",SAVE_CONFIG_KEY,repoTree.option("storeKey"));
     var repr = {
         map: graph.forwardMappings
     };
@@ -106,21 +106,18 @@ function saveToConfig(repoTree,graph,key) {
  *
  * @param {module:tree/path-tree~PathTree|module:tree/repo-tree~RepoTree} tree
  *  The tree from which the dependency graph information is loaded.
- * @param {string} key
- *  The config key under which to load the graph state. (Only applies to
- *  RepoTree's.)
  *
  * @return {module:depends~DependencyGraph}
  */
-function loadFromTree(tree,key) {
+function loadFromTree(tree) {
     if (tree.name == 'PathTree') {
         return loadFromFile(tree.getPath());
     }
     if (tree.name == 'RepoTree') {
-        return loadFromConfig(tree,key);
+        return loadFromConfig(tree);
     }
 
-   assert(tree.name == 'PathTree' || tree.name == 'RepoTree');
+    assert(tree.name == 'PathTree' || tree.name == 'RepoTree');
 }
 
 /**
@@ -130,20 +127,17 @@ function loadFromTree(tree,key) {
  *  The tree from which the dependency graph information is loaded.'
  * @param {module:depends~DependencyGraph} graph
  *  The graph to save.
- * @param {string} key
- *  The config key under which to save the graph state. (Only applies to
- *  RepoTree's.)
  *
  * @return {Promise}
  */
-function saveToTree(tree,graph,key) {
+function saveToTree(tree,graph) {
     graph.resolve();
 
     if (tree.name == 'PathTree') {
         return saveToFile(tree.getPath(),graph);
     }
     if (tree.name == 'RepoTree') {
-        return saveToConfig(tree,graph,key);
+        return saveToConfig(tree,graph);
     }
 
     assert(tree.name == 'PathTree' || tree.name == 'RepoTree');
