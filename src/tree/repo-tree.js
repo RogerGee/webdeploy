@@ -175,8 +175,12 @@ class RepoTree extends TreeBase {
     }
 
     // Implements TreeBase.getStorageConfig().
-    getStorageConfigAlt(param) {
+    getStorageConfigAlt(param,deploySpecific) {
         // Gets a config value from the git-config.
+
+        if (deploySpecific) {
+            param = this.getStoreSection(param);
+        }
 
         return new Promise((resolve,reject) => {
             if (param in this.gitConfigCache) {
@@ -198,14 +202,26 @@ class RepoTree extends TreeBase {
                 this.gitConfigCache[param] = value;
                 resolve(value);
 
+            }, (err) => {
+                if (err.errno == -3) {
+                    resolve(null);
+                }
+                else {
+                    reject(err);
+                }
+
             }).catch(reject);
         });
     }
 
-    // Implements TreeBase.writeStorageConfig().
-    writeStorageConfig(param,value) {
+    // Implements TreeBase.writeStorageConfigAlt().
+    writeStorageConfigAlt(param,deploySpecific,value) {
         if (typeof value === 'object') {
             value = JSON.stringify(value);
+        }
+
+        if (deploySpecific) {
+            param = this.getStoreSection(param);
         }
 
         // Force param key under webdeploy section.
@@ -213,7 +229,7 @@ class RepoTree extends TreeBase {
 
         if (typeof value == 'Number') {
             return this.getConfigObject().then((config) => {
-                config.setInt64(param,value);
+                return config.setInt64(param,value);
             });
         }
 
@@ -224,11 +240,12 @@ class RepoTree extends TreeBase {
 
     // Implements TreeBase.finalize().
     finalize() {
-        var section = this.getStoreSection(CONFIG_LAST_DEPLOY);
-
         return this.getDeployCommit().then((commit) => {
-            var value = commit.id().tostrS();
-            return this.writeStorageConfig(section,value);
+            return this.writeStorageConfig(
+                CONFIG_LAST_DEPLOY,
+                true,
+                commit.id().tostrS()
+            );
         });
     }
 
@@ -296,12 +313,12 @@ class RepoTree extends TreeBase {
             return this.deployCommits[COMMIT_KEY];
         }
 
-        var section = this.getStoreSection(CONFIG_LAST_DEPLOY);
-        var promise = this.getStorageConfig(section).then((previousCommitOid) => {
-            return this.repo.getCommit(previousCommitOid);
+        var promise = this.getStorageConfig(CONFIG_LAST_DEPLOY,true).then((previousCommitOid) => {
+            if (previousCommitOid) {
+                return this.repo.getCommit(previousCommitOid);
+            }
 
-        }, (err) => {
-            return Promise.resolve(null);
+            return null;
         });
 
         this.deployCommits[COMMIT_KEY] = promise;
@@ -473,4 +490,6 @@ class RepoTree extends TreeBase {
     }
 }
 
-module.exports = RepoTree;
+module.exports = {
+    RepoTree
+}

@@ -5,10 +5,12 @@
  */
 
 const fs = require("fs");
-const path = require("path").posix;
+const path = require("path");
 
 const { TreeBase } = require("./");
 const { WebdeployError } = require("../error");
+
+const STORAGE_FILE_NAME = ".webdeploy-save";
 
 /**
  * Represents a tree of potential deploy targets that are sourced from the
@@ -138,6 +140,84 @@ class PathTree extends TreeBase {
             });
         });
     }
+
+    // Implements TreeBase.getStorageConfigAlt().
+    getStorageConfigAlt(param,deploySpecific) {
+        // NOTE: This alternative storage mechanism does not implement
+        // deploy-specific storage.
+
+        if (!this.storageConfig) {
+            var filePath = path.join(this.basePath,STORAGE_FILE_NAME);
+
+            return new Promise((resolve,reject) => {
+                fs.readFile(filePath,{ encoding:'utf8' },(err,data) => {
+                    if (!err) {
+                        try {
+                            this.storageConfig = JSON.parse(data);
+
+                            if (param in this.storageConfig) {
+                                resolve(this.storageConfig[param]);
+                                return;
+                            }
+
+                        } catch (ex) {
+                            reject(ex);
+                        }
+                    }
+                    else if (err.code != 'EEXIST') {
+                        reject(err);
+                        return;
+                    }
+                    else {
+                        this.storageConfig = {};
+                    }
+
+                    reject(null);
+                });
+            });
+        }
+
+        if (this.storageConfig && param in this.storageConfig) {
+            return Promise.resolve(this.storageConfig[param]);
+        }
+
+        return Promise.resolve(null);
+    }
+
+    // Implements TreeBase.writeStorageConfigAlt().
+    writeStorageConfigAlt(param,deploySpecific,value) {
+        // NOTE: This alternative storage mechanism does not implement
+        // deploy-specific storage.
+
+        if (!this.storageConfig) {
+            this.storageConfig = {};
+        }
+
+        this.storageConfig[param] = value;
+
+        return Promise.resolve();
+    }
+
+    // Implements TreeBase.finalize().
+    finalize() {
+        if (!this.storageConfig) {
+            this.storageConfig = {};
+        }
+
+        var filePath = path.join(this.basePath,STORAGE_FILE_NAME);
+        var text = JSON.stringify(this.storageConfig);
+        var options = {
+            encoding: 'utf8'
+        };
+
+        return new Promise((resolve,reject) => {
+            fs.writeFile(filePath,text,options,(err) => {
+                err ? reject(err) : resolve();
+            });
+        });
+    }
 }
 
-module.exports = PathTree;
+module.exports = {
+    PathTree
+}

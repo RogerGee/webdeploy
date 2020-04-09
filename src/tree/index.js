@@ -175,19 +175,21 @@ class TreeBase {
     }
 
     /**
-     * Gets a configuration value from the tree storage configuration.
+     * Gets a configuration value from the tree's storage configuration.
      *
      * @param {string} param
      *  The config parameter to lookup.
+     * @param {bool} [deploySpecific]
+     *  If true, then the value is stored
      *
      * @return {Promise<string>}
      *  Returns a Promise that resolves to a string containing the config
      *  parameter value.
      */
-    getStorageConfig(param) {
+    getStorageConfig(param,deploySpecific) {
         // TODO
 
-        return this.getStorageConfigAlt(param);
+        return this.getStorageConfigAlt(...arguments);
     }
 
     /**
@@ -196,10 +198,12 @@ class TreeBase {
      *
      * @param {string} param
      *  The config parameter to lookup.
+     * @param {bool} [deploySpecific]
+     *  If true, then the value is stored
      *
      * @return {Promise<string>}
      */
-    getStorageConfigAlt(param) {
+    getStorageConfigAlt(param,deploySpecific) {
         return Promise.reject(new WebdeployError("No such configuration parameter: '" + param + ""));
     }
 
@@ -208,16 +212,17 @@ class TreeBase {
      *
      * @param {string} param
      *  The name of the config parameter.
+     * @param {bool} deploySpecific
+     *  If true, then the value is stored
      * @param {string} value
      *  The config parameter value.
-     *
-     * @return {Promise}
-     *  The promise resolves when the operation is complete.
+     * @param {function} donefn
+     *  Called when the operation completes; donefn(err)
      */
-    writeStorageConfig(param,value) {
+    writeStorageConfig(param,deploySpecific,value,donefn) {
         // TODO
 
-        return this.writeStorageConfigAlt(param,value);
+        this.writeStorageConfigAlt(...arguments);
     }
 
     /**
@@ -226,13 +231,14 @@ class TreeBase {
      *
      * @param {string} param
      *  The name of the config parameter.
+     * @param {bool} deploySpecific
+     *  If true, then the value is stored
      * @param {string} value
      *  The config parameter value.
      *
      * @return {Promise}
-     *  The promise resolves when the operation is complete.
      */
-    writeStorageConfigAlt(param,value) {
+    writeStorageConfigAlt(param,deploySpecific,value) {
         return Promise.reject(new WebdeployError("Writing to storage configuration is not supported"));
     }
 
@@ -241,7 +247,7 @@ class TreeBase {
      * written out.
      *
      * @return {Promise}
-     *  The Promise resolves when the operation completes.
+     *  Returns a Promise that resolves when the operation is complete.
      */
     finalize() {
         return Promise.resolve();
