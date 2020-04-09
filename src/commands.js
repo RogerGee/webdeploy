@@ -345,9 +345,9 @@ function deployStartStep(tree,options) {
         }
 
     }).then(() => {
-        if (tree instanceof RepoTree) {
-            return tree.saveDeployCommit(options.deployPath);
-        }
+        // Perform tree finalization.
+
+        return tree.finalize();
     });
 }
 

@@ -80,64 +80,6 @@ class RepoTree extends TreeBase {
         return this.repo.path();
     }
 
-    // Implements TreeBase.getStorageConfig().
-    getStorageConfig(param) {
-        // Gets a config value from the git-config.
-
-        return new Promise((resolve,reject) => {
-            if (param in this.gitConfigCache) {
-                resolve(this.gitConfigCache[param]);
-                return;
-            }
-
-            this.getConfigObject().then((config) => {
-                return config.getStringBuf("webdeploy." + param);
-
-            }).then((buf) => {
-                var value = buf.toString('utf8');
-                try {
-                    value = JSON.parse(value);
-                } catch (ex) {
-                    // leave value as-is if parsing fails
-                }
-
-                this.gitConfigCache[param] = value;
-                resolve(value);
-
-            }).catch(reject);
-        });
-    }
-
-    // Implements TreeBase.writeStorageConfig().
-    writeStorageConfig(param,value) {
-        if (typeof value === 'object') {
-            value = JSON.stringify(value);
-        }
-
-        // Force param key under webdeploy section.
-        param = "webdeploy." + param;
-
-        if (typeof value == 'Number') {
-            return this.getConfigObject().then((config) => {
-                config.setInt64(param,value);
-            });
-        }
-
-        return this.getConfigObject().then((config) => {
-            return config.setString(param,value);
-        });
-    }
-
-    // Implements TreeBase.saveDeployCommit().
-    saveDeployCommit(key) {
-        var section = this.getStoreSection(CONFIG_LAST_DEPLOY);
-
-        return this.getDeployCommit().then((commit) => {
-            var value = commit.id().tostrS();
-            return this.writeStorageConfig(section,value);
-        });
-    }
-
     // Implements TreeBase.getBlob().
     getBlob(blobPath) {
         return this.getTargetTree().then((targetTree) => {
@@ -230,6 +172,64 @@ class RepoTree extends TreeBase {
     getMTime(blobPath) {
         // A RepoTree cannot provide a modified timestamp so we always return 0.
         return Promise.resolve(0);
+    }
+
+    // Implements TreeBase.getStorageConfig().
+    getStorageConfigAlt(param) {
+        // Gets a config value from the git-config.
+
+        return new Promise((resolve,reject) => {
+            if (param in this.gitConfigCache) {
+                resolve(this.gitConfigCache[param]);
+                return;
+            }
+
+            this.getConfigObject().then((config) => {
+                return config.getStringBuf("webdeploy." + param);
+
+            }).then((buf) => {
+                var value = buf.toString('utf8');
+                try {
+                    value = JSON.parse(value);
+                } catch (ex) {
+                    // leave value as-is if parsing fails
+                }
+
+                this.gitConfigCache[param] = value;
+                resolve(value);
+
+            }).catch(reject);
+        });
+    }
+
+    // Implements TreeBase.writeStorageConfig().
+    writeStorageConfig(param,value) {
+        if (typeof value === 'object') {
+            value = JSON.stringify(value);
+        }
+
+        // Force param key under webdeploy section.
+        param = "webdeploy." + param;
+
+        if (typeof value == 'Number') {
+            return this.getConfigObject().then((config) => {
+                config.setInt64(param,value);
+            });
+        }
+
+        return this.getConfigObject().then((config) => {
+            return config.setString(param,value);
+        });
+    }
+
+    // Implements TreeBase.finalize().
+    finalize() {
+        var section = this.getStoreSection(CONFIG_LAST_DEPLOY);
+
+        return this.getDeployCommit().then((commit) => {
+            var value = commit.id().tostrS();
+            return this.writeStorageConfig(section,value);
+        });
     }
 
     ////////////////////////////////////////

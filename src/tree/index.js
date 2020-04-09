@@ -175,7 +175,7 @@ class TreeBase {
     }
 
     /**
-     * Gets a configuration parameter from the tree storage configuration.
+     * Gets a configuration value from the tree storage configuration.
      *
      * @param {string} param
      *  The config parameter to lookup.
@@ -185,11 +185,26 @@ class TreeBase {
      *  parameter value.
      */
     getStorageConfig(param) {
+        // TODO
+
+        return this.getStorageConfigAlt(param);
+    }
+
+    /**
+     * Provides an alternative, fallback implementation for reading a
+     * configuration value from the tree storage configuration.
+     *
+     * @param {string} param
+     *  The config parameter to lookup.
+     *
+     * @return {Promise<string>}
+     */
+    getStorageConfigAlt(param) {
         return Promise.reject(new WebdeployError("No such configuration parameter: '" + param + ""));
     }
 
     /**
-     * Writes a config parameter to the tree's storage configuration.
+     * Writes a configuration value to the tree's storage configuration.
      *
      * @param {string} param
      *  The name of the config parameter.
@@ -197,20 +212,39 @@ class TreeBase {
      *  The config parameter value.
      *
      * @return {Promise}
+     *  The promise resolves when the operation is complete.
      */
     writeStorageConfig(param,value) {
         // TODO
+
+        return this.writeStorageConfigAlt(param,value);
     }
 
     /**
-     * Saves the current deploy commit to the storage configuration.
+     * Provides an alternative, fallback implementation for writing a
+     * configuration value to the tree's storage configuration.
+     *
+     * @param {string} param
+     *  The name of the config parameter.
+     * @param {string} value
+     *  The config parameter value.
+     *
+     * @return {Promise}
+     *  The promise resolves when the operation is complete.
+     */
+    writeStorageConfigAlt(param,value) {
+        return Promise.reject(new WebdeployError("Writing to storage configuration is not supported"));
+    }
+
+    /**
+     * Finalizes the tree storage. This should be called to ensure storage is
+     * written out.
      *
      * @return {Promise}
      *  The Promise resolves when the operation completes.
      */
-    saveDeployCommit() {
-        // TODO
-        //this.writeStorageParameter();
+    finalize() {
+        return Promise.resolve();
     }
 }
 
