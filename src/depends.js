@@ -9,140 +9,6 @@ const pathModule = require("path");
 const assert = require("assert");
 const { format } = require("util");
 
-const SAVE_CONFIG_KEY = "cache.depends";
-const SAVE_FILE_NAME = ".webdeploy.deps";
-
-function loadFromObject(graph,parsed) {
-    // The set of raw connections and forward mappings are the same
-    // initially. Then all that's left is to compute the reverse mappings.
-    graph.connections = parsed.map;
-    graph.forwardMappings = Object.assign({},parsed.map);
-    graph._calcReverseMappings();
-}
-
-function loadFromJson(graph,json) {
-    loadFromObject(graph,JSON.parse(json));
-}
-
-function loadBlank(graph) {
-    graph.forwardMappings = {};
-    graph.reverseMappings = {};
-}
-
-function loadFromFile(path) {
-    var graph = new DependencyGraph();
-    var saveFilePath = pathModule.join(path,SAVE_FILE_NAME);
-
-    return new Promise((resolve,reject) => {
-        fs.readFile(saveFilePath,{ encoding:'utf8' },(err,data) => {
-            if (!err) {
-                loadFromJson(graph,data);
-            }
-            else {
-                loadBlank(graph);
-            }
-
-            resolve(graph);
-        });
-    });
-}
-
-function loadFromConfig(repoTree) {
-    // Lookup the dependency info from the tree's git-config. We always add the
-    // specified key to the section name to individualize the lookup since
-    // multiple caches can be stored at once.
-
-    var graph = new DependencyGraph();
-    var section = format("%s.%s",SAVE_CONFIG_KEY,repoTree.option("storeKey"));
-
-    return repoTree.getStorageConfig(section).then((parsed) => {
-        loadFromObject(graph,parsed);
-
-        return graph;
-
-    }, (err) => {
-        loadBlank(graph);
-
-        return graph;
-    });
-}
-
-function saveToFile(path,graph) {
-    var saveFilePath = pathModule.join(path,SAVE_FILE_NAME);
-
-    var text = JSON.stringify({map: graph.forwardMappings});
-    var options = {
-        encoding: 'utf8'
-    };
-
-    return new Promise((resolve,reject) => {
-        fs.writeFile(saveFilePath,text,options,(err) => {
-            if (err) {
-                reject(err);
-            }
-            else {
-                resolve();
-            }
-        });
-    });
-}
-
-function saveToConfig(repoTree,graph) {
-    var section = format("%s.%s",SAVE_CONFIG_KEY,repoTree.option("storeKey"));
-    var repr = {
-        map: graph.forwardMappings
-    };
-
-    return repoTree.writeStorageConfig(section,repr);
-}
-
-// These generic save/load routines detect which type of tree is passed in an
-// operate accordingly. PathTree instances store dependency graphs in a file
-// (i.e. SAVE_FILE_NAME) under the tree. RepoTree instances store dependency
-// graphs in the git-config.
-
-/**
- * Loads a DependencyGraph instance from a tree.
- *
- * @param {module:tree/path-tree~PathTree|module:tree/repo-tree~RepoTree} tree
- *  The tree from which the dependency graph information is loaded.
- *
- * @return {module:depends~DependencyGraph}
- */
-function loadFromTree(tree) {
-    if (tree.name == 'PathTree') {
-        return loadFromFile(tree.getPath());
-    }
-    if (tree.name == 'RepoTree') {
-        return loadFromConfig(tree);
-    }
-
-    assert(tree.name == 'PathTree' || tree.name == 'RepoTree');
-}
-
-/**
- * Loads a DependencyGraph instance from a tree.
- *
- * @param {module:tree~PathTree~PathTree|module:tree~RepoTree~RepoTree} tree
- *  The tree from which the dependency graph information is loaded.'
- * @param {module:depends~DependencyGraph} graph
- *  The graph to save.
- *
- * @return {Promise}
- */
-function saveToTree(tree,graph) {
-    graph.resolve();
-
-    if (tree.name == 'PathTree') {
-        return saveToFile(tree.getPath(),graph);
-    }
-    if (tree.name == 'RepoTree') {
-        return saveToConfig(tree,graph);
-    }
-
-    assert(tree.name == 'PathTree' || tree.name == 'RepoTree');
-}
-
 /**
  * @typedef module:depends~productObject
  *  Represents a build product result.
@@ -172,10 +38,38 @@ function saveToTree(tree,graph) {
 class DependencyGraph {
     /**
      * Creates a new DependencyGraph instance
+     *
+     * @param {object} [repr]
+     *  The storage representation of the DependencyGraph used to load initial
+     *  state.
      */
-    constructor() {
-        this.connections = {};
+    constructor(repr) {
+        if (repr) {
+            // The set of raw connections and forward mappings are the same
+            // initially. Then all that's left is to compute the reverse
+            // mappings.
+            this.connections = repr.map;
+            this.forwardMappings = Object.assign({},repr.map);
+            this._calcReverseMappings();
+        }
+        else {
+            this.connections = {};
+            this.forwardMappings = {};
+            this.reverseMappings = {};
+        }
         this.hooks = [];
+    }
+
+    /**
+     * Gets the representation of the DependencyGraph that can be stored and
+     * then reloaded via the constructor.
+     *
+     * @return {object}
+     */
+    getStorageRepr() {
+        return {
+            map: this.forwardMappings
+        };
     }
 
     /**
@@ -540,8 +434,5 @@ class DependencyGraph {
 }
 
 module.exports = {
-    loadFromTree,
-    saveToTree,
-
     DependencyGraph
 }

@@ -9,10 +9,10 @@ const pathModule = require("path").posix;
 const fs = require("fs");
 const git = require("nodegit");
 
-const depends = require("./depends");
+const { DependencyGraph } = require("./depends");
 const logger = require("./logger");
-const RepoTree = require("./tree/repo-tree");
-const PathTree = require("./tree/path-tree");
+const { RepoTree } = require("./tree/repo-tree");
+const { PathTree } = require("./tree/path-tree");
 const { DelayedTarget } = require("./target");
 const { Builder } = require("./builder");
 const { Deployer } = require("./deployer");
@@ -29,6 +29,8 @@ const CONFIG_TYPES = {
     // Uses the config's "deploy" configuration.
     TYPE_DEPLOY: 'deploy'
 }
+
+const DEPENDS_CONFIG_KEY = "cache.depends";
 
 function deployBeforeChainCallback(currentPlugin,chainedPlugin) {
     logger.log("Chain deploy _" + currentPlugin.id + "_ -> _" + chainedPlugin.id + "_");
@@ -323,11 +325,12 @@ function deployStartStep(tree,options) {
         options.deployPath = deployPath;
 
         // Load up dependency graph from tree deployment.
+        return tree.getStorageConfig(DEPENDS_CONFIG_KEY,true);
 
-        return depends.loadFromTree(tree);
+    }).then((repr) => {
+        options.graph = new DependencyGraph(repr);
 
-    }).then((graph) => {
-        options.graph = graph;
+        // Reset dependency graph if set in options.
 
         if (options.force) {
             options.graph.reset();
@@ -339,10 +342,13 @@ function deployStartStep(tree,options) {
         return deployBuildStep(tree,options);
 
     }).then(() => {
-        // Save the dependency graph if available.
-        if (options.graph) {
-            return depends.saveToTree(tree,options.graph);
-        }
+        // Save dependency graph.
+
+        var repr;
+        options.graph.resolve();
+        repr = options.graph.getStorageRepr();
+
+        return tree.writeStorageConfig(DEPENDS_CONFIG_KEY,true,repr);
 
     }).then(() => {
         // Perform tree finalization.
