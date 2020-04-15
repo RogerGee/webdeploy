@@ -101,8 +101,4 @@ sysconfig.load((config) => {
 
     commander.parse(process.argv);
 
-    if (commander.args.length == 0) {
-        commander.help();
-    }
-
 }, reject);
