@@ -5,7 +5,7 @@
  */
 
 const assert = require("assert");
-const pathModule = require("path").posix;
+const path = require("path").posix;
 const fs = require("fs");
 const git = require("nodegit");
 
@@ -183,15 +183,15 @@ function deployBuildStep(tree,options) {
 
         var targetPromises = [];
 
-        var walkcb = (path,name,createInputStream) => {
+        var walkcb = (targetPath,name,createInputStream) => {
             // Normalize path relative to configured target base path.
             if (targetBasePath) {
-                path = pathModule.relative(targetBasePath,path);
-                path = pathModule.resolve('/',path).substring(1);
+                targetPath = path.relative(targetBasePath,targetPath);
+                targetPath = path.resolve('/',targetPath).substring(1);
             }
 
-            var relativePath = pathModule.relative(options.buildPath,path);
-            var ref = pathModule.join(relativePath,name);
+            var relativePath = path.relative(options.buildPath,targetPath);
+            var ref = path.join(relativePath,name);
 
             // Ignore potential targets that were determined to not belong in
             // the build since they map to build products that are already
@@ -213,7 +213,7 @@ function deployBuildStep(tree,options) {
             // be included or not.
 
             if (!options.force && options.graph && !options.graph.hasProductForSource(ref)) {
-                var realRef = pathModule.join(targetBasePath,ref);
+                var realRef = path.join(targetBasePath,ref);
                 targetPromises.push(tree.isBlobModified(realRef).then((result) => {
                     if (result) {
                         var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
@@ -235,9 +235,9 @@ function deployBuildStep(tree,options) {
         };
 
         var walkopts = {
-            filter: function(path) {
+            filter: function(targetPath) {
                 // Ignore any hidden paths.
-                if (path[0] == ".") {
+                if (targetPath[0] == ".") {
                     return false;
                 }
 
@@ -368,8 +368,8 @@ function deployStartStep(tree,options) {
  * @return {Promise<module:tree/repo-tree~RepoTree>}
  */
 function createRepoTree(repoPath,options) {
-    return git.Repository.discover(repoPath,0,"").then((path) => {
-        return git.Repository.open(path);
+    return git.Repository.discover(repoPath,0,"").then((discoveredPath) => {
+        return git.Repository.open(discoveredPath);
 
     }).then((repository) => {
         return new RepoTree(repository,options);
@@ -379,22 +379,22 @@ function createRepoTree(repoPath,options) {
 /**
  * Creates a new PathTree for the specified path in the filesystem.
  *
- * @param {string} path
+ * @param {string} treePath
  *  The path to load.
  * @param {object} options
  *  Extra options for the PathTree.
  *
  * @return {Promise<module:tree/path-tree~PathTree>}
  */
-function createPathTree(path,options) {
+function createPathTree(treePath,options) {
     return new Promise((resolve,reject) => {
-        fs.stat(path,(err,stats) => {
+        fs.stat(treePath,(err,stats) => {
             if (err) {
                 reject(err);
                 return;
             }
 
-            resolve(new PathTree(path,options));
+            resolve(new PathTree(treePath,options));
         });
     });
 }
@@ -427,7 +427,7 @@ function deployRepository(repo,options) {
 /**
  * Initiates a deployment using the specified tree from the local filesystem.
  *
- * @param {string} path
+ * @param {string} treePath
  *  The path to the tree to deploy.
  * @param {object} options
  *  The list of options to pass to the commands.
@@ -438,8 +438,8 @@ function deployRepository(repo,options) {
  *  Returns a Promise that resolves when the operation completes or rejects when
  *  the operation fails.
  */
-function deployLocal(path,options) {
-    return createPathTree(path).then((tree) => {
+function deployLocal(treePath,options) {
+    return createPathTree(treePath).then((tree) => {
         return deployStartStep(tree,options);
     });
 }
@@ -455,7 +455,7 @@ function deployLocal(path,options) {
  * Initiates a deployment, deciding whether or not to use a local directory or a
  * git repository. Git repositories have precedence.
  *
- * @param {string} path
+ * @param {string} repoOrTreePath
  *  The path to the a git repository or local path.
  * @param {object} options
  *  The list of options to pass to the commands.
@@ -468,16 +468,16 @@ function deployLocal(path,options) {
  *  Returns a Promise that resolves when the operation completes or rejects when
  *  the operation fails.
  */
-function deployDecide(path,options,decideCallback) {
-    var prevPath = pathModule.resolve(pathModule.join(path,".."));
+function deployDecide(repoOrTreePath,options,decideCallback) {
+    var prevPath = path.resolve(path.join(repoOrTreePath,".."));
 
-    return git.Repository.discover(path,0,prevPath).then((repoPath) => {
+    return git.Repository.discover(repoOrTreePath,0,prevPath).then((repoPath) => {
         decideCallback("repo");
         return deployRepository(repoPath,options);
 
     }, (err) => {
         decideCallback("local");
-        return deployLocal(path,options);
+        return deployLocal(repoOrTreePath,options);
     });
 }
 
