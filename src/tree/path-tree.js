@@ -164,15 +164,13 @@ class PathTree extends TreeBase {
                             reject(ex);
                         }
                     }
-                    else if (err.code != 'EEXIST') {
+                    else if (err.code != 'ENOENT') {
                         reject(err);
                         return;
                     }
-                    else {
-                        this.storageConfig = {};
-                    }
 
-                    reject(null);
+                    this.storageConfig = {};
+                    resolve(null);
                 });
             });
         }
