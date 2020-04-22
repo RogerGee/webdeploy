@@ -8,7 +8,7 @@ The deploy configuration is designed to contain deployment-specific configuratio
 
 ## Target Tree Configuration
 
-This section describes the overall structure of the target tree configuration. This configuration is at the core of any project that uses `webdeploy` as its build system.
+This section describes the overall structure of the target tree configuration. This configuration is at the core of any project that uses `webdeploy` as its build system. The target tree configuration (sometimes called the _target configuration_ in the codebase) describes how a project is built and is a static configuration. This means that the target tree configuration remains the same regardless of the environment.
 
 ### Configuration Format and Storage
 The configuration is encoded either as JavaScript code or JSON stored in a file blob. You should choose the format that best supports your project. JavaScript code is more flexible and allows you to build your own functionality into the build system whereas JSON is pretty easy to use.
@@ -25,13 +25,20 @@ JSON-based configuration may be stored in a number of different places that incl
 
 ### Configuration Structure: Overview
 The target tree configuration consists of three general sections:
-1. `build`
-2. `deploy`
-3. `includes`
+1. `build {object}`
+2. `deploy {object}`
+3. `includes {object[]}`
 
 The `build` section describes the settings for a `webdeploy build` invocation. Likewise, the `deploy` section describes the settings for a `webdeploy deploy` invocation.
 
 The `includes` section denotes rules for how targets are processed by the build system.
+
+The top-level also supports the following, individual properties:
+
+**`basePath` `{string}`**
+Defines a base path under the target tree against which all target paths will be evaluated. By default, this value is empty, meaning all paths are evaluated against the root of the tree.
+
+For example, suppose the `basePath` is set to `scripts`. If the target path is `scripts/a.js`, then the path evaluates to `a.js`. In this way, the target paths `scripts/a.js` and `a.js` are equivalent.
 
 ### The `build` and `deploy` sections
 The `build` and `deploy` sections each map to a deploy plugin descriptor object. (See [the Plugins docs](./plugins.md) for more on build vs. deploy plugins.)
@@ -72,7 +79,7 @@ Each include object has the following general form:
   // OR
   "exclude": ["pattern1", "pattern2"],
 
-  "handlers": [ /* handler objects*/ ],
+  "handlers": [ /* handler objects */ ],
 
   "build": false,
 
@@ -110,7 +117,7 @@ The general structure of a build handler object:
 
 The `id` property denotes the plugin ID used to look up the plugin.
 
-The `dev` property denotes if the handler should only be executed when running in `dev` mode via `webdeploy build`. This means if `dev` is `true` the handler will _not_ run via `webdeploy build --prod`. By default, `dev` is `false`.
+The `dev` property denotes if the handler should execute in development mode via `webdeploy build --dev`. (Note that the `--dev` option is implied if not specified.) By default, this property is `false`, which means the handler does not execute in development mode and will only execute when running in production mode via `webdeploy build --prod` or `webdeploy deploy`. If the property is `true`, it will execute in development mode _and_ production mode.
 
 The `build` property functions just like the `build` property on the parent include object. In this case, it applies just to the handler. If `build` is `false`, then the plugin will only execute via `webdeploy deploy`. By default, `build` is `true`.
 
