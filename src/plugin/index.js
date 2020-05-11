@@ -84,19 +84,24 @@ function requirePlugin(pluginInfo,kind) {
     const PLUGIN_DIRS = sysconfig.pluginDirectories;
     const pluginId = makeFullPluginId(pluginInfo);
 
+    var firstErr = null;
     for (let i = 0;i < PLUGIN_DIRS.length;++i) {
         let next = PLUGIN_DIRS[i];
 
         try {
             var plugin = require(pathModule.join(next,pluginId));
             break;
-        } catch (err1) {
+        } catch (err) {
+            if (!firstErr) {
+                firstErr = err;
+            }
+
             continue;
         }
     }
 
     if (!plugin) {
-        throw new WebdeployError("Cannot load plugin '" + pluginId + "'");
+        throw new WebdeployError("Cannot load plugin '" + pluginId + "': " + firstErr.toString());
     }
 
     // Make sure the plugin module exports the correct interface (i.e. it has an
