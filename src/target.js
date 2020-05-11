@@ -124,6 +124,22 @@ class Target {
     }
 
     /**
+     * Gets the target content.
+     *
+     * @return {string}
+     *  Returns the target content
+     * @throws
+     *  The method throws if content is not loaded.
+     */
+    getContent() {
+        if (typeof this.content === 'undefined') {
+            throw new WebdeployError("Target content must be loaded");
+        }
+
+        return this.content;
+    }
+
+    /**
      * Gets the path to the target relative to the target's source tree. This
      * includes the target name.
      *
