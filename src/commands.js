@@ -33,7 +33,12 @@ const CONFIG_TYPES = {
 const DEPENDS_CONFIG_KEY = "cache.depends";
 
 function deployBeforeChainCallback(currentPlugin,chainedPlugin) {
-    logger.log("Chain deploy _" + currentPlugin.id + "_ -> _" + chainedPlugin.id + "_");
+    if (!currentPlugin) {
+        logger.log("Predeploy -> *" + chainedPlugin.id + "*");
+    }
+    else {
+        logger.log("Chain deploy *" + currentPlugin.id + "* -> *" + chainedPlugin.id + "*");
+    }
     logger.pushIndent();
 }
 
@@ -43,8 +48,7 @@ function deployAfterChainCallback() {
 
 function printNewTargetsCallback(target,plugin,newTargets) {
     if (newTargets.length > 0) {
-        logger.pushIndent(target.level);
-        var prefix = "exec _" + target.targetName + "_"
+        var prefix = "Exec _" + target.targetName + "_"
             + " -> *" + plugin.id + "* -> ";
 
         newTargetNames = newTargets.map((x) => { return x.targetName });
@@ -53,12 +57,11 @@ function printNewTargetsCallback(target,plugin,newTargets) {
             logger.log(" ".repeat(prefix.length - 7) + "-> _"
                        + newTargetNames[j] + "_");
         }
-        logger.popIndent(target.level);
     }
 }
 
 function deployDeployStep(deployer,builder,options) {
-    logger.log("Deploying targets: _" + deployer.deployConfig.id + "_");
+    logger.log("Deploying targets: *" + deployer.deployConfig.id + "*");
 
     if (builder.outputTargets.length == 0) {
         if (options.ignored) {
@@ -157,11 +160,6 @@ function deployBuildStep(tree,options) {
         });
 
     }).then(() => {
-        // Display message denoting number of build plugins loaded.
-
-        var n = builder.getPluginCount();
-        logger.log("Loaded _" + n + "_ build " + logger.plural(n,"plugin"));
-
         // Calculate the set of ignored targets given a dependency graph.
         // Otherwise return an empty set.
 
@@ -218,7 +216,7 @@ function deployBuildStep(tree,options) {
                     if (result) {
                         var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
                         if (newTarget) {
-                            logger.log("add _" + newTarget.getSourceTargetPath() + "_");
+                            logger.log("Add _" + newTarget.getSourceTargetPath() + "_");
                         }
                     }
                     else {
@@ -229,7 +227,7 @@ function deployBuildStep(tree,options) {
             else {
                 var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
                 if (newTarget) {
-                    logger.log("add _" + newTarget.getSourceTargetPath() + "_");
+                    logger.log("Add _" + newTarget.getSourceTargetPath() + "_");
                 }
             }
         };
@@ -259,16 +257,17 @@ function deployBuildStep(tree,options) {
 
         logger.popIndent();
         logger.log("Building targets:");
+        logger.pushIndent();
 
         if (builder.targets.length == 0) {
-            logger.pushIndent();
             logger.log("*No Targets*");
-            logger.popIndent();
         }
 
         return builder.execute();
 
     }).then(() => {
+        logger.popIndent();
+
         return deployDeployStep(deployer,builder,options);
     });
 }

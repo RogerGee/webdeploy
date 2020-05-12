@@ -50,7 +50,7 @@ commander.command("deploy [path]")
         }
 
         commands.deployDecide(localPath, options, (type) => {
-            logger.log("*[DEPLOY]* _" + type + "_: exec " + localPath);
+            logger.log("*[DEPLOY]* *" + type + "*: exec " + localPath);
             logger.pushIndent();
 
         }, reject).then(() => {
@@ -67,7 +67,7 @@ commander.command("build [path]")
     .option("-f, --force","Force full build without consulting dependencies")
     .action((sourcePath,cmd) => {
         if (cmd.prod && cmd.dev) {
-            logger.error("webdeploy: build: Please specify one of _prod_ or _dev_.".bold);
+            logger.error("webdeploy: build: Please specify one of *prod* or *dev*.".bold);
             return;
         }
 
@@ -84,7 +84,7 @@ commander.command("build [path]")
             var localPath = path.resolve(".");
         }
 
-        logger.log("*[BUILD]* _local_: exec " + localPath);
+        logger.log("*[BUILD]* *local*: exec " + localPath);
         logger.pushIndent();
 
         commands.deployLocal(localPath,options).then(() => {
