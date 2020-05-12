@@ -67,6 +67,8 @@ class Deployer {
             // NOTE: the order that we store plugins in this.plugins IS
             // important and is guarenteed to be preserved by the auditor.
 
+            // Resolve plugins. (This assigns plugin objects to DeployConfig
+            // instances.)
             for (let i = 0;i < results.length;++i) {
                 if (typeof results[i].resolve == "function") {
                     results[i].resolve(results[i].pluginObject);

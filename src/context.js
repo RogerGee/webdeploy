@@ -9,6 +9,19 @@ const pathModule = require("path");
 const { makeOutputTarget } = require("./target");
 const { lookupDeployPlugin } = require("./audit");
 
+function resolveDeployPlugin(plugin) {
+    // If the object does not have the correct interface, then assume it is a
+    // description and look up the required plugin.
+    if (!plugin.exec) {
+        return lookupDeployPlugin({
+            pluginId: plugin.id,
+            pluginVersion: plugin.version
+        });
+    }
+
+    return plugin;
+}
+
 /**
  * @callback module:context~DeployContext~TargetCallback
  * @param {module:target~Target} target
@@ -31,8 +44,11 @@ class DeployContext {
      *  The builder associated with the deployment.
      * @param {nodegit.Tree} tree
      *  The git tree instance associated with the deployment.
+     * @param {object} [settings]
      */
-    constructor(deployPath,builder,tree) {
+    constructor(deployPath,builder,tree,settings) {
+        settings = settings || {};
+
         this.deployPath = deployPath;
         this.builder = builder;
         this.targets = builder.outputTargets;
@@ -230,12 +246,14 @@ class DeployContext {
      * Executes the specified deploy plugin.
      *
      * @param {object} plugin
+     *  A loaded deploy plugin or a plugin loader object.
      * @param {module:plugin/deploy-plugin~DeployPlugin} settings
      *  The deploy plugin configuration object to pass to the deploy plugin.
      *
      * @return {Promise}
      */
     execute(plugin,settings) {
+        plugin = resolveDeployPlugin(plugin);
         this.currentPlugin = plugin;
 
         return plugin.exec(this,settings || {});
@@ -252,21 +270,7 @@ class DeployContext {
      * @return {Promise}
      */
     chain(nextPlugin,settings) {
-        // Execute plugin directly if it is an already-loaded plugin
-        // object. This is just anything that has an exec property.
-
-        var plugin;
-
-        if (!nextPlugin.exec) {
-            plugin = lookupDeployPlugin({
-                pluginId: nextPlugin.id,
-                pluginVersion: nextPlugin.version
-            })
-        }
-        else {
-            plugin = nextPlugin;
-        }
-
+        var plugin = resolveDeployPlugin(nextPlugin);
         this.currentPlugin = plugin;
 
         return plugin.exec(this,settings || {});

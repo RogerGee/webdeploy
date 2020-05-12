@@ -246,7 +246,13 @@ Sends control to another deploy plugin.
 
 Deploy plugins can transfer execution to other deploy plugins. This allows for powerful  leveraging of different bits of functionality. When you chain from one plugin to another, you temporarily transfer control to another deploy plugin. The original plugin should only continue after the chained plugin has resolved. All deploy plugins share the same `DeployContext` instance, so all changes are available to any plugin.
 
-**NOTE**: Special care should be taken to read each plugin's documentation. Some chaining behaviors are hard-coded. For example, the 3rd party plugin `combine` always chains to the `write` plugin. In this case we'd consider the plugin to be terminal since the targets will be written out after the chain resolves. Other plugins are more flexible and can allow for additional chains later on.
+There are three types of chaining:
+
+- `predeploy`: The chaining occurs before the core deploy plugin executes; plugins are enumerated via `chain.predeploy`
+- `inline`: The chaining occurs during core deploy plugin execution via `context.chain()`
+- `postdeploy`: The chaining occurs after the core deploy plugin executes; plugins are enumerated via `chain.postdeploy`
+
+**NOTE**: Special care should be taken with `postdeploy` chains. Be sure to consult each deploy plugin's documentation. Most deploy plugins hard-code at least one inline chain. For example, the 3rd party plugin `combine` always chains to the `write` plugin. In this case we'd consider the plugin to be terminal since the targets will be written out after the chain resolves. Other plugins are more flexible and can allow for `postdeploy` chains later on.
 
 ## Deploy Plugin Config Schema
 
@@ -262,7 +268,7 @@ In the config file, a deploy plugin is denoted by an object that has at least an
   // strings having the form PLUGIN@VERSION (e.g. "custom@1.2.5") or a plugin
   // description object (e.g. { id: "custom", version: "1.2.5" }).
   //
-  // NOTE: built-in plugins need not and should not be specified in requires.
+  // NOTE: built-in plugins need not (and should not) be specified in requires.
   requires: {
     build: [],
     deploy: []
@@ -270,7 +276,10 @@ In the config file, a deploy plugin is denoted by an object that has at least an
 
   // This property can contain a recursive deploy plugin settings object
   // denoting a default chain. An array of such objects will chain in sequence.
-  chain: []
+  chain: {
+    predeploy: [],
+    postdeploy: []
+  }
 }
 ~~~
 
@@ -278,7 +287,7 @@ Note: the plugin settings object can be augmented with settings specific to the 
 
 ## Core Plugins
 
-The following deploy plugins are a part of the core webdeploy system. They cannot be removed.
+The following deploy plugins are a part of the core `webdeploy` system. They cannot be removed.
 
 #### `exclude`
 
@@ -296,8 +305,7 @@ Object schema:
 
 **CHAINS**: _None_
 
-Writes output targets the to deployment tree. This is the core deploy plugin to
-which most other plugins will chain.
+Writes output targets the to deployment tree. This is the core deploy plugin to which most other plugins will chain.
 
 Object schema (settings properties indicate their defaults):
 

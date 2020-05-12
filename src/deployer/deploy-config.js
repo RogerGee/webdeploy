@@ -16,15 +16,17 @@ class DeployConfig {
      *  Settings passed in from the deploy configuration.
      * @param {string} settings.id
      * @param {string} [settings.version="latest"]
-     * @param {object[]} [settings.chain]
+     * @param {object} [settings.chain]
+     * @param {object[]} [settings.chain.predeploy]
+     * @param {object[]} [settings.chain.postdeploy]
      * @param {object} [settings.requires]
      */
     constructor(settings) {
-        if (typeof settings == "object") {
+        if (typeof settings === "object") {
             Object.assign(this,settings);
         }
-        else if (typeof settings == "string") {
-
+        else if (typeof settings === "string") {
+            this.id = settings;
         }
         else {
             throw new WebdeployError("Cannot create deploy config: invalid value");
@@ -32,41 +34,57 @@ class DeployConfig {
 
         // Apply defaults.
 
-        if (typeof this.version == "undefined") {
+        if (typeof this.version === "undefined") {
             this.version = "latest";
         }
 
         this.plugin = null; // set later after auditing
 
-        if (typeof this.requires == "undefined") {
+        if (typeof this.requires === "undefined") {
             this.requires = {
                 build: [],
                 deploy: []
             }
         }
 
-        if (typeof this.chain == "undefined") {
+        if (typeof this.chain === "undefined") {
             this.chain = [];
         }
 
         // Normalize and validate settings.
 
-        if (typeof this.id != "string") {
+        if (typeof this.id !== "string") {
             throw new WebdeployError("Cannot create deploy config: invalid or missing 'id' property");
         }
 
-        if (typeof this.version != "string") {
+        if (typeof this.version !== "string") {
             throw new WebdeployError("Cannot create deploy config: invalid 'version' property");
         }
 
-        if (!Array.isArray(this.chain)) {
-            this.chain = [this.chain];
-        }
-        for (let i = 0;i < this.chain.length;++i) {
-            this.chain[i] = new DeployConfig(this.chain[i]);
+        if (this.chain) {
+            if (typeof this.chain !== 'object') {
+                throw new WebdeployError("Cannot create deploy config: invalid 'chain' property");
+            }
+
+            var chainInfo = this.chain;
+            this.chain = {
+                predeploy: [],
+                postdeploy: []
+            };
+            for (let key in this.chain) {
+                if (chainInfo[key]) {
+                    if (!Array.isArray(chainInfo[key])) {
+                        throw new WebdeployError("Cannot create deploy config: invalid 'chain' property");
+                    }
+
+                    for (let i = 0;i < chainInfo[key].length;++i) {
+                        this.chain[key].push(new DeployConfig(chainInfo[key][i]));
+                    }
+                }
+            }
         }
 
-        if (typeof this.requires != "object") {
+        if (typeof this.requires !== "object") {
             throw new WebdeployError("Cannot create deploy config: invalid 'requires' property");
         }
 
@@ -79,7 +97,7 @@ class DeployConfig {
                 if (typeof value == "string") {
                     this.requires[key][i] = parseFullPluginId(value);
                 }
-                else if (typeof value != "object" || typeof value.id != "string") {
+                else if (typeof value !== "object" || typeof value.id !== "string") {
                     throw new WebdeployError("Cannot create deploy config: invalid plugin in 'requires'");
                 }
             }
@@ -119,8 +137,10 @@ class DeployConfig {
         }
 
         // Recursively add all chained plugins.
-        for (var i = 0;i < this.chain.length;++i) {
-            plugins = plugins.concat(this.chain[i].getPluginDescriptions());
+        for (var key in this.chain) {
+            for (var i = 0;i < this.chain[key].length;++i) {
+                plugins = plugins.concat(this.chain[key][i].getPluginDescriptions());
+            }
         }
 
         return plugins;
@@ -130,21 +150,50 @@ class DeployConfig {
      * Calls the assigned deploy plugin's underlying exec() method and
      * recursively executes any chained deploy plugins in the same manner.
      *
+     * @param {module:context~DeployContext} context
+     *  The deploy context to pass to use to execute the plugin.
+     * @param {boolean} [asChain]
+     *  If true, then the plugin is executed as a chained plugin via
+     *  DeployContext.chain().
+     *
      * @return {Promise}
      *  Promise resolves when the execution has finished.
      */
-    execute(context) {
-        var chain;
-        var chainIndex = 0;
-        chain = (done) => {
-            if (chainIndex >= this.chain.length) {
-                return true;
+    execute(context,asChain) {
+        var predeploy = this.makeChainCallback(context,'predeploy');
+        var exec = () => {
+            if (asChain) {
+                return context.chain(this.plugin,this);
             }
 
-            return this.chain[chainIndex++].execute(context).then(chain);
-        }
+            return context.execute(this.plugin,this);
+        };
+        var postdeploy = this.makeChainCallback(context,'postdeploy');
 
-        return context.execute(this.plugin,this).then(chain);
+        return predeploy(false).then(exec).then(postdeploy);
+    }
+
+    /**
+     * Creates a callback for invoking deploy chains.
+     *
+     * @param {string} type
+     *  Either 'predeploy' or 'postdeploy'.
+     *
+     * @return {function}
+     */
+    makeChainCallback(context,type) {
+        var index = 0;
+        var callback;
+
+        callback = (done) => {
+            if (index >= this.chain[type].length) {
+                return Promise.resolve(true);
+            }
+
+            return this.chain[type][index++].execute(context,true).then(callback);
+        };
+
+        return callback;
     }
 }
 
