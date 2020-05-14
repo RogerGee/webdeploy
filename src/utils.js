@@ -21,14 +21,14 @@ module.exports.mkdirParents = function(path,base) {
 
     if (!base) {
         path = parsed.root;
-
-        if (parsed.dir.substr(0,parsed.root.length) == parsed.root) {
-            parsed.dir = parsed.dir.substr(parsed.root.length);
-        }
     }
     else {
         // Assume base exists.
         path = base;
+    }
+
+    if (parsed.dir.substr(0,path.length) == path) {
+        parsed.dir = parsed.dir.substr(path.length);
     }
 
     var parts = pathModule.join(parsed.dir,parsed.base).split(pathModule.sep)
@@ -47,7 +47,7 @@ module.exports.mkdirParents = function(path,base) {
             }
         }
     }
-}
+};
 
 /**
  * Prepares a path as a git-config key.
@@ -65,4 +65,4 @@ module.exports.prepareConfigPath = function(path) {
     }
 
     return result;
-}
+};

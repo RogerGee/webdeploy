@@ -11,10 +11,22 @@ const path = require("path");
 const { mkdirParents } = require("./utils");
 
 const HOMEDIR = os.homedir();
-const BASEDIR = path.join(HOMEDIR,'.webdeploy');
-const USER_CONFIG_FILE = path.join(BASEDIR,'webdeployrc');
-const USER_PLUGIN_DIR = path.join(BASEDIR,'plugin-cache');
-const USER_STORAGE_FILE = path.join(BASEDIR,'storage.db');
+const DEFAULT_ROOT = path.join(HOMEDIR,'.webdeploy');
+
+function make_path(...parts) {
+    if (process.env.WEBDEPLOY_ROOT) {
+        var basePath = process.env.WEBDEPLOY_ROOT;
+    }
+    else {
+        var basePath = DEFAULT_ROOT;
+    }
+
+    return path.join(basePath,...parts);
+}
+
+const USER_CONFIG_FILE = make_path('webdeployrc');
+const USER_PLUGIN_DIR = make_path('plugin-cache');
+const USER_STORAGE_FILE = make_path('storage.db');
 
 const DEFAULTS = {
     pluginDirectories: [],
@@ -22,11 +34,7 @@ const DEFAULTS = {
     webRepos: [],
     npmRepos: [],
     storageFile: USER_STORAGE_FILE
-}
-
-// Make sure the default user plugin directory exists. (This also indirectly
-// makes sure the base directory exists.)
-mkdirParents(USER_PLUGIN_DIR,HOMEDIR);
+};
 
 /**
  * Represents the system configuration parameters.
@@ -36,6 +44,10 @@ class Sysconfig {
      * Creates a new Sysconfig instance.
      */
     constructor() {
+        // Make sure the default user plugin directory exists. (This also
+        // indirectly makes sure the base directory exists.)
+        mkdirParents(USER_PLUGIN_DIR,HOMEDIR);
+
         // Apply defaults.
         Object.assign(this,DEFAULTS);
 
@@ -53,9 +65,7 @@ class Sysconfig {
      * @param {function} errfn
      */
     load(donefn,errfn) {
-        const fileName = path.join(os.homedir(),USER_CONFIG_FILE);
-
-        fs.readFile(fileName, (err,data) => {
+        fs.readFile(USER_CONFIG_FILE, (err,data) => {
             if (err) {
                 if (err.code != 'ENOENT') {
                     return errfn(err);
@@ -88,7 +98,7 @@ class Sysconfig {
 
             // Finalize: ensure storage file is absolute path.
             if (!path.isAbsolute(this.storageFile)) {
-                this.storageFile = path.join(BASEDIR,this.storageFile);
+                this.storageFile = make_path(this.storageFile);
             }
 
             donefn(this);
