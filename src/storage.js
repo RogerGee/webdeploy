@@ -6,13 +6,15 @@
 
 const { format } = require("util");
 const Database = require("better-sqlite3");
+const EventEmitter = require("events");
 
 const sysconfig = require("./sysconfig");
 
 const CONFIG_TABLE =
       `CREATE TABLE config (
-         config_key VARCHAR,
-         config_value VARCHAR,
+         config_key TEXT,
+         config_value TEXT,
+
          UNIQUE(config_key)
        );`;
 
@@ -25,13 +27,14 @@ const CONFIG_TABLE =
 /**
  * Represents the storage database
  */
-class StorageDatabase {
+class StorageDatabase extends EventEmitter {
     /**
      * Creates a new StorageDatabase instance. You should not create one of
      * these directly, since we export a singleton in this module for global
      * use.
      */
     constructor() {
+        super();
         this.db = null;
         this.preps = {};
     }
@@ -46,6 +49,8 @@ class StorageDatabase {
 
         // Install config schema.
         this.ensureSchema('config',CONFIG_TABLE);
+
+        this.emit('load');
     }
 
     /**
@@ -119,7 +124,7 @@ class StorageDatabase {
      */
     lookupConfig(key) {
         var sql = "SELECT config_value FROM config WHERE config_key = ?";
-        var stmt = this.prepare('config:select',sql);
+        var stmt = this.prepareCache('config:select',sql);
         var row = stmt.get(key);
 
         if (!row) {
@@ -136,8 +141,14 @@ class StorageDatabase {
      *  Value to store; this value is converted to JSON for storage.
      */
     writeConfig(key,value) {
-        var insert = this.prepare("config:insert","INSERT INTO config (config_key,config_value) VALUES (?,?)");
-        var update = this.prepare("config:update","UPDATE config SET config_value = ? WHERE config_key = ?");
+        var insert = this.prepareCache(
+            "config:insert",
+            "INSERT INTO config (config_key,config_value) VALUES (?,?)"
+        );
+        var update = this.prepareCache(
+            "config:update",
+            "UPDATE config SET config_value = ? WHERE config_key = ?"
+        );
 
         var transaction = this.db.transaction(function(key,value) {
             try {
@@ -160,7 +171,7 @@ class StorageDatabase {
      *
      * @return {Statement}
      */
-    prepare(key,sql) {
+    prepareCache(key,sql) {
         if (key in this.preps) {
             return this.preps[key];
         }
@@ -169,6 +180,28 @@ class StorageDatabase {
         this.preps[key] = stmt;
 
         return stmt;
+    }
+
+    /**
+     * Wrapper around db.prepare() (no caching).
+     *
+     * @param {string} sql
+     *
+     * @return {Statement}
+     */
+    prepare(sql) {
+        return this.db.prepare(sql);
+    }
+
+    /**
+     * Wrapper around db.transaction().
+     *
+     * @param {function} callback
+     *
+     * @return {function}
+     */
+    transaction(callback) {
+        return this.db.transaction(callback);
     }
 }
 

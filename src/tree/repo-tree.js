@@ -11,9 +11,8 @@ const { format } = require("util");
 const { TreeBase } = require("./");
 const configuration = require("../config");
 const { makeTargetStream } = require("../target");
+const { prepareConfigPath } = require("../utils");
 const { WebdeployError } = require("../error");
-
-const CONFIG_LAST_DEPLOY = "cache.lastDeploy";
 
 function normalizeTargetTree(targetTree) {
     // The path "/" is the root directory of the repo's target tree. This means
@@ -41,12 +40,10 @@ function makeBlobStream(blob) {
  * @typedef module:tree/repo-tree~repoTreeOptions
  * @property {string} deployBranch
  *  The branch (i.e. head reference) from which to load the deployment
- *  commit.
+ *  commit. This overrides saved deploy config.
  * @property {string} deployTag
- *  The tag (i.e. tag reference) from which to load the deployment commit.
- * @property {string} storeKey
- *  The storage key for all config values that require separation based on
- *  storage path.
+ *  The tag (i.e. tag reference) from which to load the deployment commit. The
+ *  tag is considered before the branch.
  */
 
 /**
@@ -73,6 +70,8 @@ class RepoTree extends TreeBase {
         // Cache Promises to certain, often-accessed resources.
         this.deployCommits = {};
         this.targetTrees = {};
+
+        this.init();
     }
 
     // Implements TreeBase.getPath().
@@ -174,7 +173,7 @@ class RepoTree extends TreeBase {
         return Promise.resolve(0);
     }
 
-    // Implements TreeBase.getStorageConfig().
+    // Implements TreeBase.getStorageConfigAlt().
     getStorageConfigAlt(param,deploySpecific) {
         // Gets a config value from the git-config.
 
@@ -238,14 +237,10 @@ class RepoTree extends TreeBase {
         });
     }
 
-    // Implements TreeBase.finalize().
-    finalize() {
+    // Implements TreeBase.finalizeImpl().
+    finalizeImpl() {
         return this.getDeployCommit().then((commit) => {
-            return this.writeStorageConfig(
-                CONFIG_LAST_DEPLOY,
-                true,
-                commit.id().tostrS()
-            );
+            this.writeDeployConfig('lastRevision',commit.id().tostrS());
         });
     }
 
@@ -271,31 +266,33 @@ class RepoTree extends TreeBase {
             return this.deployCommits[COMMIT_KEY];
         }
 
-        // Attempt to load the deploy commit reference from the options;
-        // otherwise we default to the "deployBranch" config value.
+        // Attempt to load the deploy commit reference from the deploy
+        // config. We first try a tag, then a head.
 
-        if (this.options.deployBranch) {
-            var head = format("refs/heads/%s",this.options.deployBranch);
-            var promise = this.repo.getReference(head).then((reference) => {
-                return git.Commit.lookup(this.repo, reference.target());
-            });
+        const options = {
+            'refs/tags/': 'deployTag',
+            'refs/heads/': 'deployBranch'
+        };
+
+        for (var key in options) {
+            var name = this.getDeployConfig(options[key]);
+            if (name) {
+                var ref = format("refs/heads/%s",name);
+
+                var promise = this.repo.getReference(ref).then((reference) => {
+                    return git.Commit.lookup(this.repo, reference.target());
+                }).catch((err) => {
+                    throw new WebdeployError("Reference '" + ref + "' did not exist in the repository");
+                });
+
+                break;
+            }
         }
-        else if (this.options.deployTag) {
-            var tag = format("refs/tags/%s",this.options.deployTag);
-            var promise = this.repo.getReference(tag).then((reference) => {
-                return git.Commit.lookup(this.repo, reference.target());
-            });
-        }
-        else {
-            var promise = this.getStorageConfig("deployBranch").then((deployBranch) => {
-                return this.repo.getReference(deployBranch);
 
-            }).then((reference) => {
-                return git.Commit.lookup(this.repo, reference.target());
-
-            }).catch((err) => {
-                throw new WebdeployError("Cannot determine the deploy branch or tag!");
-            });
+        if (!promise) {
+            promise = Promise.reject(
+                new WebdeployError("Deployment config missing 'deployBranch' or 'deployTag'")
+            );
         }
 
         this.deployCommits[COMMIT_KEY] = promise;
@@ -313,14 +310,12 @@ class RepoTree extends TreeBase {
             return this.deployCommits[COMMIT_KEY];
         }
 
-        var promise = this.getStorageConfig(CONFIG_LAST_DEPLOY,true).then((previousCommitOid) => {
-            if (previousCommitOid) {
-                return this.repo.getCommit(previousCommitOid);
-            }
+        var lastRevision = this.getDeployConfig('lastRevision');
+        if (!lastRevision) {
+            return Promise.resolve(null);
+        }
 
-            return null;
-        });
-
+        var promise = this.repo.getCommit(lastRevision);
         this.deployCommits[COMMIT_KEY] = promise;
 
         return promise;
@@ -363,12 +358,14 @@ class RepoTree extends TreeBase {
             return this.targetTrees[commitId];
         }
 
-        var promise = this.getStorageConfig('targetTree').then((targetTreePath) => {
-            return this.getTree(normalizeTargetTree(targetTreePath),commit);
-
-        }, (err) => {
-            return this.getTree(normalizeTargetTree(),commit);
-        });
+        var promise;
+        var targetTree = this.getDeployConfig('targetTree');
+        if (!targetTree) {
+            promise = this.getTree(normalizeTargetTree(),commit);
+        }
+        else {
+            promise = this.getTree(normalizeTargetTree(targetTreePath),commit);
+        }
 
         this.targetTrees[commitId] = promise;
 
@@ -482,11 +479,10 @@ class RepoTree extends TreeBase {
     }
 
     getStoreSection(section) {
-        if (this.options.storeKey) {
-            section = format("%s.%s",section,this.options.storeKey);
-        }
+        var deployPath = this.getDeployConfig('deployPath');
+        var storeKey = prepareConfigPath(deployPath);
 
-        return section;
+        return format("%s.%s",section,storeKey);
     }
 }
 

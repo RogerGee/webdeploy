@@ -126,18 +126,18 @@ function deployBuildStep(tree,options) {
         builder.pushIncludes(includes);
         builder.finalize(auditor);
 
-        // Create deployer required for the run. Finalize the deployer so that all
-        // required plugins will be sent to the auditor
+        // Create deployer required for the run. Then finalize the deployer so
+        // that all required plugins will be sent to the auditor
 
         const deployerOptions = {
             deployConfig: options.deployConfig,
-            deployPath: options.deployPath,
+            deployPath: tree.getDeployConfig('deployPath'),
             callbacks: {
                 beforeChain: deployBeforeChainCallback,
                 afterChain: deployAfterChainCallback
             },
             tree
-        }
+        };
 
         deployer = new Deployer(deployerOptions);
         deployer.finalize(auditor);
@@ -278,7 +278,7 @@ function deployStartStep(tree,options) {
 
     var storeKey;
 
-    // Obtain the deploy plugin name.
+    // Load deploy plugin config from target tree config.
 
     return tree.getTargetConfig(options.type).then((deployConfig) => {
         if (typeof deployConfig !== "object") {
@@ -290,40 +290,8 @@ function deployStartStep(tree,options) {
 
         options.deployConfig = deployConfig;
 
-        // Set build path. RepoTrees always have a root build path.
-
-        if (tree instanceof RepoTree) {
-            options.buildPath = "";
-        }
-        else {
-            options.buildPath = tree.getPath();
-        }
-
-        // For a TYPE_DEPLOY deployment, we need a deploy path. This may have
-        // been specified by the user in the options object, OR we lookup the
-        // default deploy path stored in the tree storage configuration.
-
-        if (options.type == CONFIG_TYPES.TYPE_DEPLOY) {
-            if (!options.deployPath) {
-                return tree.getStorageConfig("deployPath");
-            }
-            else {
-                return Promise.resolve(options.deployPath);
-            }
-        }
-
-        // Otherwise for TYPE_BUILD deployments the deploy path is the same as
-        // the build path (since local builds deploy to the same location).
-
-        return Promise.resolve(options.buildPath);
-
-    }).then((deployPath) => {
-        // Set tree deployment and save deploy path to local options.
-
-        tree.setDeployment(deployPath);
-        options.deployPath = deployPath;
-
         // Load up dependency graph from tree deployment.
+
         return tree.getStorageConfig(DEPENDS_CONFIG_KEY,true);
 
     }).then((repr) => {
@@ -413,10 +381,16 @@ function createPathTree(treePath,options) {
  *  the operation fails.
  */
 function deployRepository(repo,options) {
-    var treeOptions = {
+    // We always use a root (i.e. empty) build path when deploying projects via
+    // RepoTree.
+    options.buildPath = "";
+
+    // Isolate options that we provide to the repo tree.
+    const treeOptions = {
+        deployPath: options.deployPath,
         deployBranch: options.deployBranch,
         deployTag: options.deployTag
-    }
+    };
 
     return createRepoTree(repo,treeOptions).then((tree) => {
         return deployStartStep(tree,options);
@@ -438,7 +412,15 @@ function deployRepository(repo,options) {
  *  the operation fails.
  */
 function deployLocal(treePath,options) {
-    return createPathTree(treePath).then((tree) => {
+    // Set build path for local deployment. For PathTree instances, this is
+    // always the same as the path to the tree.
+    options.buildPath = treePath;
+
+    const treeOptions = {
+        deployPath: treePath
+    };
+
+    return createPathTree(treePath,treeOptions).then((tree) => {
         return deployStartStep(tree,options);
     });
 }

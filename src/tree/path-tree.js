@@ -32,6 +32,8 @@ class PathTree extends TreeBase {
 
         // Caches Promise -> Number representing the mtime for a blob.
         this.mtimeCache = {};
+
+        this.init();
     }
 
     // Implements TreeBase.getPath().
