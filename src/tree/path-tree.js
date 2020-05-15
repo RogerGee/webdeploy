@@ -43,6 +43,8 @@ class PathTree extends TreeBase {
 
     // Implements TreeBase.getBlob().
     getBlob(blobPath) {
+        blobPath = this.makePath(blobPath);
+
         // Qualify the blobPath with the tree's base path.
         var blobPathQualified = path.join(this.basePath,blobPath);
 
@@ -58,12 +60,7 @@ class PathTree extends TreeBase {
     // Implements TreeBase.walk().
     walk(callback,options) {
         var filter = options.filter || undefined;
-        if (options.basePath) {
-            var basePath = path.join(this.basePath,options.basePath);
-        }
-        else {
-            var basePath = this.basePath;
-        }
+        var basePath = this.makeBasePath(options.basePath);
 
         return new Promise((resolve,reject) => {
             let outstanding = 1;
@@ -111,6 +108,8 @@ class PathTree extends TreeBase {
 
     // Implements TreeBase.isBlobModified().
     isBlobModified(blobPath,mtime) {
+        blobPath = this.makePath(blobPath);
+
         return this.getMTime(blobPath).then((tm) => {
             if (typeof mtime === "undefined") {
                 return true;
@@ -122,6 +121,8 @@ class PathTree extends TreeBase {
 
     // Implements TreeBase.getMTime().
     getMTime(blobPath) {
+        blobPath = this.makePath(blobPath);
+
         if (blobPath in this.mtimeCache) {
             return this.mtimeCache[blobPath];
         }
@@ -215,6 +216,49 @@ class PathTree extends TreeBase {
                 err ? reject(err) : resolve();
             });
         });
+    }
+
+    makePath(pathInTree) {
+        var basePath = '';
+
+        // Integrate the target tree parameter into the path.
+        var targetTree = this.getDeployConfig('targetTree');
+        if (targetTree) {
+            basePath = path.join(basePath,targetTree);
+        }
+
+        // Integrate the target tree base path (via options).
+        var basePathOption = this.option('basePath');
+        if (basePathOption) {
+            basePath = path.join(basePath,basePathOption);
+        }
+
+        return path.join(basePath,pathInTree);
+    }
+
+    makeBasePath(suffix) {
+        // Determine base path to content we care about in the tree.
+
+        var basePath = this.basePath;
+
+        // Integrate the 'targetTree' deploy config parameter.
+        var targetTree = this.getDeployConfig('targetTree');
+        if (targetTree) {
+            basePath = path.join(basePath,targetTree);
+        }
+
+        // Integrate the target tree base path (via options).
+        var basePathOption = this.option('basePath');
+        if (basePathOption) {
+            basePath = path.join(basePath,basePathOption);
+        }
+
+        // Integrate provided suffix.
+        if (suffix) {
+            basePath = path.join(basePath,suffix);
+        }
+
+        return basePath;
     }
 }
 

@@ -56,6 +56,23 @@ const DEFAULT_DEPLOY_CONFIG = {
     lastRevision: null
 };
 
+function normalizeTargetTree(targetTree) {
+    if (!targetTree) {
+        return null;
+    }
+
+    var match = targetTree.match(/^\/+(.*)/);
+    if (match) {
+        targetTree = match[1];
+    }
+
+    if (!targetTree) {
+        return null;
+    }
+
+    return targetTree;
+}
+
 /**
  * Base class for tree handler implementations.
  */
@@ -153,7 +170,7 @@ class TreeBase {
         }
 
         // Set target tree. This is always loaded from the tree record.
-        this.deployConfig.targetTree = treeInfo.targetTree;
+        this.deployConfig.targetTree = normalizeTargetTree(treeInfo.targetTree);
 
         // Override deploy config with options.
         for (let key in this.deployConfig) {
@@ -228,7 +245,7 @@ class TreeBase {
      * @param {string} options.basePath
      *  The base path under the tree representing the starting place for the
      *  walk. NOTE: paths passed to the callback will still be relative to the
-     *  target tree.
+     *  target tree and target tree base path.
      *
      * @return {Promise}
      *  The Promise resolves once all entries have been walked.
@@ -288,12 +305,15 @@ class TreeBase {
      *
      * @param {string} param
      *  The config parameter to look up.
+     * @param {boolean} [optional]
+     *  If true, then the promise resolves to 'null' when the parameter is not
+     *  found.
      *
      * @return {Promise<string>}
      *  Returns a Promise that resolves to a string containing the config
      *  parameter value.
      */
-    getTargetConfig(param) {
+    getTargetConfig(param,optional) {
         return new Promise((resolve,reject) => {
             if (!this.targetConfig) {
                 configuration.loadFromTree(this).then((config) => {
@@ -306,7 +326,12 @@ class TreeBase {
                 resolve(this.targetConfig[param]);
             }
             else {
-                reject(new WebdeployError("No such configuration parameter: '" + param + "'"));
+                if (optional) {
+                    resolve(null);
+                }
+                else {
+                    reject(new WebdeployError("No such configuration parameter: '" + param + "'"));
+                }
             }
         });
     }

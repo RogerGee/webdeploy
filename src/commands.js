@@ -102,11 +102,13 @@ function deployBuildStep(tree,options) {
 
         // Load base path from config. This config parameter is optional.
 
-        return tree.getTargetConfig("basePath").then((theBasePath) => {
-            targetBasePath = theBasePath;
-        }, (e) => {});
+        return tree.getTargetConfig("basePath",true);
 
-    }).then(() => {
+    }).then((basePath) => {
+        tree.addOption('basePath',basePath);
+
+        // Load 'includes' section from target config.
+
         return tree.getTargetConfig("includes");
 
     }).then((includes) => {
@@ -240,8 +242,7 @@ function deployBuildStep(tree,options) {
                 }
 
                 return true;
-            },
-            basePath: targetBasePath
+            }
         };
 
         return tree.walk(walkcb,walkopts).then(() => {

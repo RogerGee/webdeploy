@@ -14,17 +14,6 @@ const { makeTargetStream } = require("../target");
 const { prepareConfigPath } = require("../utils");
 const { WebdeployError } = require("../error");
 
-function normalizeTargetTree(targetTree) {
-    // The path "/" is the root directory of the repo's target tree. This means
-    // the prefix should be empty when doing a lookup.
-
-    if (!targetTree || targetTree == "/") {
-        return "";
-    }
-
-    return targetTree;
-}
-
 function makeBlobStream(blob) {
     // Fake a stream for the content buffer. It doesn't seem nodegit provides
     // the ODB read stream yet (and the default ODB backends don't provide
@@ -88,18 +77,26 @@ class RepoTree extends TreeBase {
 
     // Implements TreeBase.walk().
     walk(callback,options) {
-        if (options.basePath) {
-            var prom = this.getTree(options.basePath);
-        }
-        else {
-            var prom = this.getTargetTree();
-        }
+        return this.getTargetTree().then((tree) => {
+            // Look up subtree of target tree if base path is specified.
+            if (options.basePath) {
+                return tree.getEntry(options.basePath).then((entry) => {
+                    if (!entry.isTree()) {
+                        return Promise.reject(
+                            new WebdeployError(
+                                "Base path '" + options.basePath + "' does not refer to a tree"
+                            )
+                        );
+                    }
 
-        return prom.then((tree) => {
-            var filter = options.filter || undefined;
-            var basePath = options.basePath || tree.path();
+                    return entry.getTree();
+                });
+            }
 
-            return this.walkImpl(basePath,tree,callback,filter);
+            return tree;
+
+        }).then((tree) => {
+            return this.walkImpl(tree.path(),tree,callback,options.filter);
         });
     }
 
@@ -358,14 +355,21 @@ class RepoTree extends TreeBase {
             return this.targetTrees[commitId];
         }
 
-        var promise;
+        var pathToTree = '';
+
+        // Integrate target tree deploy config.
         var targetTree = this.getDeployConfig('targetTree');
-        if (!targetTree) {
-            promise = this.getTree(normalizeTargetTree(),commit);
+        if (targetTree) {
+            pathToTree = path.join(pathToTree,targetTree);
         }
-        else {
-            promise = this.getTree(normalizeTargetTree(targetTreePath),commit);
+
+        // Integrate base path option.
+        var basePathOption = this.option('basePath');
+        if (basePathOption) {
+            pathToTree = path.join(pathToTree,basePathOption);
         }
+
+        var promise = this.getTree(pathToTree,commit);
 
         this.targetTrees[commitId] = promise;
 

@@ -135,16 +135,13 @@ class DependencyGraph {
                     innerPromises.push(tree.isBlobModified(source,mtime));
                 });
 
-                return Promise.all(innerPromises)
-                    .then((modifs) => {
-                        for (var i = 0;i < modifs.length;++i) {
-                            if (modifs[i]) {
-                                return sources;
-                            }
-                        }
+                return Promise.all(innerPromises).then((modifs) => {
+                    if (modifs.some((x) => !!x)) {
+                        return sources;
+                    }
 
-                        return false;
-                    });
+                    return false;
+                });
             });
 
             promises.push(promise);
