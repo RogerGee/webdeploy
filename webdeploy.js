@@ -10,7 +10,14 @@ const commands = require("./src/commands");
 const sysconfig = require("./src/sysconfig");
 const storage = require("./src/storage");
 const { WebdeployError } = require("./src/error");
-const { version: VERSION } = require("./package.json")
+const { version: VERSION } = require("./package.json");
+
+function resolveSourcePath(sourcePath) {
+    if (sourcePath) {
+        return path.resolve(sourcePath);
+    }
+    return path.resolve(".");
+}
 
 function reject(err) {
     logger.resetIndent();
@@ -22,6 +29,14 @@ function reject(err) {
 }
 
 commander.version(VERSION,"-v, --version");
+
+commander.command("config <key> <value>")
+    .option("-p, --path [path]","The path to the deployment (defaults to current path)")
+    .description("configures a webdeploy project tree")
+    .action((key,value,cmd) => {
+        var localPath = resolveSourcePath(cmd.path);
+        commands.config(localPath,key,value).catch(reject);
+    });
 
 commander.command("deploy [path]")
     .description("runs the deploy task on a webdeploy project")
@@ -40,14 +55,9 @@ commander.command("deploy [path]")
             deployBranch: cmd.deployBranch,
             deployTag: cmd.deployTag,
             deployPath: cmd.deployPath
-        }
+        };
 
-        if (sourcePath) {
-            var localPath = path.resolve(sourcePath);
-        }
-        else {
-            var localPath = path.resolve(".");
-        }
+        var localPath = resolveSourcePath(sourcePath);
 
         commands.deployDecide(localPath, options, (type) => {
             logger.log("*[DEPLOY]* *" + type + "*: exec " + localPath);
@@ -58,7 +68,7 @@ commander.command("deploy [path]")
             logger.log("*[DONE]*");
 
         }).catch(reject)
-    })
+    });
 
 commander.command("build [path]")
     .description("runs the build task on a webdeploy project")
@@ -75,14 +85,9 @@ commander.command("build [path]")
             dev: cmd.dev || !cmd.prod,
             type: commands.CONFIG_TYPES.TYPE_BUILD,
             force: cmd.force ? true : false
-        }
+        };
 
-        if (sourcePath) {
-            var localPath = path.resolve(sourcePath);
-        }
-        else {
-            var localPath = path.resolve(".");
-        }
+        var localPath = resolveSourcePath(sourcePath);
 
         logger.log("*[BUILD]* *local*: exec " + localPath);
         logger.pushIndent();
@@ -92,7 +97,7 @@ commander.command("build [path]")
             logger.log("*[DONE]*");
 
         }, reject).catch(reject);
-    })
+    });
 
 // Run the program.
 

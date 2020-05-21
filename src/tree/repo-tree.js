@@ -14,6 +14,8 @@ const { makeTargetStream } = require("../target");
 const { prepareConfigPath } = require("../utils");
 const { WebdeployError } = require("../error");
 
+const COMMIT_KEY = "DEPLOY";
+
 function makeBlobStream(blob) {
     // Fake a stream for the content buffer. It doesn't seem nodegit provides
     // the ODB read stream yet (and the default ODB backends don't provide
@@ -236,9 +238,13 @@ class RepoTree extends TreeBase {
 
     // Implements TreeBase.finalizeImpl().
     finalizeImpl() {
-        return this.getDeployCommit().then((commit) => {
-            this.writeDeployConfig('lastRevision',commit.id().tostrS());
-        });
+        if (COMMIT_KEY in this.deployCommits) {
+            return this.getDeployCommit().then((commit) => {
+                this.writeDeployConfig('lastRevision',commit.id().tostrS());
+            });
+        }
+
+        return Promise.resolve();
     }
 
     ////////////////////////////////////////
@@ -257,8 +263,6 @@ class RepoTree extends TreeBase {
     }
 
     getDeployCommit() {
-        const COMMIT_KEY = "DEPLOY";
-
         if (COMMIT_KEY in this.deployCommits) {
             return this.deployCommits[COMMIT_KEY];
         }

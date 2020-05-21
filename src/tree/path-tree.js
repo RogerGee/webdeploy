@@ -199,8 +199,8 @@ class PathTree extends TreeBase {
         return Promise.resolve();
     }
 
-    // Implements TreeBase.finalize().
-    finalize() {
+    // Implements TreeBase.finalizeImpl().
+    finalizeImpl() {
         if (!this.storageConfig) {
             this.storageConfig = {};
         }

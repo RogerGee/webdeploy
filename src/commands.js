@@ -368,6 +368,31 @@ function createPathTree(treePath,options) {
 }
 
 /**
+ * Creates a tree instance. The type of tree is determined based on the path. If
+ * the points to a git repository, then a RepoTree instance is loaded; otherwise
+ * a PathTree instance is loaded.
+ *
+ * @param {string} repoOrTreePath
+ *  The path to the a git repository or local path.
+ * @param {object} options
+ *  The list of options to pass to the commands.
+ *
+ * @return {Promise<module:tree~Tree>}
+ */
+function createTreeDecide(repoOrTreePath,options) {
+    var prevPath = path.resolve(path.join(repoOrTreePath,".."));
+
+    // NOTE: This prefers git repositories over path trees. This means that we
+    // will choose a git repository (.git subfolder) over the working tree.
+
+    return git.Repository.discover(repoOrTreePath,0,prevPath).then((repoPath) => {
+        return createRepoTree(repoOrTreePath,options);
+    }, (err) => {
+        return createPathTree(repoOrTreePath,options);
+    });
+}
+
+/**
  * Initiates a deployment using the specified git repository.
  *
  * @param {string} repo
@@ -453,6 +478,9 @@ function deployLocal(treePath,options) {
 function deployDecide(repoOrTreePath,options,decideCallback) {
     var prevPath = path.resolve(path.join(repoOrTreePath,".."));
 
+    // NOTE: This prefers git repositories over path trees. This means that we
+    // will choose a git repository (.git subfolder) over the working tree.
+
     return git.Repository.discover(repoOrTreePath,0,prevPath).then((repoPath) => {
         decideCallback("repo");
         return deployRepository(repoPath,options);
@@ -463,10 +491,26 @@ function deployDecide(repoOrTreePath,options,decideCallback) {
     });
 }
 
+function config(repoOrTreePath,key,value) {
+    var options = {
+        createDeployment: false
+    };
+
+    return createTreeDecide(repoOrTreePath,options).then((tree) => {
+        var record = tree.getTreeRecord();
+        if (!tree.writeTreeRecord(key,value)) {
+            throw new WebdeployError("Key '"+key+"' is not a valid config setting");
+        }
+
+        return tree.finalize();
+    });
+}
+
 module.exports = {
     deployRepository,
     deployLocal,
     deployDecide,
+    config,
 
     CONFIG_TYPES
 }
