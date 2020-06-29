@@ -498,8 +498,21 @@ function config(repoOrTreePath,key,value) {
 
     return createTreeDecide(repoOrTreePath,options).then((tree) => {
         var record = tree.getTreeRecord();
-        if (!tree.writeTreeRecord(key,value)) {
-            throw new WebdeployError("Key '"+key+"' is not a valid config setting");
+        if (value) {
+            if (!tree.writeTreeRecord(key,value)) {
+                throw new WebdeployError("Key '"+key+"' is not a valid config setting");
+            }
+        }
+        else {
+            var treeRecord = tree.getTreeRecord();
+            if (key in treeRecord) {
+                if (treeRecord[key]) {
+                    console.log(treeRecord[key]);
+                }
+            }
+            else {
+                throw new WebdeployError("Key '"+key+"' is not a valid config setting");
+            }
         }
 
         return tree.finalize();

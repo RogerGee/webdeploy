@@ -330,7 +330,9 @@ class TreeBase {
      * @return {object}
      */
     getTreeRecord() {
-        return Object.assign({},this.treeRecord);
+        var cpy = Object.assign({},this.treeRecord);
+        delete cpy['id'];
+        return cpy;
     }
 
     /**
@@ -340,7 +342,7 @@ class TreeBase {
      * @param {string} value
      */
     writeTreeRecord(key,value) {
-        if (key in this.treeRecord) {
+        if (key in this.treeRecord && key != 'id') {
             this.treeRecord[key] = value;
             this.dirty.treeRecord = true;
             return true;

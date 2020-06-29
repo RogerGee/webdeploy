@@ -30,9 +30,9 @@ function reject(err) {
 
 commander.version(VERSION,"-v, --version");
 
-commander.command("config <key> <value>")
+commander.command("config <key> [value]")
     .option("-p, --path [path]","The path to the deployment (defaults to current path)")
-    .description("configures a webdeploy project tree")
+    .description("gets/sets a webdeploy project tree config")
     .action((key,value,cmd) => {
         var localPath = resolveSourcePath(cmd.path);
         commands.config(localPath,key,value).catch(reject);
