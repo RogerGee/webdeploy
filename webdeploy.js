@@ -31,11 +31,19 @@ function reject(err) {
 commander.version(VERSION,"-v, --version");
 
 commander.command("config <key> [value]")
-    .option("-p, --path [path]","The path to the deployment (defaults to current path)")
     .description("gets/sets a webdeploy project tree config")
+    .option("-p, --path [path]","The path to the deployment (defaults to current path)")
     .action((key,value,cmd) => {
         var localPath = resolveSourcePath(cmd.path);
         commands.config(localPath,key,value).catch(reject);
+    });
+
+commander.command("info [path]")
+    .description("displays info about a webdeploy tree")
+    .option("-p, --deploy-path [path]","Denotes the deploy path destination on disk")
+    .action((sourcePath,cmd) => {
+        var localPath = resolveSourcePath(sourcePath);
+        commands.info(localPath,cmd.deployPath).catch(reject);
     });
 
 commander.command("deploy [path]")

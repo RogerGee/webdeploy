@@ -178,10 +178,11 @@ class TreeBase {
                     `INSERT INTO deploy (tree_id,deploy_path,deploy_branch) VALUES (?,?,?)`
                 );
                 info = stmt.run(this.treeRecord.id,deployPath,deployBranch);
-                this.deployConfig.deployPath = deployPath;
-                this.deployConfig.deployBranch = deployBranch;
                 this.deployId = info.lastInsertRowid;
             }
+
+            this.deployConfig.deployPath = deployPath;
+            this.deployConfig.deployBranch = deployBranch;
         }
         else {
             this.deployId = row.id;

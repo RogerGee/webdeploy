@@ -519,11 +519,51 @@ function config(repoOrTreePath,key,value) {
     });
 }
 
+function info(repoOrTreePath,deployPath) {
+    var options = {
+        createDeployment: false,
+        deployPath
+    };
+
+    return createTreeDecide(repoOrTreePath,options).then((tree) => {
+        logger.log("*"+repoOrTreePath+"*");
+        logger.pushIndent();
+
+        function filter(val,defval) {
+            if (val) {
+                return val;
+            }
+            if (typeof defval === 'undefined') {
+                return '(none)';
+            }
+            return defval;
+        }
+
+        logger.log("Default Config:");
+        logger.pushIndent();
+        var treeRecord = tree.getTreeRecord();
+        logger.log("Deploy Path: " + filter(treeRecord.deployPath));
+        logger.log("Deploy Branch: " + filter(treeRecord.deployBranch));
+        logger.log("Target Tree: " + filter(treeRecord.targetTree,'(root)'));
+        logger.popIndent();
+
+        logger.log("Current Config:");
+        logger.pushIndent();
+        logger.log("Deploy Path: " + filter(tree.getDeployConfig('deployPath')));
+        logger.log("Deploy Branch: " + filter(tree.getDeployConfig('deployBranch')));
+        logger.log("Last Deploy Revision: " + filter(tree.getDeployConfig('lastRevision')));
+        logger.popIndent();
+
+        logger.popIndent();
+    });
+}
+
 module.exports = {
     deployRepository,
     deployLocal,
     deployDecide,
     config,
+    info,
 
     CONFIG_TYPES
 }
