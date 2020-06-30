@@ -371,33 +371,32 @@ class DependencyGraph {
      *  If true, then the graph is resolved after making the changes.
      */
     removeConnectionGivenProduct(product,sync) {
-        var removeRecursive = (level) => {
-            // Recursively touch each node. Remove every connection that leads
-            // to the product.
-
-            if (!level) {
-                var children = this.lookupReverse(product);
-            }
-            else {
-                // Base case: consider leaf node.
-                if (!this.connections[level]) {
-                    return;
-                }
-
-                var children = this.connections[level];
+        // Create function to recursively touch each node. Remove every
+        // connection that leads to the product.
+        var removeRecursive = (node,level) => {
+            let children = this.connections[level];
+            if (!children) {
+                return;
             }
 
-            for (let i = 0;i < children.length;++i) {
-                var childLevel = children[i];
+            let i = 0;
+            while (i < children.length) {
+                if (children[i] == node) {
+                    children.splice(i,1);
 
-                removeRecursive(childLevel);
-
-                if (childLevel == product) {
-                    this.connections[level].splice(i,1);
-
-                    if (this.connections[level].length == 0) {
+                    if (children.length == 0) {
                         delete this.connections[level];
+
+                        let parents = this.lookupReverse(level);
+                        if (parents) {
+                            parents.forEach((parent) => {
+                                removeRecursive(level,parent);
+                            });
+                        }
                     }
+                }
+                else {
+                    i += 1;
                 }
             }
         }
@@ -405,7 +404,18 @@ class DependencyGraph {
         // We can only remove a product if it is truly a product (i.e. there are
         // no connections from the node to another node).
         if (!this.connections[product]) {
-            removeRecursive();
+            // The operation requires graph resolution, so we implicitly resolve
+            // the graph if it is not loaded.
+            if (!this.isLoaded()) {
+                this.resolve();
+            }
+
+            let parents = this.lookupReverse(product);
+            if (parents) {
+                parents.forEach((parent) => {
+                    removeRecursive(product,parent);
+                });
+            }
 
             if (sync) {
                 this.resolve();

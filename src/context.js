@@ -189,8 +189,13 @@ class DeployContext {
      * @param {module:target~Target[]} removeTargets
      *  The list of targets to remove. A single Target instance may also be
      *  passed.
+     * @param {boolean} [removeFromGraph]
+     *  Determines if the targets should be removed from the dependency graph
+     *  associated with the context. If true, then the targets are interpreted
+     *  as build products, and all immediate connections to the target are
+     *  removed from the graph.
      */
-    removeTargets(removeTargets) {
+    removeTargets(removeTargets,removeFromGraph) {
         if (!Array.isArray(removeTargets)) {
             removeTargets = [removeTargets];
         }
@@ -199,8 +204,15 @@ class DeployContext {
         removeTargets.forEach((elem) => {
             var index = this.targets.indexOf(elem);
             if (index >= 0) {
+                let targetPath = elem.getSourceTargetPath();
+
                 this.targets.splice(index,1);
-                delete this.map[elem.getSourceTargetPath()];
+                delete this.map[targetPath];
+
+                if (removeFromGraph) {
+                    // Remove targets from the dependency graph.
+                    this.graph.removeConnectionGivenProduct(targetPath);
+                }
             }
         })
     }
