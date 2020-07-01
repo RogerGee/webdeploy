@@ -165,7 +165,7 @@ function deployBuildStep(tree,options) {
         // Calculate the set of ignored targets given a dependency graph.
         // Otherwise return an empty set.
 
-        if (options.graph && options.graph.isLoaded()) {
+        if (options.graph && options.graph.isResolved()) {
             return options.graph.getIgnoreSources(tree);
         }
 

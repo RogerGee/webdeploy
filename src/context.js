@@ -194,8 +194,15 @@ class DeployContext {
      *  associated with the context. If true, then the targets are interpreted
      *  as build products, and all immediate connections to the target are
      *  removed from the graph.
+     *
+     * @return {object}
      */
     removeTargets(removeTargets,removeFromGraph) {
+        var result = {
+            targets: [],
+            depends: []
+        };
+
         if (!Array.isArray(removeTargets)) {
             removeTargets = [removeTargets];
         }
@@ -207,14 +214,18 @@ class DeployContext {
                 let targetPath = elem.getSourceTargetPath();
 
                 this.targets.splice(index,1);
+                result.targets.push(elem);
                 delete this.map[targetPath];
 
                 if (removeFromGraph) {
                     // Remove targets from the dependency graph.
-                    this.graph.removeConnectionGivenProduct(targetPath);
+                    let rm = this.graph.removeConnectionGivenProduct(targetPath);
+                    rm.forEach(function(d){ result.depends.push(d); });
                 }
             }
-        })
+        });
+
+        return result;
     }
 
     /**

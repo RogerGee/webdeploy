@@ -44,19 +44,15 @@ class DependencyGraph {
      *  state.
      */
     constructor(repr) {
+        this.connections = {};
+        this.forwardMappings = new Map();
+        this.reverseMappings = new Map();
+        this.resolv = false;
+
         if (repr) {
-            // The set of raw connections and forward mappings are the same
-            // initially. Then all that's left is to compute the reverse
-            // mappings.
-            this.connections = repr.map;
-            this.forwardMappings = Object.assign({},repr.map);
-            this._calcReverseMappings();
+            this._loadFromStorageRepr(repr);
         }
-        else {
-            this.connections = {};
-            this.forwardMappings = {};
-            this.reverseMappings = {};
-        }
+
         this.hooks = [];
     }
 
@@ -67,8 +63,10 @@ class DependencyGraph {
      * @return {object}
      */
     getStorageRepr() {
+        assert(this.resolv);
+
         return {
-            map: this.forwardMappings
+            reverse: Array.from(this.reverseMappings.entries())
         };
     }
 
@@ -76,17 +74,19 @@ class DependencyGraph {
      * For a target node N, obtain the complete required set of nodes that are
      * dependencies of N's output nodes.
      *
+     * @param {string} node
+     *
      * @return {string[]}
      */
     calculateRequired(node) {
-        if (!(node in this.forwardMappings)) {
+        if (!this.forwardMappings.has(node)) {
             return [];
         }
 
         var required = new Set();
-        this.forwardMappings[node].forEach((product) => {
-            if (product in this.reverseMappings) {
-                this.reverseMappings[product].forEach((x) => { required.add(x) });
+        this.forwardMappings.get(node).forEach((product) => {
+            if (this.reverseMappings.has(product)) {
+                this.reverseMappings.get(product).forEach(function(x) { required.add(x); });
             }
         });
 
@@ -98,8 +98,8 @@ class DependencyGraph {
      *
      * @return {boolean}
      */
-    isLoaded() {
-        return Boolean(this.forwardMappings && this.reverseMappings);
+    isResolved() {
+        return this.resolv;
     }
 
     /**
@@ -109,8 +109,9 @@ class DependencyGraph {
      * @return {string[]}
      */
     getProducts() {
-        assert(this.isLoaded());
-        return Object.keys(this.reverseMappings);
+        assert(this.resolv);
+
+        return Array.from(this.reverseMappings.keys());
     }
 
     /**
@@ -120,29 +121,37 @@ class DependencyGraph {
      * @return {Promise<module:depends~productObject>}
      */
     getOutOfDateProducts(tree) {
-        assert(this.isLoaded());
+        assert(this.resolv);
 
         var products = this.getProducts();
         var promises = [];
 
         products.forEach((product) => {
-            var promise = tree.getMTime(product).then((mtime) => {
-                var sources = this.lookupReverse(product);
-                var innerPromises = [];
+            var promise;
 
-                // Query each source blob's modification status.
-                sources.forEach((source) => {
-                    innerPromises.push(tree.isBlobModified(source,mtime));
+            if (!product) {
+                // Handle null product.
+                promise = Promise.resolve(this.lookupReverse(product));
+            }
+            else {
+                promise = tree.getMTime(product).then((mtime) => {
+                    var sources = this.lookupReverse(product);
+                    var innerPromises = [];
+
+                    // Query each source blob's modification status.
+                    sources.forEach((source) => {
+                        innerPromises.push(tree.isBlobModified(source,mtime));
+                    });
+
+                    return Promise.all(innerPromises).then((modifs) => {
+                        if (modifs.some((x) => !!x)) {
+                            return sources;
+                        }
+
+                        return false;
+                    });
                 });
-
-                return Promise.all(innerPromises).then((modifs) => {
-                    if (modifs.some((x) => !!x)) {
-                        return sources;
-                    }
-
-                    return false;
-                });
-            });
+            }
 
             promises.push(promise);
         });
@@ -167,16 +176,22 @@ class DependencyGraph {
      * @return {Promise<Set<string>>}
      */
     getIgnoreSources(tree) {
-        assert(this.isLoaded());
+        assert(this.resolv);
 
         // Compute set of source nodes not reachable by the set of out-of-date
         // build products.
 
-        var sourceSet = new Set(Object.keys(this.forwardMappings));
+        var sourceSet = new Set(this.forwardMappings.keys());
 
         return this.getOutOfDateProducts(tree).then((products) => {
             for (var i = 0;i < products.length;++i) {
                 var entry = products[i];
+
+                // Null product sources remain in ignore set unless another
+                // build product is out of date.
+                if (!entry.product && products.length == 1) {
+                    continue;
+                }
 
                 for (var j = 0;j < entry.sources.length;++j) {
                     sourceSet.delete(entry.sources[j]);
@@ -195,34 +210,33 @@ class DependencyGraph {
      *  Returns false if the source wasn't found.
      */
     hasProductForSource(source) {
-        assert(this.isLoaded());
+        assert(this.resolv);
 
-        return source in this.forwardMappings;
+        return this.forwardMappings.has(source);
     }
 
     /**
-     * Determines if the specified node has any forward mappings. This means
-     * there is at least one intermediate or final product associated with the
-     * node.
+     * Looks up the forward mapping for a node. A forward mapping is the list
+     * of all nodes derived from the target node.
      *
-     * @return {boolean}
+     * @return {string[]}
      */
     lookupForward(a) {
-        assert(this.isLoaded());
+        assert(this.resolv);
 
-        return this.forwardMappings[a];
+        return this.forwardMappings.get(a);
     }
 
     /**
-     * Determines if the specified node has any reverse mappings. This means
-     * there is at least one source associated with the node.
+     * Looks up the reverse mapping for a node. A reverse mapping is the list of
+     * all nodes that derive the target node.
      *
-     * @return {boolean}
+     * @return {string[]}
      */
     lookupReverse(b) {
-        assert(this.isLoaded());
+        assert(this.resolv);
 
-        return this.reverseMappings[b];
+        return this.reverseMappings.get(b);
     }
 
     /**
@@ -244,6 +258,24 @@ class DependencyGraph {
         }
         else {
             this.connections[a] = [b];
+        }
+    }
+
+    /**
+     * Adds a raw, null connection to the dependency graph.
+     *
+     * @param {string} a
+     */
+    addNullConnection(a) {
+        if (!a) {
+            return;
+        }
+
+        if (a in this.connections) {
+            this.connections.push(null);
+        }
+        else {
+            this.connections[a] = [null];
         }
     }
 
@@ -278,9 +310,10 @@ class DependencyGraph {
      */
     resolve() {
         var found = new Set();
+        this.resolv = false;
 
         // Compute forward mappings.
-        this.forwardMappings = {};
+        this.forwardMappings.clear();
         Object.keys(this.connections).forEach((node) => {
             var leaves = new Set();
             var stk = this.connections[node].slice(0);
@@ -298,27 +331,28 @@ class DependencyGraph {
                 found.add(next);
             }
 
-            this.forwardMappings[node] = Array.from(leaves);
+            this.forwardMappings.set(node,Array.from(leaves));
         });
 
         // Remove all nodes in the found set to get just the top-level nodes in
         // the mappings.
-        found.forEach((node) => { delete this.forwardMappings[node] });
+        found.forEach((node) => { this.forwardMappings.delete(node); });
 
         // Invoke post-resolve hooks.
         if (this.hooks.length > 0) {
-            var keys = Object.keys(this.forwardMappings);
+            var keys = Array.from(this.forwardMappings.keys());
 
             for (let i = 0;i < this.hooks.length;++i) {
                 for (let j = 0;j < keys.length;++j) {
                     var node = keys[j];
-                    this.hooks[i](this,node,this.forwardMappings[node]);
+                    this.hooks[i](this,node,this.forwardMappings.get(node));
                 }
             }
         }
         this.hooks = [];
 
         this._calcReverseMappings();
+        this.resolv = true;
     }
 
     /**
@@ -326,8 +360,9 @@ class DependencyGraph {
      */
     reset() {
         this.connections = {};
-        delete this.forwardMappings;
-        delete this.reverseMappings;
+        this.forwardMappings.clear();
+        this.reverseMappings.clear();
+        this.resolv = false;
     }
 
     /**
@@ -369,8 +404,13 @@ class DependencyGraph {
      *  The value of the product node to search.
      * @param {boolean} sync
      *  If true, then the graph is resolved after making the changes.
+     *
+     * @return {string[]}
+     *  Returns the list of source products removed by the operation.
      */
     removeConnectionGivenProduct(product,sync) {
+        var src = [];
+
         // Create function to recursively touch each node. Remove every
         // connection that leads to the product.
         var removeRecursive = (node,level) => {
@@ -393,20 +433,23 @@ class DependencyGraph {
                                 removeRecursive(level,parent);
                             });
                         }
+                        else {
+                            src.push(level);
+                        }
                     }
                 }
                 else {
                     i += 1;
                 }
             }
-        }
+        };
 
         // We can only remove a product if it is truly a product (i.e. there are
         // no connections from the node to another node).
         if (!this.connections[product]) {
             // The operation requires graph resolution, so we implicitly resolve
             // the graph if it is not loaded.
-            if (!this.isLoaded()) {
+            if (!this.resolv) {
                 this.resolve();
             }
 
@@ -421,21 +464,67 @@ class DependencyGraph {
                 this.resolve();
             }
         }
+
+        return src;
     }
 
     _calcReverseMappings() {
-        assert(this.forwardMappings);
-
-        this.reverseMappings = {};
-        Object.keys(this.forwardMappings).forEach((node) => {
-            this.forwardMappings[node].forEach((x) => {
-                if (x in this.reverseMappings) {
-                    this.reverseMappings[x].push(node);
+        this.reverseMappings.clear();
+        Array.from(this.forwardMappings.keys()).forEach((node) => {
+            this.forwardMappings.get(node).forEach((x) => {
+                if (this.reverseMappings.has(x)) {
+                    this.reverseMappings.get(x).push(node);
                 }
                 else {
-                    this.reverseMappings[x] = [node];
+                    this.reverseMappings.set(x,[node]);
                 }
             });
+        });
+    }
+
+    _loadFromStorageRepr(repr) {
+        // Choose the load method based on the structure of the storage
+        // representation. We support different structures to support old
+        // versions of the representation. Note that the latest version will
+        // always be used when saving the object via getStorageRepr().
+
+        if (repr.map) {
+            this._loadFromStorageRepr_v1(repr);
+        }
+        else {
+            this._loadFromStorageRepr_v2(repr);
+        }
+
+        this.resolv = true;
+    }
+
+    _loadFromStorageRepr_v1(repr) {
+        // The set of raw connections and forward mappings are the same
+        // initially. Then all that's left is to compute the reverse mappings.
+
+        Object.assign(this.connections,repr.map);
+        for (var key in this.connections) {
+            this.forwardMappings.set(key,this.connections[key].slice());
+        }
+        this._calcReverseMappings();
+    }
+
+    _loadFromStorageRepr_v2(repr) {
+        assert(Array.isArray(repr.reverse));
+
+        this.reverseMappings = new Map(repr.reverse);
+        Array.from(this.reverseMappings.keys()).forEach((key) => {
+            var ls = this.reverseMappings.get(key);
+            for (let i = 0;i < ls.length;++i) {
+                if (ls[i] in this.connections) {
+                    this.connections[ls[i]].push(key);
+                    this.forwardMappings.get(ls[i]).push(key);
+                }
+                else {
+                    this.connections[ls[i]] = [key];
+                    this.forwardMappings.set(ls[i],[key]);
+                }
+            }
         });
     }
 }
