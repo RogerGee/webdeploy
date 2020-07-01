@@ -192,17 +192,11 @@ class DeployContext {
      * @param {boolean} [removeFromGraph]
      *  Determines if the targets should be removed from the dependency graph
      *  associated with the context. If true, then the targets are interpreted
-     *  as build products, and all immediate connections to the target are
-     *  removed from the graph.
-     *
-     * @return {object}
+     *  as build products. The dependency graph is updated such that removed
+     *  targets may be reloaded in another build given an out-of-date output
+     *  target.
      */
     removeTargets(removeTargets,removeFromGraph) {
-        var result = {
-            targets: [],
-            depends: []
-        };
-
         if (!Array.isArray(removeTargets)) {
             removeTargets = [removeTargets];
         }
@@ -214,18 +208,21 @@ class DeployContext {
                 let targetPath = elem.getSourceTargetPath();
 
                 this.targets.splice(index,1);
-                result.targets.push(elem);
                 delete this.map[targetPath];
 
                 if (removeFromGraph) {
                     // Remove targets from the dependency graph.
                     let rm = this.graph.removeConnectionGivenProduct(targetPath);
-                    rm.forEach(function(d){ result.depends.push(d); });
+
+                    // Create a null connection for each source ancestor in the
+                    // graph. This allows the original include target to be
+                    // reloaded in a subsequent build.
+                    rm.forEach((depend) => {
+                        this.graph.addNullConnection(depend);
+                    });
                 }
             }
         });
-
-        return result;
     }
 
     /**
