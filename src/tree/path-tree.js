@@ -145,10 +145,7 @@ class PathTree extends TreeBase {
     }
 
     // Implements TreeBase.getStorageConfigAlt().
-    getStorageConfigAlt(param,deploySpecific) {
-        // NOTE: This alternative storage mechanism does not implement
-        // deploy-specific storage.
-
+    getStorageConfigAlt(param) {
         if (!this.storageConfig) {
             var filePath = path.join(this.basePath,STORAGE_FILE_NAME);
 
@@ -186,10 +183,7 @@ class PathTree extends TreeBase {
     }
 
     // Implements TreeBase.writeStorageConfigAlt().
-    writeStorageConfigAlt(param,deploySpecific,value) {
-        // NOTE: This alternative storage mechanism does not implement
-        // deploy-specific storage.
-
+    writeStorageConfigAlt(param,value) {
         if (!this.storageConfig) {
             this.storageConfig = {};
         }
@@ -203,6 +197,10 @@ class PathTree extends TreeBase {
     finalizeImpl() {
         if (!this.storageConfig) {
             this.storageConfig = {};
+        }
+
+        if (Object.keys(this.storageConfig).length === 0) {
+            return Promise.resolve();
         }
 
         var filePath = path.join(this.basePath,STORAGE_FILE_NAME);

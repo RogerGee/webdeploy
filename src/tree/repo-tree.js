@@ -173,12 +173,10 @@ class RepoTree extends TreeBase {
     }
 
     // Implements TreeBase.getStorageConfigAlt().
-    getStorageConfigAlt(param,deploySpecific) {
+    getStorageConfigAlt(param) {
         // Gets a config value from the git-config.
 
-        if (deploySpecific) {
-            param = this.getStoreSection(param);
-        }
+        param = this.getStoreSection(param);
 
         return new Promise((resolve,reject) => {
             if (param in this.gitConfigCache) {
@@ -213,17 +211,13 @@ class RepoTree extends TreeBase {
     }
 
     // Implements TreeBase.writeStorageConfigAlt().
-    writeStorageConfigAlt(param,deploySpecific,value) {
+    writeStorageConfigAlt(param,value) {
         if (typeof value === 'object') {
             value = JSON.stringify(value);
         }
 
-        if (deploySpecific) {
-            param = this.getStoreSection(param);
-        }
-
         // Force param key under webdeploy section.
-        param = "webdeploy." + param;
+        param = "webdeploy." + this.getStoreSection(param);
 
         if (typeof value == 'Number') {
             return this.getConfigObject().then((config) => {

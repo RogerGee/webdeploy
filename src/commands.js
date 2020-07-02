@@ -293,7 +293,7 @@ function deployStartStep(tree,options) {
 
         // Load up dependency graph from tree deployment.
 
-        return tree.getStorageConfig(DEPENDS_CONFIG_KEY,true);
+        return tree.getStorageConfig(DEPENDS_CONFIG_KEY);
 
     }).then((repr) => {
         options.graph = new DependencyGraph(repr);
@@ -316,7 +316,7 @@ function deployStartStep(tree,options) {
         options.graph.resolve();
         repr = options.graph.getStorageRepr();
 
-        return tree.writeStorageConfig(DEPENDS_CONFIG_KEY,true,repr);
+        return tree.writeStorageConfig(DEPENDS_CONFIG_KEY,repr);
 
     }).then(() => {
         // Perform tree finalization.

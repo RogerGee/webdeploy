@@ -38,7 +38,7 @@ const STORAGE_TABLE =
          value TEXT,
          deploy_id INTEGER,
 
-         UNIQUE (name),
+         UNIQUE (name,deploy_id),
          FOREIGN KEY (deploy_id) REFERENCES deploy(id)
        )`;
 
@@ -480,17 +480,29 @@ class TreeBase {
      *
      * @param {string} param
      *  The config parameter to look up.
-     * @param {bool} [deploySpecific]
-     *  If true, then the value is stored
      *
      * @return {Promise<string>}
      *  Returns a Promise that resolves to a string containing the config
      *  parameter value.
      */
-    getStorageConfig(param,deploySpecific) {
-        // TODO
+    getStorageConfig(param) {
+        var stmt = storage.prepareCache(
+            'tree.getStorageConfig',
+            `SELECT value FROM deploy_storage WHERE name = ? AND deploy_id = ?`
+        );
 
-        return this.getStorageConfigAlt(...arguments);
+        var row = stmt.get(param,this.deployId);
+        if (!row) {
+            return this.getStorageConfigAlt(...arguments);
+        }
+
+        try {
+            var value = JSON.parse(row.value);
+        } catch (ex) {
+            return Promise.reject(ex);
+        }
+
+        return Promise.resolve(value);
     }
 
     /**
@@ -499,12 +511,10 @@ class TreeBase {
      *
      * @param {string} param
      *  The config parameter to lookup.
-     * @param {bool} [deploySpecific]
-     *  If true, then the value is stored
      *
      * @return {Promise<string>}
      */
-    getStorageConfigAlt(param,deploySpecific) {
+    getStorageConfigAlt(param) {
         return Promise.reject(new WebdeployError("No such configuration parameter: '" + param + ""));
     }
 
@@ -513,17 +523,42 @@ class TreeBase {
      *
      * @param {string} param
      *  The name of the config parameter.
-     * @param {bool} deploySpecific
-     *  If true, then the value is stored
-     * @param {string} value
+     * @param {*} value
      *  The config parameter value.
      * @param {function} donefn
      *  Called when the operation completes; donefn(err)
+     *
+     * @return {Promise}
      */
-    writeStorageConfig(param,deploySpecific,value,donefn) {
-        // TODO
+    writeStorageConfig(param,value,donefn) {
+        var stmt = storage.prepareCache(
+            'tree.writeStorageConfig',
+            `INSERT INTO deploy_storage (name,value,deploy_id) VALUES (?,?,?)
+             ON CONFLICT(name,deploy_id) DO
+               UPDATE SET value=excluded.value`
+        );
 
-        this.writeStorageConfigAlt(...arguments);
+        var err = false;
+
+        try {
+            stmt.run(param,JSON.stringify(value),this.deployId);
+        } catch (ex) {
+            const { SqliteError } = require('better-sqlite3');
+
+            if (ex instanceof SqliteError) {
+                err = true;
+            }
+            else {
+                throw ex;
+            }
+        }
+
+        // Fallback to alternate storage mechanism if write fails.
+        if (err) {
+            return this.writeStorageConfigAlt(...arguments);
+        }
+
+        return Promise.resolve();
     }
 
     /**
@@ -532,14 +567,12 @@ class TreeBase {
      *
      * @param {string} param
      *  The name of the config parameter.
-     * @param {bool} deploySpecific
-     *  If true, then the value is stored
-     * @param {string} value
+     * @param {*} value
      *  The config parameter value.
      *
      * @return {Promise}
      */
-    writeStorageConfigAlt(param,deploySpecific,value) {
+    writeStorageConfigAlt(param,value) {
         return Promise.reject(new WebdeployError("Writing to storage configuration is not supported"));
     }
 
