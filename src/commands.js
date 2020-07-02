@@ -212,19 +212,21 @@ function deployBuildStep(tree,options) {
             // trivial product), then check to see if it is modified and should
             // be included or not.
 
-            if (!options.force && options.graph && !options.graph.hasProductForSource(ref)) {
+            if (!options.force && options.graph.isResolved() && !options.graph.hasProductForSource(ref)) {
                 var realRef = path.join(targetBasePath,ref);
-                targetPromises.push(tree.isBlobModified(realRef).then((result) => {
-                    if (result) {
-                        var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
-                        if (newTarget) {
-                            logger.log("Add _" + newTarget.getSourceTargetPath() + "_");
+                targetPromises.push(
+                    tree.isBlobModified(realRef).then((result) => {
+                        if (result) {
+                            var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
+                            if (newTarget) {
+                                logger.log("Add _" + newTarget.getSourceTargetPath() + "_");
+                            }
                         }
-                    }
-                    else {
-                        options.ignored = true;
-                    }
-                }))
+                        else {
+                            options.ignored = true;
+                        }
+                    })
+                );
             }
             else {
                 var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
