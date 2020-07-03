@@ -384,11 +384,13 @@ function createPathTree(treePath,options) {
 function createTreeDecide(repoOrTreePath,options) {
     var prevPath = path.resolve(path.join(repoOrTreePath,".."));
 
-    // NOTE: This prefers git repositories over path trees. This means that we
-    // will choose a git repository (.git subfolder) over the working tree.
+    // If the indicated path refers to a discoverable git repository, then we
+    // create a RepoTree. Otherwise we create a PathTree. NOTE: This will prefer
+    // RepoTree for any working directory containing a ".git" subdirectory.
 
     return git.Repository.discover(repoOrTreePath,0,prevPath).then((repoPath) => {
         return createRepoTree(repoOrTreePath,options);
+
     }, (err) => {
         return createPathTree(repoOrTreePath,options);
     });
@@ -493,7 +495,7 @@ function deployDecide(repoOrTreePath,options,decideCallback) {
     });
 }
 
-function config(repoOrTreePath,key,value) {
+function configdef(repoOrTreePath,key,value) {
     var options = {
         createDeployment: false
     };
@@ -502,18 +504,43 @@ function config(repoOrTreePath,key,value) {
         var record = tree.getTreeRecord();
         if (value) {
             if (!tree.writeTreeRecord(key,value)) {
-                throw new WebdeployError("Key '"+key+"' is not a valid config setting");
+                throw new WebdeployError("Key '"+key+"' is not a valid default setting");
             }
         }
         else {
             var treeRecord = tree.getTreeRecord();
             if (key in treeRecord) {
                 if (treeRecord[key]) {
-                    console.log(treeRecord[key]);
+                    logger.log(treeRecord[key]);
                 }
             }
             else {
-                throw new WebdeployError("Key '"+key+"' is not a valid config setting");
+                throw new WebdeployError("Key '"+key+"' is not a valid default setting");
+            }
+        }
+
+        return tree.finalize();
+    });
+}
+
+function config(repoOrTreePath,deployPath,key,value) {
+    var options = {
+        createDeployment: true,
+        deployPath
+    };
+
+    return createTreeDecide(repoOrTreePath,options).then((tree) => {
+        var record = tree.getTreeRecord();
+
+        if (value) {
+            if (!tree.writeDeployConfig(key,value)) {
+                throw new WebdeployError("Key '"+key+"' is not a valid deployment setting");
+            }
+        }
+        else {
+            var display = tree.getDeployConfig(key);
+            if (display) {
+                logger.log(display);
             }
         }
 
@@ -541,19 +568,25 @@ function info(repoOrTreePath,deployPath) {
             return defval;
         }
 
-        logger.log("Default Config:");
-        logger.pushIndent();
         var treeRecord = tree.getTreeRecord();
+
+        logger.log("*Defaults*:");
+        logger.pushIndent();
+        logger.log("Target Tree: " + filter(treeRecord.targetTree,'(root)'));
         logger.log("Deploy Path: " + filter(treeRecord.deployPath));
         logger.log("Deploy Branch: " + filter(treeRecord.deployBranch));
-        logger.log("Target Tree: " + filter(treeRecord.targetTree,'(root)'));
         logger.popIndent();
 
-        logger.log("Current Config:");
+        logger.log("*Deployment*:");
         logger.pushIndent();
-        logger.log("Deploy Path: " + filter(tree.getDeployConfig('deployPath')));
-        logger.log("Deploy Branch: " + filter(tree.getDeployConfig('deployBranch')));
-        logger.log("Last Deploy Revision: " + filter(tree.getDeployConfig('lastRevision')));
+        if (tree.hasDeployment()) {
+            logger.log("Deploy Path: " + filter(tree.getDeployConfig('deployPath')));
+            logger.log("Deploy Branch: " + filter(tree.getDeployConfig('deployBranch')));
+            logger.log("Last Deploy Revision: " + filter(tree.getDeployConfig('lastRevision')));
+        }
+        else {
+            logger.log("No such deployment at " + filter(tree.getDeployConfig('deployPath')));
+        }
         logger.popIndent();
 
         logger.popIndent();
@@ -564,6 +597,7 @@ module.exports = {
     deployRepository,
     deployLocal,
     deployDecide,
+    configdef,
     config,
     info,
 

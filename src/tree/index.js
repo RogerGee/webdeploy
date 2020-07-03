@@ -209,6 +209,15 @@ class TreeBase {
     }
 
     /**
+     * Determines if the tree has a deployment record.
+     *
+     * @return {boolean}
+     */
+    hasDeployment() {
+        return this.deployId >= 1;
+    }
+
+    /**
      * Gets an option stored in the tree's internal options list.
      *
      * @param {string} key
@@ -438,12 +447,17 @@ class TreeBase {
      *
      * @param {string} param
      * @param {string} value
+     *
+     * @return {boolean}
      */
     writeDeployConfig(param,value) {
         if (param in this.deployConfig) {
             this.deployConfig[param] = value;
             this.dirty.deployConfig = true;
+            return true;
         }
+
+        return false;
     }
 
     /**

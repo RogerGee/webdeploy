@@ -30,20 +30,27 @@ function reject(err) {
 
 commander.version(VERSION,"-v, --version");
 
-commander.command("config <key> [value]")
-    .description("gets/sets a webdeploy project tree config")
-    .option("-p, --path [path]","The path to the deployment (defaults to current path)")
+commander.command("configdef <key> [value]")
+    .description("gets/sets defaults for a webdeploy project tree")
+    .option("-p, --path [path]","Specifies the project path (default is current directory)")
     .action((key,value,cmd) => {
         var localPath = resolveSourcePath(cmd.path);
-        commands.config(localPath,key,value).catch(reject);
+        commands.configdef(localPath,key,value).catch(reject);
     });
 
-commander.command("info [path]")
+commander.command("config <deploy-path> <key> [value]")
+    .description("gets/sets deployment config for a webdeploy project tree")
+    .option("-p, --path [path]","Specifies the project path (default is current directory)")
+    .action((deployPath,key,value,cmd) => {
+        var localPath = resolveSourcePath(cmd.path);
+        commands.config(localPath,deployPath,key,value).catch(reject);
+    });
+
+commander.command("info [path] [deploy-path]")
     .description("displays info about a webdeploy tree")
-    .option("-p, --deploy-path [path]","Denotes the deploy path destination on disk")
-    .action((sourcePath,cmd) => {
+    .action((sourcePath,deployPath,cmd) => {
         var localPath = resolveSourcePath(sourcePath);
-        commands.info(localPath,cmd.deployPath).catch(reject);
+        commands.info(localPath,deployPath).catch(reject);
     });
 
 commander.command("deploy [path]")
