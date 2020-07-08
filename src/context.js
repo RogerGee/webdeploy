@@ -67,6 +67,17 @@ class DeployContext {
     }
 
     /**
+     * Determines if the deployment is a development deployment.
+     *
+     * @return {boolean}
+     */
+    isDevDeployment() {
+        // NOTE: A deployment is a development deployment if the build was a
+        // development build.
+        return this.builder.isDevBuild();
+    }
+
+    /**
      * Creates an absolute path with a relative path within the deploy path.
      *
      * @param {string} path
@@ -226,17 +237,19 @@ class DeployContext {
     }
 
     /**
-     * Resolves two or more targets into a new target with the given path.
+     * Resolves zero or more targets into a new target with the given path.
      *
      * @param {string} newTargetPath
      *  The target path. The final component in the path is the target
      *  name. Pass an empty value to avoid creating a new target.
      * @param {module:target~Target[]} removeTargets
-     *  The set of targets
+     *  The list of targets to remove. This list may be empty.
      * @param {object} options
      * @param {boolean} options.isOutputTarget
      *  True if the resulting target is added as an output target. Default is
      *  true.
+     * @param {boolean} options.removeFromGraph
+     *  Parameter passed to context.removeTargets().
      *
      * @return {module:target~Target}
      *  A Target instance is only returned if a new target path was provided.
@@ -244,11 +257,12 @@ class DeployContext {
     resolveTargets(newTargetPath,removeTargets,options) {
         // Normalize and unpack options.
         options = options || {};
-        var { isOutputTarget } = options;
-        isOutputTarget = (isOutputTarget !== "undefined") ? isOutputTarget : true
+        var { isOutputTarget, removeFromGraph } = options;
+        isOutputTarget = (typeof isOutputTarget !== 'undefined') ? !!isOutputTarget : true;
+        removeFromGraph = (typeof removeFromGraph !== 'undefined') ? !!removeFromGraph : false;
 
         if (removeTargets) {
-            this.removeTargets(removeTargets);
+            this.removeTargets(removeTargets,removeFromGraph);
         }
 
         // Create new target if path is specified.

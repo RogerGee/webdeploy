@@ -69,6 +69,15 @@ class Builder {
     }
 
     /**
+     * Determines if the build is a development build.
+     *
+     * @return {boolean}
+     */
+    isDevBuild() {
+        return !!this.options.dev;
+    }
+
+    /**
      * Determines if the specified target is an initial target.
      *
      * @param {module:target~Target|string}
