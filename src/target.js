@@ -150,6 +150,15 @@ class Target {
     }
 
     /**
+     * Gets the path to the target, not including the target name.
+     *
+     * @return {string}
+     */
+    getSourcePath() {
+        return this.sourcePath;
+    }
+
+    /**
      * Gets the path to an output target in a deployment.
      *
      * @return {string} The absolute path that includes the target name.
