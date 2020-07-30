@@ -56,6 +56,22 @@ const DEFAULT_DEPLOY_CONFIG = {
     lastRevision: null
 };
 
+function normalizeTreePath(path) {
+    // Force the tree path to be the same for both 'path' and 'repo'
+    // trees. Since conventionally, a repo path ends in a trailing '.git'
+    // component, we remove this component so that 'path' and 'repo' trees have
+    // the same path.
+
+    var treePath = path;
+    var match = treePath.match(/^(.+)\/\.git\/?$/);
+
+    if (match) {
+        treePath = match[1]
+    }
+
+    return treePath;
+}
+
 function normalizeTargetTree(targetTree) {
     if (!targetTree) {
         return null;
@@ -112,7 +128,10 @@ class TreeBase {
         var stmt, info, row;
         var path = this.getPath();
 
-        // Ensure a tree record exists.
+        // Ensure a tree record exists. We normalize the tree path so that the
+        // record is shared between 'path' and 'repo' tree variants.
+
+        var treePath = normalizeTreePath(path);
 
         stmt = storage.prepare(
             `SELECT
@@ -125,10 +144,10 @@ class TreeBase {
              WHERE
                path = ?`
         );
-        row = stmt.get(path);
+        row = stmt.get(treePath);
 
         if (!row) {
-            info = storage.prepare(`INSERT INTO tree (path) VALUES (?)`).run(path);
+            info = storage.prepare(`INSERT INTO tree (path) VALUES (?)`).run(treePath);
             this.treeRecord = {
                 id: info.lastInsertRowid,
                 targetTree: null,
