@@ -21,6 +21,71 @@ class ConfigNotFoundError extends Error {
     }
 }
 
+function loadFromModule(blobName,stream) {
+    return new Promise((resolve,reject) => {
+        var configText = "";
+
+        stream.on("data",(chunk) => {
+            configText += chunk;
+        });
+
+        stream.on("error", (err) => {
+            reject(err);
+        });
+
+        stream.on("end",() => {
+            var config = requireFromString(configText);
+
+            if (verifyConfigObject(config)) {
+                config.info = {
+                    type: "MODULE",
+                    file: blobName
+                }
+                resolve(config);
+            }
+            else {
+                reject(new WebdeployError("Config in file '" + blobName + "' failed verification"));
+            }
+        });
+    });
+}
+
+function loadFromJson(blobName,stream) {
+    return new Promise((resolve,reject) => {
+        var json = "";
+
+        stream.on("data",(chunk) => {
+            json += chunk;
+        });
+
+        stream.on("error",(err) => {
+            reject(err);
+        });
+
+        stream.on("end",() => {
+            var toplevel = JSON.parse(json);
+
+            if (toplevel.webdeploy) {
+                if (verifyConfigObject(toplevel.config)) {
+                    toplevel.webdeploy.info = {
+                        type: "JSON",
+                        file: blobName
+                    };
+                    resolve(toplevel.webdeploy);
+                }
+                else {
+                    reject(loadError = new WebdeployError(
+                        "Config in JSON file '" + blobName + "' failed verification"));
+                }
+            }
+            else {
+                reject(loadError = new ConfigNotFoundError(
+                    "JSON in file '" + blobName + "' did not contain webdeploy config object"));
+            }
+        });
+    });
+}
+
 /**
  * Attempts to load the configuration from a number of different sources, either
  * as a NodeJS module or parsing JSON.
@@ -38,7 +103,7 @@ function loadFromTree(tree) {
 
         // JSON: The config object is a child of the core object.
         json: ["package.json","composer.json"]
-    }
+    };
 
     return new Promise((resolve,reject) => {
         var loadError;
@@ -46,72 +111,11 @@ function loadFromTree(tree) {
         function nextAttempt() {
             if (sources.modules.length > 0) {
                 var blobName = sources.modules.pop();
-                var callback = (stream) => {
-                    return new Promise((resolve,reject) => {
-                        var configText = "";
-
-                        stream.on("data",(chunk) => {
-                            configText += chunk;
-                        })
-
-                        stream.on("error", (err) => {
-                            reject(err);
-                        })
-
-                        stream.on("end",() => {
-                            var config = requireFromString(configText);
-
-                            if (verifyConfigObject(config)) {
-                                config.info = {
-                                    type: "MODULE",
-                                    file: blobName
-                                }
-                                resolve(config);
-                            }
-                            else {
-                                reject(new WebdeployError("Config in file '" + blobName + "' failed verification"));
-                            }
-                        })
-                    })
-                }
+                var callback = loadFromModule;
             }
             else if (sources.json.length > 0) {
                 var blobName = sources.json.pop();
-                var callback = (stream) => {
-                    return new Promise((resolve,reject) => {
-                        var json = "";
-
-                        stream.on("data",(chunk) => {
-                            json += chunk;
-                        })
-
-                        stream.on("error",(err) => {
-                            reject(err);
-                        })
-
-                        stream.on("end",() => {
-                            var toplevel = JSON.parse(json);
-
-                            if (toplevel.webdeploy) {
-                                if (verifyConfigObject(toplevel.config)) {
-                                    toplevel.webdeploy.info = {
-                                        type: "JSON",
-                                        file: blobName
-                                    }
-                                    resolve(toplevel.webdeploy);
-                                }
-                                else {
-                                    reject(loadError = new WebdeployError(
-                                        "Config in JSON file '" + blobName + "' failed verification"));
-                                }
-                            }
-                            else {
-                                reject(loadError = new ConfigNotFoundError(
-                                    "JSON in file '" + blobName + "' did not contain webdeploy config object"));
-                            }
-                        })
-                    })
-                }
+                var callback = loadFromJson;
             }
             else {
                 if (!loadError) {
@@ -122,7 +126,9 @@ function loadFromTree(tree) {
             }
 
             tree.getBlob(blobName)
-                .then(callback)
+                .then((stream) => {
+                    return callback(blobName,stream);
+                })
                 .then(resolve)
                 .catch((err) => {
                     // Only continue if the blob was not found.
@@ -145,7 +151,7 @@ function loadFromTree(tree) {
         }
 
         nextAttempt();
-    })
+    });
 }
 
 module.exports = {
