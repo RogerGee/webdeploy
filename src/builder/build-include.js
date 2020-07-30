@@ -9,6 +9,10 @@ const { format } = require("util");
 const { BuildHandler } = require("./build-handler");
 const { WebdeployError } = require("../error");
 
+function checkRegex(val) {
+    return typeof val === 'string' || val instanceof RegExp;
+}
+
 /**
  * Represents a build include configuration object.
  */
@@ -69,10 +73,10 @@ class BuildInclude {
             );
         }
 
-        if (typeof this.pattern == "string") {
+        if (checkRegex(this.pattern)) {
             this.pattern = [this.pattern];
         }
-        else if (Array.isArray(this.pattern)) {
+        else if (Array.isArray(this.pattern) && !this.pattern.map(checkRegex).some((x) => !x)) {
             this.pattern = this.pattern.slice();
         }
         else if (typeof this.pattern != "undefined") {
@@ -81,10 +85,10 @@ class BuildInclude {
             );
         }
 
-        if (typeof this.exclude == "string") {
+        if (checkRegex(this.exclude)) {
             this.exclude = [this.exclude];
         }
-        else if (Array.isArray(this.exclude)) {
+        else if (Array.isArray(this.exclude) && !this.exclude.map(checkRegex).some((x) => !x)) {
             this.exclude = this.exclude.slice();
         }
         else if (typeof this.exclude != "undefined") {
