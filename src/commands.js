@@ -95,7 +95,6 @@ function deployBuildStep(tree,options) {
     var builder;
     var deployer;
     var auditor = new PluginAuditor();
-    var targetBasePath = "";
 
     return tree.getTargetConfig("info").then((configInfo) => {
         logger.log("Loaded target tree config from _" + configInfo.file + "_");
@@ -183,15 +182,8 @@ function deployBuildStep(tree,options) {
 
         var targetPromises = [];
 
-        var walkcb = (targetPath,name,createInputStream) => {
-            // Normalize path relative to configured target base path.
-            if (targetBasePath) {
-                targetPath = path.relative(targetBasePath,targetPath);
-                targetPath = path.resolve('/',targetPath).substring(1);
-            }
-
-            var relativePath = path.relative(options.buildPath,targetPath);
-            var ref = path.join(relativePath,name);
+        var walkcb = ({ targetPath, targetName },createInputStream) => {
+            var ref = path.join(targetPath,targetName);
 
             // Ignore potential targets that were determined to not belong in
             // the build since they map to build products that are already
@@ -204,18 +196,24 @@ function deployBuildStep(tree,options) {
 
             // Create a delayed target object and attempt to add it to the
             // builder.
-            var delayedTarget = new DelayedTarget(relativePath,name,{
-                createStreamFn: createInputStream
-            });
+            var delayedTarget = new DelayedTarget(
+                targetPath,
+                targetName,
+                {
+                    createStreamFn: createInputStream
+                }
+            );
 
             // If a potential target does not have a build product (i.e. is a
             // trivial product), then check to see if it is modified and should
             // be included or not.
 
-            if (!options.force && options.graph.isResolved() && !options.graph.hasProductForSource(ref)) {
-                var realRef = path.join(targetBasePath,ref);
+            if (!options.force
+                && options.graph.isResolved()
+                && !options.graph.hasProductForSource(ref))
+            {
                 targetPromises.push(
-                    tree.isBlobModified(realRef).then((result) => {
+                    tree.isBlobModified(ref).then((result) => {
                         if (result) {
                             var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
                             if (newTarget) {

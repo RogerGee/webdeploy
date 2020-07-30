@@ -59,7 +59,8 @@ class PathTree extends TreeBase {
 
     // Implements TreeBase.walk().
     walk(callback,options) {
-        var filter = options.filter || undefined;
+        options = options || {};
+
         var basePath = this.makeBasePath(options.basePath);
 
         return new Promise((resolve,reject) => {
@@ -72,37 +73,56 @@ class PathTree extends TreeBase {
                 }
             }
 
-            function walkRecursive(basePath) {
-                return (err,files) => {
-                    if (err) {
-                        reject(err);
-                        rejected = true;
-                    }
-                    if (rejected) {
-                        return;
-                    }
-
-                    for (let i = 0;i < files.length;++i) {
-                        let filePath = path.join(basePath,files[i]);
-                        let stat = fs.lstatSync(filePath);
-                        if (stat.isFile()) {
-                            callback(basePath,files[i],() => {
-                                return fs.createReadStream(filePath)
-                            });
+            function walkRecursive(dirname) {
+                fs.readdir(
+                    dirname,
+                    (err,files) => {
+                        if (err) {
+                            reject(err);
+                            rejected = true;
                         }
-                        else if (stat.isDirectory()) {
-                            if (!filter || filter(files[i])) {
-                                outstanding += 1;
-                                fs.readdir(filePath,walkRecursive(filePath));
+                        if (rejected) {
+                            return;
+                        }
+
+                        let targetPath = path.relative(basePath,dirname);
+
+                        for (let i = 0;i < files.length;++i) {
+                            let filePath = path.join(dirname,files[i]);
+
+                            let stat = fs.lstatSync(filePath);
+                            if (stat.isFile()) {
+                                try {
+                                    callback(
+                                        {
+                                            filePath,
+                                            targetPath,
+                                            targetName: files[i]
+                                        },
+                                        () => {
+                                            return fs.createReadStream(filePath);
+                                        }
+                                    );
+                                } catch (ex) {
+                                    reject(ex);
+                                    rejected = true;
+                                    return;
+                                }
+                            }
+                            else if (stat.isDirectory()) {
+                                if (!options.filter || options.filter(files[i])) {
+                                    outstanding += 1;
+                                    walkRecursive(filePath);
+                                }
                             }
                         }
-                    }
 
-                    attemptResolution();
-                }
+                        attemptResolution();
+                    }
+                );
             }
 
-            fs.readdir(basePath,walkRecursive(this.basePath));
+            walkRecursive(basePath);
         });
     }
 

@@ -79,6 +79,13 @@ class RepoTree extends TreeBase {
 
     // Implements TreeBase.walk().
     walk(callback,options) {
+        if (options) {
+            options = Object.assign({},options);
+        }
+        else {
+            options = {};
+        }
+
         return this.getTargetTree().then((tree) => {
             // Look up subtree of target tree if base path is specified.
             if (options.basePath) {
@@ -98,7 +105,8 @@ class RepoTree extends TreeBase {
             return tree;
 
         }).then((tree) => {
-            return this.walkImpl(tree.path(),tree,callback,options.filter);
+            options.targetTree = tree;
+            return this.walkImpl(tree.path(),tree,callback,options);
         });
     }
 
@@ -385,7 +393,7 @@ class RepoTree extends TreeBase {
         }).then(makeBlobStream);
     }
 
-    walkImpl(prefix,tree,callback,filter) {
+    walkImpl(prefix,tree,callback,options) {
         return new Promise((resolve,reject) => {
             let entries = tree.entries();
             let outstanding = 1;
@@ -396,28 +404,43 @@ class RepoTree extends TreeBase {
                 }
             }
 
+            let targetPath = path.relative(options.targetTree.path(),prefix);
+
             for (let i = 0;i < entries.length;++i) {
                 let ent = entries[i];
 
                 if (ent.isBlob()) {
                     outstanding += 1;
-                    this.repo.getBlob(ent.oid()).then((blob) => {
-                        try {
-                            callback(prefix,ent.name(),() => { return makeBlobStream(blob); });
-                        } catch (ex) {
-                            reject(ex);
-                            return;
-                        }
-                        attemptResolution();
+                    this.repo.getBlob(ent.oid()).then(
+                        (blob) => {
+                            try {
+                                callback(
+                                    {
+                                        filePath: ent.path(),
+                                        targetPath,
+                                        targetName: ent.name()
+                                    },
+                                    () => {
+                                        return makeBlobStream(blob);
+                                    }
+                                );
+                            } catch (ex) {
+                                reject(ex);
+                                return;
+                            }
 
-                    }, reject);
+                            attemptResolution();
+
+                        },
+                        reject
+                    );
                 }
                 else if (ent.isTree()) {
                     let newPrefix = path.join(prefix,ent.name());
-                    if (!filter || filter(newPrefix)) {
+                    if (!options.filter || options.filter(newPrefix)) {
                         outstanding += 1;
                         this.repo.getTree(ent.oid()).then((nextTree) => {
-                            return this.walkImpl(newPrefix,nextTree,callback,filter);
+                            return this.walkImpl(newPrefix,nextTree,callback,options);
 
                         }, reject).then(attemptResolution);
                     }
