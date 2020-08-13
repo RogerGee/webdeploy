@@ -109,7 +109,8 @@ function installPluginOverHttp(plugin,url,logger,donefn,continuefn,errfn,extract
         }
 
         if (logger) {
-            logger.log(format("Extracting archive..."));
+            var parts = urlparse(url);
+            logger.log(format("Extracting archive '%s'...",path.parse(parts.path).base));
         }
 
         fs.mkdir(plugin.path, (err) => {
@@ -118,12 +119,16 @@ function installPluginOverHttp(plugin,url,logger,donefn,continuefn,errfn,extract
                 return;
             }
 
-            var tarstream = tar.x(Object.assign(extractOptions, {
-                cwd: plugin.path,
-                onerror(err) {
-                    console.log(err);
-                }
-            }))
+            var tarstream = tar.x(
+                Object.assign(
+                    extractOptions, {
+                        cwd: plugin.path,
+                        onerror(err) {
+                            console.log(err);
+                        }
+                    }
+                )
+            );
 
             tarstream.on('warn',errfn);
             tarstream.on('err',errfn);
@@ -195,10 +200,10 @@ function runNpmOnPlugin(plugin,donefn,errfn) {
         var command = 'npm';
     }
 
-    var proc = child_process.spawn(command,["install"], {
+    var proc = child_process.spawn(command,["install","-s"], {
         cwd: plugin.path,
-        stdio: 'inherit'
-    })
+        stdio: ['ignore','ignore','inherit']
+    });
 
     proc.on('exit', (code,signal) => {
         if (signal) {
@@ -260,11 +265,22 @@ function installPluginDirect(pluginInfo,donefn,errfn,logger) {
     }
 
     if (logger) {
-        logger.log(format("Installing plugin _%s@%s_ from repositories",
-                          plugin.id,plugin.version));
+        logger.log(
+            format(
+                "Installing plugin _%s@%s_ from repositories",
+                plugin.id,
+                plugin.version
+            )
+        );
+        logger.pushIndent();
     }
 
-    installPluginFromRepos(plugin,repos,logger,donefn,errfn);
+    function localdone(...args) {
+        logger.popIndent();
+        donefn(...args);
+    }
+
+    installPluginFromRepos(plugin,repos,logger,localdone,errfn);
 }
 
 /**
@@ -295,8 +311,24 @@ function installPlugin(pluginInfo,donefn,errfn,logger) {
             return;
         }
 
-        installPluginDirect(plugin,donefn,errfn,logger);
-    })
+        if (logger) {
+            logger.log(
+                format(
+                    "Installing plugin _%s@%s_ from repositories",
+                    plugin.id,
+                    plugin.version
+                )
+            );
+            logger.pushIndent();
+        }
+
+        function localdone(...args) {
+            logger.popIndent();
+            donefn(...args);
+        }
+
+        installPluginDirect(plugin,localdone,errfn,logger);
+    });
 }
 
 /**
