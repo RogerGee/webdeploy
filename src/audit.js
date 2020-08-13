@@ -8,7 +8,7 @@ const fs = require("fs");
 const pathModule = require("path");
 const { format } = require("util");
 
-const sysconfig = require("./sysconfig");
+const { pluginDirectories: PLUGIN_DIRS } = require("./sysconfig");
 const { makeFullPluginId,
         PLUGIN_KINDS,
         loadPluginByKind,
@@ -34,6 +34,18 @@ const AUDITED_PLUGINS = {
  * @property {string} pluginVersion The version for the plugin
  * @property {string} pluginKind Either 'build' or 'deploy'
  * @property {object=} pluginObject Resolved plugin object
+ */
+
+/**
+ * @typedef auditOrder
+ * @type {object}
+ * @property {module:audit~pluginDescription} plugin
+ *  Description of plugin to audit
+ * @property {object} config
+ *  Config settings to pass to the plugin for plugin-specific audit. For build
+ *  plugins, this is a list of every handler that references the plugin. For
+ *  deploy plugins, this is the chosen deployment config object (either build or
+ *  deploy).
  */
 
 /**
@@ -74,6 +86,12 @@ class PluginAuditor {
     constructor() {
         this.orders = [];
         this.plugins = { build:{}, deploy:{} };
+
+        // Shared variables for audit.
+        this.queue = null;
+        this.gotError = null;
+        this.callback = null;
+        this.index = 0;
     }
 
     /**
@@ -117,28 +135,19 @@ class PluginAuditor {
     /**
      * Adds an auditing order to the auditor.
      *
-     * @param {module:audit~pluginDescription[]} plugins
-     *   List of plugin descriptions denoting the plugins to load.
+     * @param {module:audit~auditOrder[]} orders
+     *  List of plugin audit orders to process.
      * @param {module:audit~PluginAuditor~orderCallback} callback
      *  The callback that handles the resolution of the requested plugins.
      */
-    addOrder(plugins,callback) {
+    addOrders(orders,callback) {
+        var plugins = orders.map((order) => order.plugin);
+
         this.orders.push({
             plugins,
             callback
         })
 
-        this.addPlugins(plugins);
-    }
-
-    /**
-     * Adds plugins of a particular plugin kind to the auditor's internal list
-     * of plugins to audit.
-     *
-     * @param {module:audit~pluginDescription[]} plugins
-     *  List of plugin descriptions.
-     */
-    addPlugins(plugins) {
         for (let i = 0;i < plugins.length;++i) {
             var bucket;
             var plugin = plugins[i];
@@ -167,119 +176,134 @@ class PluginAuditor {
      *  Invoked when the audit completes.
      */
     audit(callback) {
-        const PLUGIN_DIRS = sysconfig.pluginDirectories;
-        const orders = this.orders;
+        this.callback = (err) => {
+            this.queue = null;
+            //this.gotError = null; // Do not reset error flag!
+            this.callback = null;
+            this.index = null;
+            callback(err);
+        };
 
-        var queue = Object.values(this.plugins.build).concat(Object.values(this.plugins.deploy));
-        queue.pop = Array.prototype.shift;
+        this.queue = Object.values(this.plugins.build)
+            .concat(Object.values(this.plugins.deploy));
 
         this.log("Auditing plugins");
         this.beginLog();
+        this.gotError = false;
 
-        var gotError = false;
+        this._next();
+    }
 
-        let donefn = (plugin) => {
-            // Load the plugin and attach to loader info. Enqueue any required plugins here.
-            plugin.pluginObject = addAuditedPlugin(plugin);
-            if (plugin.pluginObject.requires) {
-                var requires = plugin.pluginObject.requires;
+    _next(queue) {
+        var pluginInfo = this.queue.shift();
+        const { pluginVersion: version } = pluginInfo;
 
-                if (requires.build) {
-                    for (let i = 0;i < requires.build.length;++i) {
-                        var newPlugin = {
-                            pluginKind: PLUGIN_KINDS.BUILD_PLUGIN
-                        }
-
-                        Object.assign(newPlugin,parseFullPluginId(requires.build[i]));
-                        queue.push(newPlugin);
-                    }
-                }
-                if (requires.deploy) {
-                    for (let i = 0;i < requires.deploy.length;++i) {
-                        var newPlugin = {
-                            pluginKind: PLUGIN_KINDS.DEPLOY_PLUGIN
-                        }
-
-                        Object.assign(newPlugin,parseFullPluginId(requires.deploy[i]));
-                        queue.push(newPlugin);
-                    }
-                }
-            }
-
-            // Resolve the promise if we are done. Otherwise continue processing.
-            if (queue.length == 0) {
-                // Resolve all orders by calling the callbacks.
-                orders.forEach((order) => {
-                    order.callback(order.plugins);
-                })
-
-                this.log("Done auditing plugins");
-                this.endLog();
-
-                callback();
-            }
-            else {
-                nextfn();
-            }
+        // Make fully-qualified plugin ID with version. Omit version if latest;
+        // this allows us to maintain latest and versioned separately.
+        if (version && version != "latest") {
+            pluginInfo.fullId = makeFullPluginId(pluginInfo);
+        }
+        else {
+            pluginInfo.fullId = pluginInfo.pluginId;
         }
 
-        let errfn = (err) => {
-            if (!gotError) {
-                gotError = true;
-                callback(err);
-            }
+        if (isDefaultPlugin(pluginInfo)) {
+            this._done(pluginInfo);
+            return;
         }
 
-        let nextfn = () => {
-            let pluginInfo = queue.pop();
-            let index = 0;
+        this.index = 0;
+        this._complete(pluginInfo);
+    }
 
-            let { pluginId, pluginVersion } = pluginInfo;
+    _complete(plugin) {
+        if (this.gotError) {
+            return;
+        }
 
-            // Make fully-qualified plugin ID with version. Omit version if
-            // latest; this allows us to maintain latest and versioned
-            // separately.
-            if (pluginVersion && pluginVersion != "latest") {
-                pluginId = makeFullPluginId(pluginInfo);
-            }
+        if (this.index < PLUGIN_DIRS.length) {
+            let next = pathModule.join(PLUGIN_DIRS[this.index++],plugin.fullId);
 
-            if (isDefaultPlugin(pluginInfo)) {
-                donefn(pluginInfo);
-                return;
-            }
-
-            let completefn = () => {
-                if (gotError) {
-                    return;
-                }
-
-                if (index < PLUGIN_DIRS.length) {
-                    let next = pathModule.join(PLUGIN_DIRS[index++],pluginId);
-
-                    fs.stat(next, (err,stats) => {
-                        if (!err && stats.isDirectory()) {
-                            donefn(pluginInfo);
-                        }
-                        else {
-                            completefn();
-                        }
-                    })
+            fs.stat(next, (err,stats) => {
+                if (!err && stats.isDirectory()) {
+                    this._done(plugin);
                 }
                 else {
-                    if (!pluginInfo.pluginVersion) {
-                        errfn(new WebdeployError(
-                            format("Plugin '%s' must have a version constraint",pluginId)));
+                    this._complete(plugin);
+                }
+            });
+        }
+        else {
+            if (!plugin.pluginVersion) {
+                this._err(
+                    new WebdeployError(
+                        format("Plugin '%s' must have a version constraint",plugin.pluginId)
+                    )
+                );
+            }
+            else {
+                installPluginDirect(
+                    plugin,
+                    () => this._done(plugin),
+                    (err) => this._err(err),
+                    this.logger
+                );
+            }
+        }
+    }
+
+    _done(plugin) {
+        // Load the plugin and attach to loader info. Enqueue any required
+        // plugins here.
+        plugin.pluginObject = addAuditedPlugin(plugin);
+
+        if (plugin.pluginObject.requires) {
+            var requires = plugin.pluginObject.requires;
+
+            if (requires.build) {
+                for (let i = 0;i < requires.build.length;++i) {
+                    var newPlugin = {
+                        pluginKind: PLUGIN_KINDS.BUILD_PLUGIN
                     }
-                    else {
-                        installPluginDirect(pluginInfo,() => donefn(pluginInfo),errfn,this.logger);
-                    }
+
+                    Object.assign(newPlugin,parseFullPluginId(requires.build[i]));
+                    this.queue.push(newPlugin);
                 }
             }
+            if (requires.deploy) {
+                for (let i = 0;i < requires.deploy.length;++i) {
+                    var newPlugin = {
+                        pluginKind: PLUGIN_KINDS.DEPLOY_PLUGIN
+                    }
 
-            completefn();
+                    Object.assign(newPlugin,parseFullPluginId(requires.deploy[i]));
+                    this.queue.push(newPlugin);
+                }
+            }
         }
 
-        nextfn();
+        // Resolve the promise if we are done. Otherwise continue processing.
+        if (this.queue.length == 0) {
+            // Resolve all orders by calling the callbacks.
+            this.orders.forEach((order) => {
+                order.callback(order.plugins);
+            });
+
+            this.log("Done auditing plugins");
+            this.endLog();
+
+            this.callback();
+        }
+        else {
+            this._next();
+        }
+    }
+
+    _err(err) {
+        if (!this.gotError) {
+            this.gotError = true;
+            this.callback(err);
+        }
     }
 }
 

@@ -108,42 +108,59 @@ class DeployConfig {
      * Gets a list of plugin descriptions suitable for auditing. This obtains
      * all chained plugins recursively.
      *
-     * @return {module:audit~pluginDescription[]}
-     *  Note the descriptions are augmented with a resolve() function for
-     *  auditing resolution.
+     * @return {module:audit~auditOrder[]}
      */
-    getPluginDescriptions() {
-        var plugins = [];
+    getAuditOrders() {
+        var orders = [];
 
         // Add configured deploy plugin first.
-        plugins.push({
-            pluginId: this.id,
-            pluginVersion: this.version,
-            pluginKind: PLUGIN_KINDS.DEPLOY_PLUGIN,
+        orders.push({
+            plugin: {
+                pluginId: this.id,
+                pluginVersion: this.version,
+                pluginKind: PLUGIN_KINDS.DEPLOY_PLUGIN,
 
-            resolve: (pluginObject) => {
-                this.plugin = pluginObject;
-            }
-        })
+                // NOTE: This function is used by the Deployer class to set the
+                // plugin on this DeployConfig instance.
+                resolve: (pluginObject) => {
+                    this.plugin = pluginObject;
+                }
+            },
 
-        // Add configured plugin requires.
+            config: this
+        });
+
+        // Add configured plugin requires. Note that plugin requires do not have
+        // a config.
         for (let key of ['build','deploy']) {
+            let pluginKind =
+                (key == 'build')
+                ? PLUGIN_KINDS.BUILD_PLUGIN
+                : PLUGIN_KINDS.DEPLOY_PLUGIN;
+
             for (let i = 0;i < this.requires[key].length;++i) {
-                plugins.push(Object.assign({
-                    pluginKind: (key == 'build')
-                        ? PLUGIN_KINDS.BUILD_PLUGIN : PLUGIN_KINDS.DEPLOY_PLUGIN
-                }, this.requires[key][i]));
+                orders.push({
+                    plugin: Object.assign(
+                        {
+                            pluginKind
+                        },
+                        this.requires[key][i]
+                    ),
+
+                    config: null
+                });
             }
         }
 
         // Recursively add all chained plugins.
         for (var key in this.chain) {
             for (var i = 0;i < this.chain[key].length;++i) {
-                plugins = plugins.concat(this.chain[key][i].getPluginDescriptions());
+                let chain = this.chain[key][i];
+                orders = orders.concat(chain.getAuditOrders());
             }
         }
 
-        return plugins;
+        return orders;
     }
 
     /**

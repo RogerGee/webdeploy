@@ -129,7 +129,8 @@ class Builder {
             throw new WebdeployError("Builder has invalid state: cannot finalize");
         }
 
-        var handlers = {}; // Store unique subset of all handlers.
+        var auditOrders = {}; // Generate audit orders grouped by plugin.
+        var inlineHandlers = []; // List all inline handlers.
 
         // Determine the list of plugins to keep for each include. Also compile
         // the unique set of plugins for the entire build.
@@ -141,31 +142,34 @@ class Builder {
             for (var j = 0;j < include.handlers.length;++j) {
                 var plugin = include.handlers[j];
 
-                // Skip if plugin already loaded.
-                if (plugin.id in handlers) {
-                    keep.push(plugin);
-                    continue;
-                }
-
                 if (!this.acceptsHandler(plugin)) {
                     continue;
                 }
 
                 keep.push(plugin);
-                handlers[plugin.id] = plugin;
+
+                if (!plugin.loaderInfo) {
+                    inlineHandlers.push(plugin);
+                    continue;
+                }
+
+                if (plugin.id in auditOrders) {
+                    auditOrders[plugin.id].config.push(plugin);
+                }
+                else {
+                    auditOrders[plugin.id] = {
+                        plugin: plugin.loaderInfo,
+                        config: [plugin]
+                    };
+                }
             }
 
             include.handlers = keep;
         }
 
-        handlers = Object.values(handlers);
-
         // Audit plugins that are to be loaded.
 
-        var plugins = handlers.filter((handler) => !!handler.loaderInfo)
-            .map((handler) => handler.loaderInfo);
-
-        auditor.addOrder(plugins, (results) => {
+        auditor.addOrders(Object.values(auditOrders), (results) => {
             // NOTE: The 'this.plugins' object stores both inline plugins and
             // global (i.e. audited) plugins. We do this locally so that we can
             // distinguish potential name collisions between inline and global
@@ -182,19 +186,19 @@ class Builder {
             // Create on-the-fly (i.e. inline) plugins for plugin objects
             // providing inline handlers.
 
-            for (let i = 0;i < handlers.length;++i) {
-                var plugin = handlers[i];
+            for (let i = 0;i < inlineHandlers.length;++i) {
+                var plugin = inlineHandlers[i];
 
-                if (plugin.handler) {
-                    if (plugin.id in this.plugins) {
-                        throw new WebdeployError(
-                            format("Plugin '%s' is already defined: cannot define inline plugin handler",
-                                   plugin.id)
-                        );
-                    }
-
-                    this.plugins[plugin.id] = plugin.makeInlinePlugin();
+                if (plugin.id in this.plugins) {
+                    throw new WebdeployError(
+                        format(
+                            "Plugin '%s' is already defined: cannot define inline plugin handler",
+                            plugin.id
+                        )
+                    );
                 }
+
+                this.plugins[plugin.id] = plugin.makeInlinePlugin();
             }
 
             this.state = BUILDER_STATE_FINALIZED;

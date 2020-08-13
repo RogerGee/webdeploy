@@ -63,7 +63,7 @@ class Deployer {
 
         // Audit all plugins required for the deploy-phase operation.
 
-        auditor.addOrder(this.deployConfig.getPluginDescriptions(), (results) => {
+        auditor.addOrders(this.deployConfig.getAuditOrders(), (results) => {
             // NOTE: the order that we store plugins in this.plugins IS
             // important and is guarenteed to be preserved by the auditor.
 

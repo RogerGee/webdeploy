@@ -6,7 +6,7 @@
 
 const { format } = require("util");
 
-const { PLUGIN_KINDS } = require("../plugin");
+const { PLUGIN_KINDS, parseFullPluginId } = require("../plugin");
 const { WebdeployError } = require("../error");
 
 /**
@@ -39,22 +39,29 @@ class BuildHandler {
 
         // Validate properties.
 
-        if (typeof this.id != "string") {
+        if (typeof this.id !== "string") {
             throw WebdeployError(
                 format("Handler '%s' is malformed: invalid or missing 'id' property",this.key)
             );
         }
 
-        if (typeof this.dev != "boolean") {
+        if (typeof this.dev !== "boolean") {
             throw WebdeployError(
                 format("Handler '%s' (%s) is malformed: invalid 'dev' property",this.key,this.id)
             );
         }
 
-        if (typeof this.build != "boolean") {
+        if (typeof this.build !== "boolean") {
             throw WebdeployError(
                 format("Handler '%s' (%s) is malformed: invalid 'build' property",this.key,this.id)
             );
+        }
+
+        // Parse a full plugin ID if no version was provided.
+        if (typeof this.version === "undefined") {
+            var full = parseFullPluginId(this.id);
+            this.id = full.pluginId,
+            this.version = full.pluginVersion;
         }
 
         // If the handler doesn't supply an inline handler, then we assume it is
