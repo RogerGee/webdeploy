@@ -35,7 +35,9 @@ class DeployConfig {
         // Apply defaults.
 
         if (typeof this.version === "undefined") {
-            this.version = "latest";
+            var full = parseFullPluginId(this.id);
+            this.id = full.pluginId,
+            this.version = full.pluginVersion;
         }
 
         this.plugin = null; // set later after auditing
