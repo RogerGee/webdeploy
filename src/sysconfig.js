@@ -8,7 +8,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { mkdirParents } = require("./utils");
+const { mkdirParentsSync } = require("./utils");
 
 const HOMEDIR = os.homedir();
 const DEFAULT_ROOT = path.join(HOMEDIR,'.webdeploy');
@@ -46,7 +46,7 @@ class Sysconfig {
     constructor() {
         // Make sure the default user plugin directory exists. (This also
         // indirectly makes sure the base directory exists.)
-        mkdirParents(USER_PLUGIN_DIR,HOMEDIR);
+        mkdirParentsSync(USER_PLUGIN_DIR,HOMEDIR);
 
         // Apply defaults.
         Object.assign(this,DEFAULTS);

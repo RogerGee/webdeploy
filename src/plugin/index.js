@@ -9,7 +9,7 @@ const pathModule = require("path");
 const { format } = require("util");
 
 const sysconfig = require("../sysconfig");
-const { mkdirParents } = require("../utils");
+const { mkdirParentsSync } = require("../utils");
 const { WebdeployError } = require("../error");
 
 /**
@@ -214,7 +214,7 @@ const DEFAULT_DEPLOY_PLUGINS = {
                     var pathset = new Set();
 
                     // Make sure deploy path exists.
-                    mkdirParents(context.deployPath);
+                    mkdirParentsSync(context.deployPath);
 
                     for (var i = 0;i < context.targets.length;++i) {
                         var target = context.targets[i];
@@ -222,7 +222,7 @@ const DEFAULT_DEPLOY_PLUGINS = {
                         // Ensure parent directory exists.
                         if (!pathset.has(target.sourcePath)) {
                             pathset.add(target.sourcePath);
-                            mkdirParents(target.sourcePath,context.deployPath);
+                            mkdirParentsSync(target.sourcePath,context.deployPath);
                         }
 
                         // Write data to file.

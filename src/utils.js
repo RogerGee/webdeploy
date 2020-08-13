@@ -7,16 +7,7 @@
 const fs = require("fs");
 const pathModule = require("path");
 
-/**
- * Creates a directory and any parents that do not exist.
- *
- * @param {string} path
- *  The path to create.
- * @param {string} base
- *  Optional base path denoting the existing base. This merely optimizes the
- *  operation since the function assumes the base path already exists.
- */
-module.exports.mkdirParents = function(path,base) {
+function getPathParents(path,base) {
     var parsed = pathModule.parse(path);
 
     if (!base) {
@@ -31,10 +22,58 @@ module.exports.mkdirParents = function(path,base) {
         parsed.dir = parsed.dir.substr(path.length);
     }
 
-    var parts = pathModule.join(parsed.dir,parsed.base).split(pathModule.sep)
+    var parts = pathModule.join(parsed.dir,parsed.base)
+        .split(pathModule.sep)
         .filter((x) => {
             return Boolean(x);
-        })
+        });
+
+    return { path, parts };
+}
+
+/**
+ * Creates a directory and any parents that do not exist.
+ *
+ * @param {string} path
+ *  The path to create.
+ * @param {string} base
+ *  Optional base path denoting the existing base. This merely optimizes the
+ *  operation since the function assumes the base path already exists.
+ * @param {function} donefn
+ */
+module.exports.mkdirParents = function(path,base,donefn) {
+    var { parts, path } = getPathParents(path,base);
+
+    var index = 0;
+    function nextfn(err) {
+        if (err) {
+            donefn(err);
+            return;
+        }
+
+        if (index >= parts.length) {
+            donefn();
+            return;
+        }
+
+        path = pathModule.join(path,parts[index++]);
+        fs.mkdir(path,nextfn);
+    }
+
+    nextfn();
+};
+
+/**
+ * Creates a directory and any parents that do not exist.
+ *
+ * @param {string} path
+ *  The path to create.
+ * @param {string} base
+ *  Optional base path denoting the existing base. This merely optimizes the
+ *  operation since the function assumes the base path already exists.
+ */
+module.exports.mkdirParentsSync = function(path,base) {
+    var { parts, path } = getPathParents(path,base);
 
     for (var i = 0;i < parts.length;++i) {
         path = pathModule.join(path,parts[i]);
@@ -48,6 +87,7 @@ module.exports.mkdirParents = function(path,base) {
         }
     }
 };
+
 
 /**
  * Prepares a path as a git-config key.
