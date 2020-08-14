@@ -14,6 +14,7 @@ const child_process = require("child_process");
 const tar = require("tar");
 
 const sysconfig = require("../sysconfig");
+const { NPMPackageInstaller, HTTPPackageInstaller } = require("../package");
 const { WebdeployError } = require("../error");
 
 const PLUGIN_DIRECTORY_EXISTS = 100;
@@ -31,8 +32,8 @@ function makePlugin(pluginInfo) {
     return {
         id: pluginInfo.pluginId,
         version: pluginInfo.pluginVersion,
-        fullName,
-        path: path.join(sysconfig.pluginCacheDir,fullName)
+        installPath: sysconfig.pluginCacheDir,
+        packageDir: fullName
     }
 }
 
@@ -78,147 +79,37 @@ function installPluginFromRepos(plugin,repos,logger,donefn,errfn,index) {
     }
 }
 
-function installPluginOverHttp(plugin,url,logger,donefn,continuefn,errfn,extractOptions) {
-    var req = url.substring(0,5) == "https" ? https : http;
-    extractOptions = extractOptions || {};
-
-    if (logger) {
-        logger.log(format("Downloading %s...",url));
-    }
-
-    req.get(url, (res) => {
-        const { statusCode } = res;
-        const contentType = res.headers['content-type'];
-
-        if (statusCode != 200) {
-            if (statusCode == 404) {
-                continuefn(plugin);
-            }
-            else {
-                errfn(new WebdeployError(format("Failed request to '%s'",url)));
-            }
-
-            return;
-        }
-
-        if (!/application\/x-gzip/.test(contentType) && !/application\/octet-stream/.test(contentType)) {
-            errfn(new WebdeployError(
-                format("Server returned invalid package response type: '%s'",
-                       contentType)));
-            return;
-        }
-
-        if (logger) {
-            var parts = urlparse(url);
-            logger.log(format("Extracting archive '%s'...",path.parse(parts.path).base));
-        }
-
-        fs.mkdir(plugin.path, (err) => {
-            if (err && err.code != 'EEXIST') {
-                errfn(err);
-                return;
-            }
-
-            var tarstream = tar.x(
-                Object.assign(
-                    extractOptions, {
-                        cwd: plugin.path,
-                        onerror(err) {
-                            console.log(err);
-                        }
-                    }
-                )
-            );
-
-            tarstream.on('warn',errfn);
-            tarstream.on('err',errfn);
-            tarstream.on('end',() => {
-                if (logger) {
-                    logger.log(format("Executing 'npm install' on extracted plugin"));
-                }
-
-                runNpmOnPlugin(plugin,donefn,errfn);
-            })
-
-            res.pipe(tarstream);
-        })
-    })
-}
-
 function installPluginFromWebRepo(plugin,options,donefn,continuefn,errfn,logger) {
-    var url = format("%s/%s/%s@%s.tar.gz",
-                     options.repoURL.replace(/\/$/,''),
-                     plugin.id,
-                     plugin.id,
-                     plugin.version);
+    var installer = new HTTPPackageInstaller({
+        installPath: plugin.installPath,
+        packageDir: plugin.packageDir,
+        baseURLs: [options.repoURL],
+        logger
+    });
 
-    if (logger) {
-        logger.pushIndent();
-    }
-
-    installPluginOverHttp(plugin,url,logger,donefn,continuefn,errfn);
-
-    if (logger) {
-        logger.popIndent();
-    }
+    installer.installPackage(plugin.id,plugin.version,donefn,continuefn,errfn);
 }
 
 function installPluginFromNPMRepo(plugin,options,donefn,continuefn,errfn,logger) {
-    var prefix = "";
-
-    if (options.namespace) {
-        // NOTE: The user must include the '@' in the namespace specifier.
-        prefix += options.namespace + "%2f";
-    }
-    if (options.prefix) {
-        prefix += options.prefix;
-    }
-
-    var url = format("%s/%s%s/-/%s%s-%s.tgz",
-                     options.repoURL.replace(/\/$/,''),
-                     prefix,
-                     plugin.id,
-                     options.prefix,
-                     plugin.id,
-                     plugin.version);
-
-    function localdonefn() {
-        var path = path.join(plugin.path,"package");
-
-    }
-
-    installPluginOverHttp(plugin,url,logger,donefn,continuefn,errfn, {
-        strip: 1
-    })
-}
-
-function runNpmOnPlugin(plugin,donefn,errfn) {
-    if (process.platform == 'win32') {
-        var command = 'npm.cmd';
-    }
-    else {
-        var command = 'npm';
-    }
-
-    var proc = child_process.spawn(command,["install","-s"], {
-        cwd: plugin.path,
-        stdio: ['ignore','ignore','inherit']
+    var installer = new NPMPackageInstaller({
+        installPath: plugin.installPath,
+        packageDir: plugin.packageDir,
+        npmRegistries: [options.repoURL],
+        logger
     });
 
-    proc.on('exit', (code,signal) => {
-        if (signal) {
-            errfn(new WebdeployError(
-                format("The 'npm' subprocess exited with signal '%s'",
-                       signal)));
-        }
-        else if (code != 0) {
-            errfn(new WebdeployError(
-                format("The 'npm' subprocess exited non-zero")));
-        }
-        else {
-            donefn();
-        }
-    })
+    // Prepare package name using configured options.
+    var packageName = "";
+    if (options.namespace) {
+        // NOTE: The user must include the '@' in the namespace specifier.
+        packageName += options.namespace.replace(/\/$/,'') + "/";
+    }
+    if (options.prefix) {
+        packageName += options.prefix;
+    }
+    packageName += plugin.id;
+
+    installer.installPackage(packageName,plugin.version,donefn,continuefn,errfn);
 }
 
 /**
@@ -276,7 +167,9 @@ function installPluginDirect(pluginInfo,donefn,errfn,logger) {
     }
 
     function localdone(...args) {
-        logger.popIndent();
+        if (logger) {
+            logger.popIndent();
+        }
         donefn(...args);
     }
 
@@ -323,7 +216,9 @@ function installPlugin(pluginInfo,donefn,errfn,logger) {
         }
 
         function localdone(...args) {
-            logger.popIndent();
+            if (logger) {
+                logger.popIndent();
+            }
             donefn(...args);
         }
 

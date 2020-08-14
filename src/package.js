@@ -65,6 +65,10 @@ class PackageInstaller {
     installHTTP(url,donefn,failfn,errfn) {
         var req = url.substring(0,5) == "https" ? https : http;
 
+        if (this.logger) {
+            this.logger.log(format("Downloading %s...",url));
+        }
+
         req.get(url, (res) => {
             const { statusCode } = res;
             const contentType = res.headers['content-type'];
@@ -107,8 +111,7 @@ class PackageInstaller {
 
     extractTarball(res,donefn,errfn) {
         if (this.logger) {
-            var parts = urlparse(res.url);
-            this.logger.log(format("Extracting archive '%s'...",path.parse(parts.path).base));
+            this.logger.log(format("Extracting archive '%s'...",path.parse(res.req.path).base));
         }
 
         var tarstream = tar.x({
