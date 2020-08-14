@@ -63,7 +63,6 @@ class Builder {
         this.options = options;
         this.plugins = {};
         this.targets = [];
-        this.initial = [];
         this.outputTargets = [];
         this.state = BUILDER_STATE_INITIAL;
     }
@@ -75,22 +74,6 @@ class Builder {
      */
     isDevBuild() {
         return !!this.options.dev;
-    }
-
-    /**
-     * Determines if the specified target is an initial target.
-     *
-     * @param {module:target~Target|string}
-     *  The target to evaluate.
-     *
-     * @return {boolean}
-     */
-    isInitialTarget(target) {
-        if (target instanceof Target) {
-            target = target.getSourceTargetPath();
-        }
-
-        return this.initial.some(x => { return x == target });
     }
 
     /**
@@ -292,10 +275,6 @@ class Builder {
         for (let i = 0;i < handlers.length;++i) {
             let plugin = handlers[i];
 
-            if (!this.acceptsHandler(plugin)) {
-                continue;
-            }
-
             if (plugin.id in this.plugins) {
                 if (plugin.handler) {
                     throw new WebdeployError(
@@ -340,7 +319,7 @@ class Builder {
 
         var include = this.findTargetInclude(newTarget.getSourceTargetPath());
         if (include) {
-            newTarget.setHandlers(include.handlers.slice());
+            newTarget.setHandlers(include.handlers);
             newTarget.applyOptions(include.options);
             this.targets.push(newTarget);
             return newTarget;
@@ -370,7 +349,10 @@ class Builder {
             throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
+        // Convert handlers to BuildHandler instances and filter the list to
+        // exclude handlers not accepted by the build.
         handlers = handlers.map((settings,index) => new BuildHandler((index+1).toString(),settings));
+        handlers = handlers.filter((handler) => this.acceptsHandler(handler));
 
         // Add the handler plugins if they are not currently in our list of
         // plugins. This also ensures the plugins have been audited.
@@ -406,11 +388,9 @@ class Builder {
 
         if (include) {
             var newTarget = delayed.makeTarget();
-            newTarget.setHandlers(include.handlers.slice());
+            newTarget.setHandlers(include.handlers);
             newTarget.applyOptions(include.options);
-
             this.targets.push(newTarget);
-            this.initial.push(sourceTargetPath);
 
             return newTarget;
         }
@@ -418,9 +398,7 @@ class Builder {
         if (force) {
             // Resolve the delayed target information into a Target object.
             var newTarget = delayed.makeTarget();
-
             this.targets.push(newTarget);
-            this.initial.push(sourceTargetPath);
 
             return newTarget;
         }
@@ -459,19 +437,31 @@ class Builder {
      *  The parent target used to inherit into the new target.
      * @param {module:target~Target} newTarget
      *  The new output target to push.
+     * @param {boolean} [recursive]
+     *  Determines if the target is processed recursively. Recursive targets do
+     *  not continue the execution path of their parent but are instead
+     *  processed as the first target of a new execution path; they also do not
+     *  create dependencies against the parent target. The target will be
+     *  matched against the builder's set of includes.
      *
      * @return {module:target~Target}
      *  Returns the new output target instance.
      */
-    pushOutputTarget(parentTarget,newTarget) {
+    pushOutputTarget(parentTarget,newTarget,recursive) {
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");
         }
 
-        // Treat recursive targets as initial. This will ignore any outstanding
-        // handlers.
+        // Clear content to allow Node to free up memory. (Otherwise we might be
+        // storing many versions of the target content.)
 
-        if (newTarget.recursive) {
+        parentTarget.clearContent();
+
+        // To recursively process the output target, we must treat it as
+        // initial. This will ignore any outstanding handlers left on the
+        // parent.
+
+        if (recursive) {
             return this.pushInitialTarget(newTarget);
         }
 
@@ -524,33 +514,34 @@ class Builder {
                 }
 
                 // Lookup next plugin to execute. Make sure it is included in
-                // the set of loaded plugins before continuing. We ignore
-                // unloaded plugins.
-                let plugin;
-                while (target.handlers.length > 0) {
-                    var cand = target.handlers.shift();
-                    if (cand.id in this.plugins) {
-                        plugin = cand;
-                        break;
-                    }
-                }
+                // the set of loaded plugins before continuing. (It should be
+                // since plugins were audited.)
+                let handler = target.handlers.shift();
+                let plugin = this.plugins[handler.id];
                 if (!plugin) {
-                    this.outputTargets.push(target);
-                    continue;
+                    reject(
+                        new WebdeployError(
+                            format(
+                                "Cannot find plugin '%s' to execute handler",
+                                handler.id
+                            )
+                        )
+                    );
+                    return;
                 }
 
                 // Apply any settings from the plugin handler to the target.
-                target.applySettings(plugin);
+                target.applySettings(handler);
 
                 // Execute plugin.
-                var promise = this.plugins[plugin.id].exec(target,plugin).then((newTargets) => {
+                var promise = plugin.exec(target,handler).then((newTargets) => {
                     if (newTargets) {
                         // Normalize newTargets into an array.
                         if (newTargets && !Array.isArray(newTargets)) {
                             newTargets = [newTargets];
                         }
                         else if (newTargets.length == 0) {
-                            newTargets = null;
+                            return;
                         }
 
                         // Push targets into output lists.

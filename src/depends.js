@@ -103,6 +103,15 @@ class DependencyGraph {
     }
 
     /**
+     * Deprecated. Maintained for backwards compatibility.
+     *
+     * @return {boolean}
+     */
+    isLoaded() {
+        return this.isResolved();
+    }
+
+    /**
      * Gets the list of build products as denoted by the dependency graph
      * (i.e. the leaf nodes).
      *

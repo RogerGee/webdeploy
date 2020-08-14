@@ -88,12 +88,8 @@ class Target {
         // The target name serves as the identifier for the target.
         this.targetName = targetName;
 
-        // Determines whether the target will be recursively cycled through the
-        // build system.
-        this.recursive = false;
-
         // Options provided by the deployment configuration.
-        this.options = Object.assign({},options) || {};
+        this.options = Object.assign({},options || {});
 
         // Used by the implementation to track target handlers.
         this.handlers = undefined;
@@ -115,11 +111,18 @@ class Target {
             return Promise.resolve(this.content);
         }
 
+        if (!this.stream) {
+            return Promise.reject(new WebdeployError("Target has no content"));
+        }
+
         return new Promise((resolve,reject) => {
             this.content = '';
-
             this.stream.on("data",(chunk) => { this.content += chunk; });
-            this.stream.on("end",() => { resolve(this.content); });
+            this.stream.on("end",() => {
+                this.stream.destroy();
+                this.stream = null;
+                resolve(this.content);
+            });
         });
     }
 
@@ -137,6 +140,13 @@ class Target {
         }
 
         return this.content;
+    }
+
+    /**
+     * Clears target content.
+     */
+    clearContent() {
+        this.content = '';
     }
 
     /**
@@ -189,9 +199,12 @@ class Target {
     /**
      * Creates an output target that inherits from the parent target.
      *
+     * @param {string} newTargetName
+     * @param {string} newTargetPath
+     *
      * @return {module:target~Target}
      */
-    makeOutputTarget(newTargetName,newTargetPath,recursive) {
+    makeOutputTarget(newTargetName,newTargetPath) {
         if (!newTargetName) {
             newTargetName = this.targetName;
         }
@@ -200,10 +213,7 @@ class Target {
             newTargetPath = this.deploySourcePath;
         }
 
-        var newTarget = makeOutputTarget(newTargetPath,newTargetName,this.options);
-        newTarget.recursive = recursive;
-
-        return newTarget;
+        return makeOutputTarget(newTargetPath,newTargetName,this.options);
     }
 
     /**
@@ -211,19 +221,22 @@ class Target {
      * change the target name/path if desired. The content will always pass
      * through though.
      *
-     * @param {string=} newTargetName
+     * @param {string} [newTargetName]
      *  A new name to assign to the target.
-     * @param {string=} newTargetPath
+     * @param {string} [newTargetPath]
      *  A new path to assign to the target.
      *
      * @return {module:target~Target}
      */
     pass(newTargetName,newTargetPath) {
-        var newTarget = new Target(newTargetPath || this.sourcePath,
-                                   newTargetName || this.targetName,
-                                   this.stream,
-                                   this.options);
-        newTarget.recursive = false;
+        var newTarget = new Target(
+            newTargetPath || this.sourcePath,
+            newTargetName || this.targetName,
+            this.stream,
+            this.options
+        );
+
+        newTarget.content = this.content;
 
         return newTarget;
     }
@@ -254,7 +267,7 @@ class Target {
      *  The list of handlers to associate with the target.
      */
     setHandlers(handlers) {
-        this.handlers = handlers;
+        this.handlers = handlers.slice();
     }
 
     /**
