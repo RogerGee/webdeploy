@@ -14,7 +14,7 @@ const child_process = require("child_process");
 const tar = require("tar");
 
 const { WebdeployError } = require("./error");
-const { mkdirParents } = require("./utils");
+const { mkdirParents, rmdirParents } = require("./utils");
 
 const TARBALL_MIME_TYPES = [
     /application\/(x-)?gzip/,
@@ -52,7 +52,15 @@ class PackageInstaller {
         // Ensure the package path exists before installation.
         this.initialize(
             () => {
-                this.installImpl(...arguments);
+                this.installImpl(
+                    packageName,
+                    packageVersion,
+                    donefn,
+                    () => {
+                        this.rollback(failfn,errfn);
+                    },
+                    errfn
+                );
             },
             errfn
         );
@@ -172,6 +180,17 @@ class PackageInstaller {
     initialize(donefn,errfn) {
         mkdirParents(this.packagePath,this.installPath, (err) => {
             if (err && err.code != 'EEXIST') {
+                errfn(err);
+            }
+            else {
+                donefn();
+            }
+        });
+    }
+
+    rollback(donefn,errfn) {
+        rmdirParents(this.installPath,this.packagePath,(err) => {
+            if (err) {
                 errfn(err);
             }
             else {

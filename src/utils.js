@@ -37,30 +37,28 @@ function getPathParents(path,base) {
  * @param {string} path
  *  The path to create.
  * @param {string} base
- *  Optional base path denoting the existing base. This merely optimizes the
+ *  Base path denoting the existing base. May be null. This merely optimizes the
  *  operation since the function assumes the base path already exists.
  * @param {function} donefn
+ *  Called when the operation completes. Receives an error if one occurred.
  */
 module.exports.mkdirParents = function(path,base,donefn) {
     var { parts, path } = getPathParents(path,base);
 
-    var index = 0;
-    function nextfn(err) {
-        if (err) {
-            donefn(err);
-            return;
-        }
+    async function mkdirParents() {
+        for (let i = 0;i < parts.length;++i) {
+            path = pathModule.join(path,parts[i]);
 
-        if (index >= parts.length) {
-            donefn();
-            return;
+            var err = await new Promise((resolve,reject) => {
+                fs.mkdir(path,resolve);
+            });
+            if (err && err.code != 'EEXIST') {
+                throw err;
+            }
         }
-
-        path = pathModule.join(path,parts[index++]);
-        fs.mkdir(path,nextfn);
     }
 
-    nextfn();
+    mkdirParents().then(donefn,donefn);
 };
 
 /**
@@ -68,9 +66,9 @@ module.exports.mkdirParents = function(path,base,donefn) {
  *
  * @param {string} path
  *  The path to create.
- * @param {string} base
- *  Optional base path denoting the existing base. This merely optimizes the
- *  operation since the function assumes the base path already exists.
+ * @param {string} [base]
+ *  Base path denoting the existing base. This merely optimizes the operation
+ *  since the function assumes the base path already exists.
  */
 module.exports.mkdirParentsSync = function(path,base) {
     var { parts, path } = getPathParents(path,base);
@@ -88,6 +86,44 @@ module.exports.mkdirParentsSync = function(path,base) {
     }
 };
 
+/**
+ * Removes a single branch in a directory tree up until an indicated base
+ * directory.
+ *
+ * @param {string} base
+ *  The base directory at which point the operation stops.
+ * @param {string} path
+ *  The directory to remove. All its parent directories are removed as well up
+ *  until the base directory.
+ * @param {function} donefn
+ *  Called when the operation completes. Receives an error if one occurred.
+ */
+module.exports.rmdirParents = function(parent,path,donefn) {
+    var rm = [];
+    var currentPath = path;
+
+    while (currentPath.substring(0,parent.length) == parent) {
+        if (currentPath == parent) {
+            break;
+        }
+
+        rm.push(currentPath);
+        currentPath = pathModule.parse(currentPath).dir;
+    }
+
+    async function rmdirParents() {
+        for (let i = 0;i < rm.length;++i) {
+            var err = await new Promise((resolve,reject) => {
+                fs.rmdir(rm[i],resolve);
+            });
+            if (err) {
+                throw err;
+            }
+        }
+    }
+
+    rmdirParents().then(donefn,donefn);
+};
 
 /**
  * Prepares a path as a git-config key.
