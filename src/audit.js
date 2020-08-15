@@ -8,7 +8,8 @@ const fs = require("fs");
 const pathModule = require("path");
 const { format } = require("util");
 
-const { pluginDirectories: PLUGIN_DIRS } = require("./sysconfig");
+const sysconfig = require("./sysconfig");
+const { pluginDirectories: PLUGIN_DIRS } = sysconfig;
 const { makeFullPluginId,
         PLUGIN_KINDS,
         loadPluginByKind,
@@ -18,6 +19,7 @@ const { makeFullPluginId,
         lookupDefaultDeployPlugin } = require("./plugin");
 const { installPluginDirect } = require("./plugin/cache");
 const { WebdeployError } = require("./error");
+const { mkdirParents } = require("./utils");
 
 // Cache plugins that have been audited here. Plugins are keyed such that
 // AUDITED_PLUGINS[KIND][ID] gets the plugin. The KIND is one of 'build' or
@@ -25,6 +27,30 @@ const { WebdeployError } = require("./error");
 const AUDITED_PLUGINS = {
     build: {},
     deploy: {}
+}
+
+/**
+ * Provides useful functionality for a plugin to use during its audit phase.
+ *
+ */
+class AuditContext {
+    constructor(plugin,logger) {
+        this.logger = logger;
+        this.basePath = sysconfig.makePath("cache",plugin.pluginId);
+        this.package = require("./package");
+    }
+
+    /**
+     * Creates a cache path for use by the plugin.
+     *
+     * @return {Promise<string>}
+     */
+    async makeCachePath(path) {
+        var cachePath = pathModule.join(this.basePath,path);
+        await mkdirParents(cachePath,sysconfig.makePath());
+
+        return cachePath;
+    }
 }
 
 /**
@@ -84,6 +110,7 @@ class PluginAuditor {
      * Creates a new PluginAuditor instance.
      */
     constructor() {
+        this.logger = null;
         this.orders = [];
         this.plugins = { build:{}, deploy:{} };
 
@@ -146,12 +173,12 @@ class PluginAuditor {
         this.orders.push({
             plugins,
             callback
-        })
+        });
 
         for (let i = 0;i < plugins.length;++i) {
             var bucket;
             var plugin = plugins[i];
-            var pluginId = makeFullPluginId(plugin,plugin);
+            var pluginId = makeFullPluginId(plugin);
 
             if (plugin.pluginKind == PLUGIN_KINDS.BUILD_PLUGIN) {
                 bucket = this.plugins.build;
@@ -164,7 +191,7 @@ class PluginAuditor {
                 continue;
             }
 
-            bucket[pluginId] = plugin;
+            bucket[pluginId] = { plugin, settings: orders[i].config };
         }
     }
 
@@ -195,28 +222,30 @@ class PluginAuditor {
     }
 
     _next(queue) {
-        var pluginInfo = this.queue.shift();
-        const { pluginVersion: version } = pluginInfo;
+        const { plugin, settings } = this.queue.shift();
+        const { pluginVersion: version } = plugin;
 
         // Make fully-qualified plugin ID with version. Omit version if latest;
         // this allows us to maintain latest and versioned separately.
         if (version && version != "latest") {
-            pluginInfo.fullId = makeFullPluginId(pluginInfo);
+            plugin.fullId = makeFullPluginId(plugin);
         }
         else {
-            pluginInfo.fullId = pluginInfo.pluginId;
+            plugin.fullId = plugin.pluginId;
         }
 
-        if (isDefaultPlugin(pluginInfo)) {
-            this._done(pluginInfo);
+        // If the plugin is a built-in (i.e. default) plugin, then we can skip
+        // the completion check and call the next step.
+        if (isDefaultPlugin(plugin)) {
+            this._finishComplete(plugin,settings);
             return;
         }
 
         this.index = 0;
-        this._complete(pluginInfo);
+        this._complete(plugin,settings);
     }
 
-    _complete(plugin) {
+    _complete(plugin,settings) {
         if (this.gotError) {
             return;
         }
@@ -226,7 +255,7 @@ class PluginAuditor {
 
             fs.stat(next, (err,stats) => {
                 if (!err && stats.isDirectory()) {
-                    this._done(plugin);
+                    this._finishComplete(plugin,settings);
                 }
                 else {
                     this._complete(plugin);
@@ -244,7 +273,7 @@ class PluginAuditor {
             else {
                 installPluginDirect(
                     plugin,
-                    () => this._done(plugin),
+                    () => this._finishComplete(plugin,settings),
                     (err) => this._err(err),
                     this.logger
                 );
@@ -252,11 +281,24 @@ class PluginAuditor {
         }
     }
 
-    _done(plugin) {
-        // Load the plugin and attach to loader info. Enqueue any required
-        // plugins here.
+    _finishComplete(plugin,settings) {
+        // Load the plugin and attach to loader info.
         plugin.pluginObject = addAuditedPlugin(plugin);
 
+        // If the plugin provides its own 'audit' procedure, invoke it.
+        if (typeof plugin.pluginObject.audit === 'function') {
+            plugin.pluginObject.audit(new AuditContext(plugin,this.logger),settings).then(
+                () => this._done(plugin),
+                (err) => this._err(err)
+            );
+        }
+        else {
+            this._done(plugin);
+        }
+    }
+
+    _done(plugin) {
+        // Enqueue any required plugins here for subsequent loading.
         if (plugin.pluginObject.requires) {
             var requires = plugin.pluginObject.requires;
 
@@ -267,7 +309,7 @@ class PluginAuditor {
                     }
 
                     Object.assign(newPlugin,parseFullPluginId(requires.build[i]));
-                    this.queue.push(newPlugin);
+                    this.queue.push({ plugin:newPlugin, settings:null });
                 }
             }
             if (requires.deploy) {
@@ -277,7 +319,7 @@ class PluginAuditor {
                     }
 
                     Object.assign(newPlugin,parseFullPluginId(requires.deploy[i]));
-                    this.queue.push(newPlugin);
+                    this.queue.push({ plugin:newPlugin, settings:null });
                 }
             }
         }

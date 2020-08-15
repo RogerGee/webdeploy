@@ -106,6 +106,8 @@ class Sysconfig {
     }
 }
 
+Sysconfig.prototype.makePath = make_path;
+
 /**
  * The singleton system configuration instance.
  *
