@@ -21,11 +21,22 @@ const TARBALL_MIME_TYPES = [
     /application\/octet-stream/
 ];
 
+/**
+ * Callback for when package installation completes.
+ * @callback module:package~doneCallback
+ * @param {boolean} didInstall
+ *  True if the package was installed, false if it was already installed and was
+ *  not overwritten.
+ */
+
 class PackageInstaller {
     /**
      * @param {object} options
      * @param {string} options.installPath
      * @param {string} [options.packageDir]
+     * @param {object} [options.logger]
+     * @param {boolean} [options.overwrite]
+     * @param {boolean} [options.noscripts]
      */
     constructor(options) {
         Object.assign(this,options);
@@ -34,9 +45,47 @@ class PackageInstaller {
             throw new Error("Install path is not configured");
         }
 
+        if (typeof this.overwrite === 'undefined') {
+            this.overwrite = true;
+        }
+
+        if (typeof this.noscripts === 'undefined') {
+            this.noscripts = false;
+        }
+
         this.packagePath = null;
     }
 
+    /**
+     * Gets the path to the last installed package.
+     *
+     * @return {string}
+     */
+    getPackagePath() {
+        return this.packagePath;
+    }
+
+    /**
+     * Loads the last installed package via require().
+     *
+     * @return {*}
+     */
+    require() {
+        return require(this.packagePath);
+    }
+
+    /**
+     * Installs a package.
+     *
+     * @param {string} packageName
+     * @param {string} packageVersion
+     * @param {module:package~doneCallback} donefn
+     *  Invoked when the operation completes.
+     * @param {function} failfn
+     *  Invoked when the specified package was not found.
+     * @param {function} errfn
+     *  Invoked when an error occurs.
+     */
     installPackage(packageName,packageVersion,donefn,failfn,errfn) {
         // Create package path using configured install path and package name
         // plus version.
@@ -51,7 +100,12 @@ class PackageInstaller {
 
         // Ensure the package path exists before installation.
         this.initialize(
-            () => {
+            (already) => {
+                if (already && !this.overwrite) {
+                    donefn(false);
+                    return;
+                }
+
                 this.installImpl(
                     packageName,
                     packageVersion,
@@ -146,7 +200,17 @@ class PackageInstaller {
             var command = 'npm';
         }
 
-        var proc = child_process.spawn(command,["install","-s"], {
+        var args = [
+            "install",
+            "-s",
+            "--no-package-lock",
+            "--no-audit"
+        ];
+        if (this.noscripts) {
+            args.push("--ignore-scripts");
+        }
+
+        var proc = child_process.spawn(command,args,{
             cwd: this.packagePath,
             stdio: ['ignore','ignore','inherit']
         });
@@ -172,31 +236,27 @@ class PackageInstaller {
                 );
             }
             else {
-                donefn();
+                donefn(true);
             }
         });
     }
 
     initialize(donefn,errfn) {
-        mkdirParents(this.packagePath,this.installPath, (err) => {
-            if (err && err.code != 'EEXIST') {
-                errfn(err);
-            }
-            else {
-                donefn();
-            }
-        });
+        mkdirParents(this.packagePath,this.installPath).then(
+            (ndirs) => {
+                donefn(ndirs == 0);
+            },
+            errfn
+        );
     }
 
     rollback(donefn,errfn) {
-        rmdirParents(this.installPath,this.packagePath,(err) => {
-            if (err) {
-                errfn(err);
-            }
-            else {
+        rmdirParents(this.installPath,this.packagePath).then(
+            () => {
                 donefn();
-            }
-        });
+            },
+            errfn
+        );
     }
 }
 
