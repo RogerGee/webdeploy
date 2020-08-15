@@ -169,6 +169,15 @@ class Target {
     }
 
     /**
+     * Gets the target name component.
+     *
+     * @return {string}
+     */
+    getTargetName() {
+        return this.targetName;
+    }
+
+    /**
      * Gets the path to an output target in a deployment.
      *
      * @return {string} The absolute path that includes the target name.

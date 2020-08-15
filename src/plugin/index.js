@@ -4,12 +4,12 @@
  * @module plugin
  */
 
-const fs = require("fs");
 const pathModule = require("path");
 const { format } = require("util");
 
+const { build: DEFAULT_BUILD_PLUGINS,
+        deploy: DEFAULT_DEPLOY_PLUGINS } = require("./default");
 const sysconfig = require("../sysconfig");
-const { mkdirParentsSync } = require("../utils");
 const { WebdeployError } = require("../error");
 
 /**
@@ -130,115 +130,6 @@ function requirePlugin(pluginInfo,kind) {
     return plugin;
 }
 
-const DEFAULT_BUILD_PLUGINS = {
-    pass: {
-        id: "pass",
-        exec: (target) => {
-            return new Promise((resolve,reject) => {
-                resolve(target.pass());
-            })
-        }
-    }
-}
-
-const DEFAULT_DEPLOY_PLUGINS = {
-    exclude: {
-        id: "exclude",
-        exec: (context,settings) => {
-            return new Promise((resolve,reject) => {
-                resolve();
-            })
-        }
-    },
-
-    write: {
-        id: "write",
-        exec: (context,settings) => {
-            // Remove extraneous files first (if possible); then deploy all the
-            // output targets to the deploy path.
-
-            var promises = [];
-
-            let removefn = function(path,isTree) {
-                fullPath = context.makeDeployPath(path);
-                promises.push(new Promise((resolve,reject) => {
-                    if (isTree) {
-                        fs.rmdir(fullPath, (err) => {
-                            if (err) {
-                                if (err.code == 'ENOENT') {
-                                    resolve();
-                                }
-                                else {
-                                    reject(err);
-                                }
-                            }
-                            else {
-                                context.logger.log("Removed _" + path  + "_");
-                                resolve();
-                            }
-                        })
-                    }
-                    else {
-                        fs.unlink(fullPath, (err) => {
-                            if (err) {
-                                if (err.code == 'ENOENT') {
-                                    resolve();
-                                }
-                                else {
-                                    reject(err);
-                                }
-                            }
-                            else {
-                                context.logger.log("Removed _" + path + "_");
-                                resolve();
-                            }
-                        })
-                    }
-                }))
-            }
-
-            return context.tree.walkExtraneous(removefn).then(() => {
-                return Promise.all(promises);
-
-            }).then(() => {
-                if (typeof settings.mode == "undefined") {
-                    settings.mode = 0o666;
-                }
-                else {
-                    // Force Number to convert possible string values. This works
-                    // for octal literals encoded as strings.
-                    settings.mode = Number(settings.mode);
-                }
-
-                return new Promise((resolve,reject) => {
-                    var pathset = new Set();
-
-                    // Make sure deploy path exists.
-                    mkdirParentsSync(context.deployPath);
-
-                    for (var i = 0;i < context.targets.length;++i) {
-                        var target = context.targets[i];
-
-                        // Ensure parent directory exists.
-                        if (!pathset.has(target.sourcePath)) {
-                            pathset.add(target.sourcePath);
-                            mkdirParentsSync(target.sourcePath,context.deployPath);
-                        }
-
-                        // Write data to file.
-                        var outPath = target.getDeployTargetPath();
-                        var outStream = fs.createWriteStream(outPath,{ mode: settings.mode });
-                        target.stream.pipe(outStream);
-                        context.logger.log("Writing _" + outPath + "_");
-                    }
-
-                    resolve();
-                })
-            })
-        }
-    }
-}
-
 function lookupDefaultPlugin(pluginInfo,kind) {
     if (kind == PLUGIN_KINDS.BUILD_PLUGIN) {
         var database = DEFAULT_BUILD_PLUGINS;
@@ -256,7 +147,9 @@ function lookupDefaultPlugin(pluginInfo,kind) {
 
         }
 
-        return database[pluginInfo.pluginId];
+        var plugin = database[pluginInfo.pluginId];
+        plugin.id = pluginInfo.pluginId;
+        return plugin;
     }
 }
 
