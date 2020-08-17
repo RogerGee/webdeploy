@@ -34,8 +34,9 @@ const AUDITED_PLUGINS = {
  *
  */
 class AuditContext {
-    constructor(plugin,logger) {
+    constructor(plugin,logger,auditor) {
         this.logger = logger;
+        this.auditor = auditor;
         this.basePath = sysconfig.makePath("cache",plugin.pluginId);
         this.package = require("./package");
     }
@@ -101,6 +102,27 @@ function addAuditedPlugin(pluginInfo) {
     return pluginObject;
 }
 
+function parseRequires(item) {
+    var pluginDesc;
+    var settings = null;
+
+    if (typeof item === 'string') {
+        pluginDesc = item;
+    }
+    else if (!Array.isArray(item)) {
+        throw new WebdeployError("Plugin requires item is invalid");
+    }
+    else {
+        pluginDesc = item[0];
+        settings = item[1];
+    }
+
+    return {
+        plugin: parseFullPluginId(pluginDesc),
+        settings
+    };
+}
+
 /**
  * Audits plugins that are required for a given build/deploy run. A
  * PluginAuditor installs missing plugins in the per-user plugin cache.
@@ -164,16 +186,18 @@ class PluginAuditor {
      *
      * @param {module:audit~auditOrder[]} orders
      *  List of plugin audit orders to process.
-     * @param {module:audit~PluginAuditor~orderCallback} callback
-     *  The callback that handles the resolution of the requested plugins.
+     * @param {module:audit~PluginAuditor~orderCallback} [callback]
+     *  Optional callback that handles the resolution of the requested plugins.
      */
     addOrders(orders,callback) {
         var plugins = orders.map((order) => order.plugin);
 
-        this.orders.push({
-            plugins,
-            callback
-        });
+        if (typeof callback === 'function') {
+            this.orders.push({
+                plugins,
+                callback
+            });
+        }
 
         for (let i = 0;i < plugins.length;++i) {
             var bucket;
@@ -182,13 +206,22 @@ class PluginAuditor {
 
             if (plugin.pluginKind == PLUGIN_KINDS.BUILD_PLUGIN) {
                 bucket = this.plugins.build;
+
+                if (!Array.isArray(orders[i].config)) {
+                    throw new WebdeployError("Audit order for build plugin must have array of config objects");
+                }
+
+                if (pluginId in bucket) {
+                    bucket[pluginId].settings = bucket[pluginId].settings.concat(orders[i].config);
+                }
             }
             else {
                 bucket = this.plugins.deploy;
-            }
 
-            if (pluginId in bucket) {
-                continue;
+                // NOTE: A deploy plugin should only be audited once.
+                if (pluginId in bucket) {
+                    continue;
+                }
             }
 
             bucket[pluginId] = { plugin, settings: orders[i].config };
@@ -286,9 +319,16 @@ class PluginAuditor {
         plugin.pluginObject = addAuditedPlugin(plugin);
 
         // If the plugin provides its own 'audit' procedure, invoke it.
-        if (typeof plugin.pluginObject.audit === 'function') {
-            plugin.pluginObject.audit(new AuditContext(plugin,this.logger),settings).then(
-                () => this._done(plugin),
+        if (typeof plugin.pluginObject.audit === 'function' && settings) {
+            var context = new AuditContext(plugin,this.logger);
+            var promise = plugin.pluginObject.audit(context,settings);
+
+            if (!(promise instanceof Promise)) {
+                throw new WebdeployError('Plugin audit function must return a promise');
+            }
+
+            promise.then(
+                () => this._done(plugin,context),
                 (err) => this._err(err)
             );
         }
@@ -297,29 +337,29 @@ class PluginAuditor {
         }
     }
 
-    _done(plugin) {
+    _done(plugin,auditContext) {
         // Enqueue any required plugins here for subsequent loading.
         if (plugin.pluginObject.requires) {
             var requires = plugin.pluginObject.requires;
 
             if (requires.build) {
                 for (let i = 0;i < requires.build.length;++i) {
-                    var newPlugin = {
-                        pluginKind: PLUGIN_KINDS.BUILD_PLUGIN
+                    var { plugin: newPlugin, settings } = parseRequires(requires.build[i]);
+                    newPlugin.pluginKind = PLUGIN_KINDS.BUILD_PLUGIN;
+
+                    if (!Array.isArray(settings)) {
+                        settings = [settings];
                     }
 
-                    Object.assign(newPlugin,parseFullPluginId(requires.build[i]));
-                    this.queue.push({ plugin:newPlugin, settings:null });
+                    this.queue.push({ plugin:newPlugin, settings });
                 }
             }
             if (requires.deploy) {
                 for (let i = 0;i < requires.deploy.length;++i) {
-                    var newPlugin = {
-                        pluginKind: PLUGIN_KINDS.DEPLOY_PLUGIN
-                    }
+                    var { plugin: newPlugin, settings } = parseRequires(requires.deploy[i]);
+                    newPlugin.pluginKind = PLUGIN_KINDS.DEPLOY_PLUGIN;
 
-                    Object.assign(newPlugin,parseFullPluginId(requires.deploy[i]));
-                    this.queue.push({ plugin:newPlugin, settings:null });
+                    this.queue.push({ plugin:newPlugin, settings });
                 }
             }
         }
@@ -328,7 +368,9 @@ class PluginAuditor {
         if (this.queue.length == 0) {
             // Resolve all orders by calling the callbacks.
             this.orders.forEach((order) => {
-                order.callback(order.plugins);
+                if (order.callback) {
+                    order.callback(order.plugins);
+                }
             });
 
             this.log("Done auditing plugins");
