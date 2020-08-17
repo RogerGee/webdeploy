@@ -91,7 +91,7 @@ module.exports.mkdirParentsSync = function(path,base) {
 
 /**
  * Removes a single branch in a directory tree up until an indicated base
- * directory.
+ * directory OR up until the first non-empty directory.
  *
  * @param {string} base
  *  The base directory at which point the operation stops.
@@ -120,6 +120,9 @@ module.exports.rmdirParents = async function(parent,path) {
             fs.rmdir(rm[i],resolve);
         });
         if (err) {
+            if (err.code == 'ENOTEMPTY') {
+                break;
+            }
             throw err;
         }
     }
