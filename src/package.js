@@ -54,6 +54,16 @@ class PackageInstaller {
         }
 
         this.packagePath = null;
+        this.preinstall = null;
+    }
+
+    /**
+     * Sets a callback to be executed once before the next installation attempt.
+     *
+     * @param {function} callback
+     */
+    once(callback) {
+        this.preinstall = callback;
     }
 
     /**
@@ -104,6 +114,11 @@ class PackageInstaller {
                 if (already && !this.overwrite) {
                     donefn(false);
                     return;
+                }
+
+                if (typeof this.preinstall === 'function') {
+                    this.preinstall(packageName,packageVersion);
+                    this.preinstall = null;
                 }
 
                 this.installImpl(

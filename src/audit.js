@@ -52,6 +52,34 @@ class AuditContext {
 
         return cachePath;
     }
+
+    /**
+     * Logs a message to the attached logger. If no logger is attached, this
+     * operation does nothing.
+     */
+    log(a) {
+        if (this.logger) {
+            this.logger.log(a);
+        }
+    }
+
+    /**
+     * Sets up the attached logger for logging.
+     */
+    beginLog() {
+        if (this.logger) {
+            this.logger.pushIndent();
+        }
+    }
+
+    /**
+     * Finalizes the attached logger after logging.
+     */
+    endLog() {
+        if (this.logger) {
+            this.logger.popIndent();
+        }
+    }
 }
 
 /**
