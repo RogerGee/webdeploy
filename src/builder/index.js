@@ -63,8 +63,34 @@ class Builder {
         this.options = options;
         this.plugins = {};
         this.targets = [];
+        this.initial = []; // target path {string}
         this.outputTargets = [];
         this.state = BUILDER_STATE_INITIAL;
+    }
+
+    /**
+     * Gets a list of initial target paths.
+     *
+     * @return {string[]}
+     */
+    getInitialTargets() {
+        return this.initial.slice();
+    }
+
+    /**
+     * Determines if the specified target is an initial target.
+     *
+     * @param {module:target~Target|string}
+     *  The target to evaluate.
+     *
+     * @return {boolean}
+     */
+    isInitialTarget(target) {
+        if (target instanceof Target) {
+            target = target.getSourceTargetPath();
+        }
+
+        return this.initial.some(x => { return x == target });
     }
 
     /**
@@ -391,6 +417,7 @@ class Builder {
             newTarget.setHandlers(include.handlers);
             newTarget.applyOptions(include.options);
             this.targets.push(newTarget);
+            this.initial.push(sourceTargetPath);
 
             return newTarget;
         }
@@ -399,6 +426,7 @@ class Builder {
             // Resolve the delayed target information into a Target object.
             var newTarget = delayed.makeTarget();
             this.targets.push(newTarget);
+            this.initial.push(sourceTargetPath);
 
             return newTarget;
         }
