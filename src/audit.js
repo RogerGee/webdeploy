@@ -137,12 +137,19 @@ function parseRequires(item) {
     if (typeof item === 'string') {
         pluginDesc = item;
     }
-    else if (!Array.isArray(item)) {
-        throw new WebdeployError("Plugin requires item is invalid");
-    }
-    else {
+    else if (Array.isArray(item)) {
         pluginDesc = item[0];
         settings = item[1];
+    }
+    else if (typeof item === 'object' && item.id) {
+        pluginDesc = item.id;
+        if (item.version) {
+            pluginDesc += '@' + item.version;
+        }
+        settings = item;
+    }
+    else {
+        throw new WebdeployError("Plugin requires item is invalid");
     }
 
     return {
