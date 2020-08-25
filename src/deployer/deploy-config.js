@@ -129,11 +129,11 @@ class DeployConfig {
                 }
             },
 
-            config: this
+            settings: this
         });
 
-        // Add configured plugin requires. Note that plugin requires do not have
-        // a config.
+        // Add requires configured in deploy plugin. Note that these requires do
+        // not allow a config so we pass an empty object.
         for (let key of ['build','deploy']) {
             let pluginKind =
                 (key == 'build')
@@ -149,7 +149,7 @@ class DeployConfig {
                         this.requires[key][i]
                     ),
 
-                    config: null
+                    settings: (key == 'build' ? [{}] : {})
                 });
             }
         }

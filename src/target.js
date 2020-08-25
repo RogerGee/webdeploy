@@ -191,6 +191,15 @@ class Target {
     }
 
     /**
+     * Determines if a target has a deploy path set.
+     *
+     * @return {boolean}
+     */
+    hasDeployPath() {
+        return !!this.deployPath;
+    }
+
+    /**
      * Updates the deploy path for the target.
      *
      * @param {string} basePath

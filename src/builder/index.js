@@ -163,12 +163,12 @@ class Builder {
                 }
 
                 if (plugin.id in auditOrders) {
-                    auditOrders[plugin.id].config.push(plugin);
+                    auditOrders[plugin.id].settings.push(plugin);
                 }
                 else {
                     auditOrders[plugin.id] = {
                         plugin: plugin.loaderInfo,
-                        config: [plugin]
+                        settings: [plugin]
                     };
                 }
             }
@@ -594,8 +594,24 @@ class Builder {
 
         return new Promise(callback);
     }
+
+    /**
+     * Executes an external builder and merges all output targets into the
+     * calling builder's list of output targets.
+     *
+     * @param {module:builder~Builder} builder
+     *
+     * @return {Promise}
+     */
+    executeAndMerge(builder) {
+        return builder.execute().then(() => {
+            builder.outputTargets.forEach((target) => {
+                this.outputTargets.push(target);
+            });
+        });
+    }
 }
 
 module.exports = {
     Builder
-}
+};

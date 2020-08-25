@@ -6,6 +6,7 @@
 
 const pathModule = require("path");
 
+const { Builder } = require("./builder");
 const { makeOutputTarget } = require("./target");
 const { lookupDeployPlugin } = require("./audit");
 
@@ -99,20 +100,43 @@ class DeployContext {
      */
     setTargetsDeployPath(force) {
         for (var i = 0;i < this.targets.length;++i) {
-            if (!this.targets[i].deployPath || force) {
+            if (!this.targets[i].hasDeployPath() || force) {
                 this.targets[i].setDeployPath(this.deployPath);
             }
         }
     }
 
     /**
+     * Creates an external sub-builder to use for recursive builds.
+     *
+     * @return {module:builder~Builder}
+     */
+    createBuilder() {
+        return new Builder(this.builder.tree,this.builder.options);
+    }
+
+    /**
      * Wrapper for builder.execute() that sets output targets deploy paths. This
      * is the preferred way to execute the builder.
+     *
+     * @return {Promise}
      */
     executeBuilder() {
         return this.builder.execute().then(() => {
             this.setTargetsDeployPath();
-        })
+        });
+    }
+
+    /**
+     * Executes an external, sub-builder. This is the preferred way to execute a
+     * sub-builder.
+     *
+     * @return {Promise}
+     */
+    executeExternalBuilder(builder) {
+        return this.builder.executeAndMerge(builder).then(() => {
+            this.setTargetsDeployPath();
+        });
     }
 
     /**
