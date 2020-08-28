@@ -384,7 +384,7 @@ function createTreeDecide(repoOrTreePath,options) {
 
     // If the indicated path refers to a discoverable git repository, then we
     // create a RepoTree. Otherwise we create a PathTree. NOTE: This will prefer
-    // RepoTree for any working directory containing a ".git" subdirectory.
+    // RepoTree for a bare git repository and PathTree for a working tree.
 
     return git.Repository.discover(repoOrTreePath,0,prevPath).then((repoPath) => {
         return createRepoTree(repoOrTreePath,options);

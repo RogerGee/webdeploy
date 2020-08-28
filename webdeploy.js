@@ -46,10 +46,11 @@ commander.command("config <deploy-path> <key> [value]")
         commands.config(localPath,deployPath,key,value).catch(reject);
     });
 
-commander.command("info [path] [deploy-path]")
+commander.command("info [deploy-path]")
     .description("displays info about a webdeploy tree")
-    .action((sourcePath,deployPath,cmd) => {
-        var localPath = resolveSourcePath(sourcePath);
+    .option("-p, --path [path]","Specifies the project path (default is current directory)")
+    .action((deployPath,cmd) => {
+        var localPath = resolveSourcePath(cmd.path);
         commands.info(localPath,deployPath).catch(reject);
     });
 
