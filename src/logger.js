@@ -147,5 +147,15 @@ module.exports = {
         }
 
         return n > 1 || n == 0 ? thing + suffix : thing;
+    },
+
+    filter(val,defval) {
+        if (val) {
+            return val;
+        }
+        if (typeof defval === 'undefined') {
+            return '(none)';
+        }
+        return defval;
     }
-}
+};

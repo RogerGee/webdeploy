@@ -163,7 +163,7 @@ class TreeBase {
         // from options first; if not found, then we look at defaults from the
         // tree record.
 
-        var deployPath = this.option('deployPath') || this.treeRecord.deployPath;
+        var deployPath = this.option('deployPath') || this.treeRecord.deployPath || treePath;
         var deployBranch = this.option('deployBranch') || this.treeRecord.deployBranch;
 
         if (!deployPath && this.option('createDeployment') !== false) {
@@ -506,6 +506,30 @@ class TreeBase {
         );
 
         this.dirty.deployConfig = false;
+    }
+
+    /**
+     * Deletes the deploy record associated with the tree.
+     */
+    purgeDeploy() {
+        if (!this.hasDeployment()) {
+            return;
+        }
+
+        var stmt1 = storage.prepare(
+            `DELETE FROM deploy_storage WHERE deploy_id = ?`
+        );
+        var stmt2 = storage.prepare(
+            `DELETE FROM deploy WHERE id = ?`
+        );
+
+        var tr = storage.transaction(() => {
+            stmt1.run(this.deployId);
+            stmt2.run(this.deployId);
+            this.dirty.deployConfig = false;
+        });
+
+        tr();
     }
 
     /**

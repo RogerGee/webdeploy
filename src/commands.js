@@ -356,6 +356,11 @@ function createRepoTree(repoPath,options) {
  */
 function createPathTree(treePath,options) {
     return new Promise((resolve,reject) => {
+        if (options.noexist) {
+            resolve(new PathTree(treePath,options));
+            return;
+        }
+
         fs.stat(treePath,(err,stats) => {
             if (err) {
                 reject(err);
@@ -556,38 +561,47 @@ function info(repoOrTreePath,deployPath) {
         logger.log("*"+repoOrTreePath+"*");
         logger.pushIndent();
 
-        function filter(val,defval) {
-            if (val) {
-                return val;
-            }
-            if (typeof defval === 'undefined') {
-                return '(none)';
-            }
-            return defval;
-        }
-
         var treeRecord = tree.getTreeRecord();
 
         logger.log("*Defaults*:");
         logger.pushIndent();
-        logger.log("Target Tree: " + filter(treeRecord.targetTree,'(root)'));
-        logger.log("Deploy Path: " + filter(treeRecord.deployPath));
-        logger.log("Deploy Branch: " + filter(treeRecord.deployBranch));
+        logger.log("Target Tree: " + logger.filter(treeRecord.targetTree,'(root)'));
+        logger.log("Deploy Path: " + logger.filter(treeRecord.deployPath));
+        logger.log("Deploy Branch: " + logger.filter(treeRecord.deployBranch));
         logger.popIndent();
 
         logger.log("*Deployment*:");
         logger.pushIndent();
         if (tree.hasDeployment()) {
-            logger.log("Deploy Path: " + filter(tree.getDeployConfig('deployPath')));
-            logger.log("Deploy Branch: " + filter(tree.getDeployConfig('deployBranch')));
-            logger.log("Last Deploy Revision: " + filter(tree.getDeployConfig('lastRevision')));
+            logger.log("Deploy Path: " + logger.filter(tree.getDeployConfig('deployPath')));
+            logger.log("Deploy Branch: " + logger.filter(tree.getDeployConfig('deployBranch')));
+            logger.log("Last Deploy Revision: " + logger.filter(tree.getDeployConfig('lastRevision')));
         }
         else {
-            logger.log("No such deployment at " + filter(tree.getDeployConfig('deployPath')));
+            logger.log("No such deployment at " + logger.filter(tree.getDeployConfig('deployPath')));
         }
         logger.popIndent();
 
         logger.popIndent();
+    });
+}
+
+function purge(repoOrTreePath,deployPath) {
+    var options = {
+        createDeployment: false,
+        deployPath,
+        noexist: true
+    };
+
+    return createTreeDecide(repoOrTreePath,options).then((tree) => {
+        if (!tree.hasDeployment()) {
+            logger.log(
+                "No such deployment at " + logger.filter(tree.getDeployConfig('deployPath'))
+                    + " for " + repoOrTreePath);
+            return;
+        }
+
+        tree.purgeDeploy();
     });
 }
 
@@ -598,6 +612,7 @@ module.exports = {
     configdef,
     config,
     info,
+    purge,
 
     CONFIG_TYPES
 }

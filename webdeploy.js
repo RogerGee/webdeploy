@@ -43,6 +43,9 @@ commander.command("config <deploy-path> <key> [value]")
     .option("-p, --path [path]","Specifies the project path (default is current directory)")
     .action((deployPath,key,value,cmd) => {
         var localPath = resolveSourcePath(cmd.path);
+        if (deployPath) {
+            deployPath = path.resolve(deployPath);
+        }
         commands.config(localPath,deployPath,key,value).catch(reject);
     });
 
@@ -51,7 +54,21 @@ commander.command("info [deploy-path]")
     .option("-p, --path [path]","Specifies the project path (default is current directory)")
     .action((deployPath,cmd) => {
         var localPath = resolveSourcePath(cmd.path);
+        if (deployPath) {
+            deployPath = path.resolve(deployPath);
+        }
         commands.info(localPath,deployPath).catch(reject);
+    });
+
+commander.command("purge [deploy-path]")
+    .description("purges deployment info for a webdeploy project tree")
+    .option("-p, --path [path]","Specifies the project path (default is current directory)")
+    .action((deployPath,cmd) => {
+        var localPath = resolveSourcePath(cmd.path);
+        if (deployPath) {
+            deployPath = path.resolve(deployPath);
+        }
+        commands.purge(localPath,deployPath).catch(reject);
     });
 
 commander.command("deploy [path]")
