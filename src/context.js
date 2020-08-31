@@ -5,6 +5,7 @@
  */
 
 const pathModule = require("path");
+const { format } = require("util");
 
 const { Builder } = require("./builder");
 const { makeOutputTarget } = require("./target");
@@ -332,6 +333,34 @@ class DeployContext {
         this.currentPlugin = plugin;
 
         return plugin.exec(this,settings || {});
+    }
+
+    /**
+     * Writes a cached property. The property is written to per-deployment
+     * storage.
+     *
+     * @param {string} key
+     * @param {*} value
+     *
+     * @return {Promise}
+     */
+    writeCacheProperty(key,value) {
+        return this.tree.writeStorageConfig(this._makeCacheKey(key),value);
+    }
+
+    /**
+     * Reads a cached property.
+     *
+     * @param {string} key
+     *
+     * @return {Promise}
+     */
+    readCacheProperty(key) {
+        return this.tree.getStorageConfig(this._makeCacheKey(key));
+    }
+
+    _makeCacheKey(key) {
+        return format("cache.custom.%s",key);
     }
 }
 

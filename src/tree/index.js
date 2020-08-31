@@ -582,12 +582,10 @@ class TreeBase {
      *  The name of the config parameter.
      * @param {*} value
      *  The config parameter value.
-     * @param {function} donefn
-     *  Called when the operation completes; donefn(err)
      *
      * @return {Promise}
      */
-    writeStorageConfig(param,value,donefn) {
+    writeStorageConfig(param,value) {
         var stmt = storage.prepareCache(
             'tree.writeStorageConfig',
             `INSERT INTO deploy_storage (name,value,deploy_id) VALUES (?,?,?)
