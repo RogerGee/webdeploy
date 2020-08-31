@@ -271,6 +271,30 @@ class DependencyGraph {
     }
 
     /**
+     * Resolves the given node to its final connection in the graph. If a node
+     * (or any child node) has multiple connections, then the first is always
+     * chosen.
+     *
+     * @param {string} a
+     *
+     * @return {string}
+     */
+    resolveConnection(a) {
+        var current = a;
+        var visited = {};
+
+        while (true) {
+            if (!(current in this.connections) || visited[current]) {
+                break;
+            }
+            visited[current] = true;
+            current = this.connections[current][0];
+        }
+
+        return current;
+    }
+
+    /**
      * Adds a raw, null connection to the dependency graph.
      *
      * @param {string} a
