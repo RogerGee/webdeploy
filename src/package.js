@@ -21,49 +21,57 @@ const TARBALL_MIME_TYPES = [
     /application\/octet-stream/
 ];
 
-/**
- * Callback for when package installation completes.
- * @callback module:package~doneCallback
- * @param {boolean} didInstall
- *  True if the package was installed, false if it was already installed and was
- *  not overwritten.
- */
+class PackageInstall {
+    constructor(installPath,packageName,packageVersion) {
+        this.installPath = installPath;
+        this.packageName = packageName;
+        this.packageVersion = packageVersion;
 
-class PackageInstaller {
-    /**
-     * @param {object} options
-     * @param {string} options.installPath
-     * @param {string} [options.packageDir]
-     * @param {object} [options.logger]
-     * @param {boolean} [options.overwrite]
-     * @param {boolean} [options.noscripts]
-     */
-    constructor(options) {
-        Object.assign(this,options);
-
-        if (typeof this.installPath !== "string") {
-            throw new Error("Install path is not configured");
+        // Create package path using configured install path and package name
+        // plus version.
+        if (this.packageDir) {
+            this.packageDir = this.packageDir;
         }
-
-        if (typeof this.overwrite === 'undefined') {
-            this.overwrite = true;
+        else {
+            this.packageDir = format("%s@%s",packageName,packageVersion);
         }
-
-        if (typeof this.noscripts === 'undefined') {
-            this.noscripts = false;
-        }
-
-        this.packagePath = null;
-        this.preinstall = null;
+        this.packagePath = path.join(this.installPath,this.packageDir);
     }
 
     /**
-     * Sets a callback to be executed once before the next installation attempt.
+     * Checks if the package is already installed.
      *
-     * @param {function} callback
+     * @param {function} donefn
+     *  Called with 'true' if the package already exists.
+     * @param {function} errfn
+     *  Called when an error occurs.
      */
-    once(callback) {
-        this.preinstall = callback;
+    exists(donefn,errfn) {
+        mkdirParents(this.packagePath,this.installPath).then(
+            (ndirs) => {
+                donefn(ndirs == 0);
+            },
+            errfn
+        );
+    }
+
+    rollback(donefn,errfn) {
+        rmdirParents(this.installPath,this.packagePath).then(
+            () => {
+                donefn();
+            },
+            errfn
+        );
+    }
+
+    /**
+     * @return {object}
+     */
+    getPackageComponents() {
+        return {
+            packageName: this.packageName,
+            packageVersion: this.packageVersion
+        };
     }
 
     /**
@@ -83,6 +91,56 @@ class PackageInstaller {
     require() {
         return require(this.packagePath);
     }
+}
+
+/**
+ * Callback for when package installation completes.
+ * @callback module:package~doneCallback
+ * @param {boolean} didInstall
+ *  True if the package was installed, false if it was already installed and was
+ *  not overwritten.
+ */
+
+class PackageInstaller {
+    /**
+     * @param {object} options
+     * @param {string} options.installPath
+     * @param {string} [options.packageDir]
+     * @param {object} [options.logger]
+     * @param {boolean} [options.overwrite]
+     * @param {boolean} [options.noscripts]
+     * @param {boolean} [options.performInstall]
+     */
+    constructor(options) {
+        Object.assign(this,options);
+
+        if (typeof this.installPath !== "string") {
+            throw new Error("Install path is not configured");
+        }
+
+        if (typeof this.overwrite === 'undefined') {
+            this.overwrite = true;
+        }
+
+        if (typeof this.noscripts === 'undefined') {
+            this.noscripts = false;
+        }
+
+        if (typeof this.performInstall === 'undefined') {
+            this.performInstall = true;
+        }
+
+        this.preinstall = null;
+    }
+
+    /**
+     * Sets a callback to be executed once before the next installation attempt.
+     *
+     * @param {function} callback
+     */
+    once(callback) {
+        this.preinstall = callback;
+    }
 
     /**
      * Installs a package.
@@ -97,56 +155,50 @@ class PackageInstaller {
      *  Invoked when an error occurs.
      */
     installPackage(packageName,packageVersion,donefn,failfn,errfn) {
-        // Create package path using configured install path and package name
-        // plus version.
-        var packageDir;
-        if (this.packageDir) {
-            packageDir = this.packageDir;
-        }
-        else {
-            packageDir = format("%s@%s",packageName,packageVersion);
-        }
-        this.packagePath = path.join(this.installPath,packageDir);
+        const pack = new PackageInstall(this.installPath,packageName,packageVersion);
 
         // Ensure the package path exists before installation.
-        this.initialize(
+        pack.exists(
             (already) => {
                 if (already && !this.overwrite) {
-                    donefn(false);
+                    donefn(pack);
                     return;
                 }
 
                 if (typeof this.preinstall === 'function') {
-                    this.preinstall(packageName,packageVersion);
+                    this.preinstall(pack);
                     this.preinstall = null;
                 }
 
                 this.installImpl(
-                    packageName,
-                    packageVersion,
-                    donefn,
+                    pack,
                     () => {
-                        this.rollback(failfn,errfn);
+                        donefn(pack);
                     },
-                    errfn
+                    () => {
+                        pack.rollback(failfn,errfn);
+                    },
+                    (err) => {
+                        pack.rollback(() => { errfn(err); },errfn);
+                    }
                 );
             },
             errfn
         );
     }
 
-    installImpl(packageName,packageVersion,donefn,failfn,errfn) {
+    installImpl(pack,donefn,failfn,errfn) {
         throw new Error("Must implement installImpl");
     }
 
-    installHTTP(url,donefn,failfn,errfn) {
+    installHTTP(pack,url,donefn,failfn,errfn) {
         var req = url.substring(0,5) == "https" ? https : http;
 
         if (this.logger) {
             this.logger.log(format("Downloading %s...",url));
         }
 
-        req.get(url, (res) => {
+        const request = req.get(url, (res) => {
             const { statusCode } = res;
             const contentType = res.headers['content-type'];
 
@@ -175,24 +227,32 @@ class PackageInstaller {
                 return;
             }
 
-            // Extract the tarball, then run npm install.
+            // Extract the tarball, then run npm install (if configured).
             this.extractTarball(
+                pack,
                 res,
                 () => {
-                    this.runNpmInstall(donefn,errfn);
+                    if (this.performInstall) {
+                        this.runNpmInstall(pack,donefn,errfn);
+                    }
+                    else {
+                        donefn();
+                    }
                 },
                 errfn
             );
         });
+
+        request.on("error",errfn);
     }
 
-    extractTarball(res,donefn,errfn) {
+    extractTarball(pack,res,donefn,errfn) {
         if (this.logger) {
             this.logger.log(format("Extracting archive '%s'...",path.parse(res.req.path).base));
         }
 
         var tarstream = tar.x({
-            cwd: this.packagePath,
+            cwd: pack.getPackagePath(),
             strip: this.tarballStrip
         });
 
@@ -203,7 +263,7 @@ class PackageInstaller {
         res.pipe(tarstream);
     }
 
-    runNpmInstall(donefn,errfn) {
+    runNpmInstall(pack,donefn,errfn) {
         if (this.logger) {
             this.logger.log(format("Executing 'npm install' on extracted archive"));
         }
@@ -226,7 +286,7 @@ class PackageInstaller {
         }
 
         var proc = child_process.spawn(command,args,{
-            cwd: this.packagePath,
+            cwd: pack.getPackagePath(),
             stdio: ['ignore','ignore','inherit']
         });
 
@@ -251,27 +311,9 @@ class PackageInstaller {
                 );
             }
             else {
-                donefn(true);
+                donefn();
             }
         });
-    }
-
-    initialize(donefn,errfn) {
-        mkdirParents(this.packagePath,this.installPath).then(
-            (ndirs) => {
-                donefn(ndirs == 0);
-            },
-            errfn
-        );
-    }
-
-    rollback(donefn,errfn) {
-        rmdirParents(this.installPath,this.packagePath).then(
-            () => {
-                donefn();
-            },
-            errfn
-        );
     }
 }
 
@@ -286,7 +328,9 @@ class HTTPPackageInstaller extends PackageInstaller {
         this.suffix = this.suffix || ".tar.gz";
     }
 
-    installImpl(packageName,packageVersion,donefn,failfn,errfn) {
+    installImpl(pack,donefn,failfn,errfn) {
+        let { packageName, packageVersion } = pack.getPackageComponents();
+
         var match = packageName.match('^(@[^/]+)/(.*)$');
         var packagePath = packageName;
         if (match) {
@@ -307,6 +351,7 @@ class HTTPPackageInstaller extends PackageInstaller {
             var curindex = index++;
 
             this.installHTTP(
+                pack,
                 format("%s/%s",this.baseURLs[curindex].replace(/\/$/,''),path),
                 donefn,
                 index >= n ? failfn : failInnerFn,
@@ -322,7 +367,11 @@ class NPMPackageInstaller extends PackageInstaller {
     constructor(options) {
         super(options);
 
-        if (!Array.isArray(this.npmRegistries)) {
+        if (typeof this.downloadViaNPM !== "boolean") {
+            this.downloadViaNPM = !!this.downloadViaNPM;
+        }
+
+        if (!this.downloadViaNPM && !Array.isArray(this.npmRegistries)) {
             throw new Error("NPMPackageInstaller: option 'npmRegistries' is required");
         }
 
@@ -331,15 +380,26 @@ class NPMPackageInstaller extends PackageInstaller {
         this.tarballStrip = 1;
     }
 
-    installImpl(packageName,packageVersion,donefn,failfn,errfn) {
-        var packageNamespace = "";
-        var match = packageName.match('^(@[^/]+)/(.*)$');
+    installImpl(pack,donefn,failfn,errfn) {
+        if (this.downloadViaNPM) {
+            // TODO
+        }
+        else {
+            this.installNPMManual(pack,donefn,failfn,errfn);
+        }
+    }
+
+    installNPMManual(pack,donefn,failfn,errfn) {
+        let { packageName, packageVersion } = pack.getPackageComponents();
+
+        let packageNamespace = "";
+        const match = packageName.match('^(@[^/]+)/(.*)$');
         if (match) {
             packageNamespace = match[1] + "%2f";
             packageName = match[2];
         }
 
-        var path = format(
+        const path = format(
             "%s%s/-/%s-%s.tgz",
             packageNamespace,
             packageName,
@@ -347,31 +407,51 @@ class NPMPackageInstaller extends PackageInstaller {
             packageVersion
         );
 
-        var index = 0;
-        var n = this.npmRegistries.length;
-        let failInnerFn = () => {
-            var curindex = index++;
+        const do_install = async () => {
+            let index = 0;
+            const num = this.npmRegistries.length;
+            while (index < num) {
+                try {
+                    const result = await this.installNPMRegistry(
+                        pack,
+                        this.npmRegistries[index],
+                        path
+                    );
 
-            this.installNPMRegistry(
-                this.npmRegistries[curindex],
-                path,
-                donefn,
-                index >= n ? failfn : failInnerFn,
-                errfn
-            );
+                    if (result) {
+                        break;
+                    }
+
+                } catch (err) {
+                    errfn(err);
+                    return;
+                }
+
+                index += 1;
+            }
+
+            index >= num ? failfn() : donefn();
         };
 
-        failInnerFn();
+        do_install();
     }
 
-    installNPMRegistry(registryURL,path,donefn,failfn,errfn) {
-        var url = format(
+    async installNPMRegistry(pack,registryURL,path) {
+        const url = format(
             "%s/%s",
             registryURL.replace(/\/$/,''),
             path
         );
 
-        this.installHTTP(url,donefn,failfn,errfn);
+        return new Promise((resolve,reject) => {
+            this.installHTTP(
+                pack,
+                url,
+                () => { resolve(true); },
+                () => { resolve(false); },
+                reject
+            );
+        });
     }
 }
 
