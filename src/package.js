@@ -65,6 +65,13 @@ class PackageInstall {
     }
 
     /**
+     * @return {string}
+     */
+    getPackageLabel() {
+        return this.packageDir;
+    }
+
+    /**
      * @return {object}
      */
     getPackageComponents() {
@@ -227,28 +234,16 @@ class PackageInstaller {
                 return;
             }
 
-            // Extract the tarball, then run npm install (if configured).
-            this.extractTarball(
-                pack,
-                res,
-                () => {
-                    if (this.performInstall) {
-                        this.runNpmInstall(pack,donefn,errfn);
-                    }
-                    else {
-                        donefn();
-                    }
-                },
-                errfn
-            );
+            // Extract the tarball.
+            this.extractTarball(pack,res,donefn,errfn);
         });
 
         request.on("error",errfn);
     }
 
-    extractTarball(pack,res,donefn,errfn) {
+    extractTarball(pack,inputStream,donefn,errfn) {
         if (this.logger) {
-            this.logger.log(format("Extracting archive '%s'...",path.parse(res.req.path).base));
+            this.logger.log(format("Extracting archive for package '%s'...",pack.getPackageLabel()));
         }
 
         var tarstream = tar.x({
@@ -258,36 +253,30 @@ class PackageInstaller {
 
         tarstream.on('warn',errfn);
         tarstream.on('err',errfn);
-        tarstream.on('end',donefn);
+        tarstream.on('end',() => {
+            // Run NPM install if configured.
+            if (this.performInstall) {
+                this.runNpmInstall(pack,donefn,errfn);
+            }
+            else {
+                donefn();
+            }
+        });
 
-        res.pipe(tarstream);
+        inputStream.pipe(tarstream);
     }
 
-    runNpmInstall(pack,donefn,errfn) {
-        if (this.logger) {
-            this.logger.log(format("Executing 'npm install' on extracted archive"));
+    runNPMCommand(args,cwd,hasStdout,donefn,errfn) {
+        const command = process.platform == 'win32' ? 'npm.cmd' : 'npm';
+
+        const stdio = ['ignore','ignore','inherit'];
+        if (hasStdout) {
+            stdio[1] = 'pipe';
         }
 
-        if (process.platform == 'win32') {
-            var command = 'npm.cmd';
-        }
-        else {
-            var command = 'npm';
-        }
-
-        var args = [
-            "install",
-            "-s",
-            "--no-package-lock",
-            "--no-audit"
-        ];
-        if (this.noscripts) {
-            args.push("--ignore-scripts");
-        }
-
-        var proc = child_process.spawn(command,args,{
-            cwd: pack.getPackagePath(),
-            stdio: ['ignore','ignore','inherit']
+        const proc = child_process.spawn(command,args,{
+            cwd,
+            stdio
         });
 
         proc.on('exit', (code,signal) => {
@@ -314,6 +303,26 @@ class PackageInstaller {
                 donefn();
             }
         });
+
+        return proc.stdout;
+    }
+
+    runNpmInstall(pack,donefn,errfn) {
+        if (this.logger) {
+            this.logger.log(format("Executing 'npm install' on extracted archive"));
+        }
+
+        const args = [
+            "install",
+            "-s",
+            "--no-package-lock",
+            "--no-audit"
+        ];
+        if (this.noscripts) {
+            args.push("--ignore-scripts");
+        }
+
+        this.runNPMCommand(args,pack.getPackagePath(),false,donefn,errfn);
     }
 }
 
@@ -382,11 +391,93 @@ class NPMPackageInstaller extends PackageInstaller {
 
     installImpl(pack,donefn,failfn,errfn) {
         if (this.downloadViaNPM) {
-            // TODO
+            this.installNPMCmd([pack],donefn,failfn,errfn);
         }
         else {
             this.installNPMManual(pack,donefn,failfn,errfn);
         }
+    }
+
+    installNPMCmd(packlist,donefn,failfn,errfn) {
+        const do_install = async () => {
+            const results = await this.downloadNPMTarballs(packlist);
+
+            let index = 0;
+            while (index < results.length) {
+                try {
+                    await this.installNPMPack(results[index]);
+                } catch (err) {
+                    errfn(err);
+                    return;
+                }
+
+                index += 1;
+            }
+
+            index < results.length ? failfn() : donefn();
+        };
+
+        do_install().catch(errfn);
+    }
+
+    async downloadNPMTarballs(packlist) {
+        const args = [
+            // Allow error logs to be displayed on stderr to provide feedback.
+            '--loglevel',
+            'error',
+
+            // Use pack command to grab tarball using npm download/cache
+            // mechanism.
+            'pack'
+        ];
+
+        for (let i = 0;i < packlist.length;++i) {
+            args.push(packlist[i].getPackageLabel());
+        }
+
+        const results = await new Promise((resolve,reject) => {
+            const chunks = [];
+            const stdout = this.runNPMCommand(
+                args,
+                this.installPath,
+                true,
+                () => {
+                    const lines = Buffer.concat(chunks).toString("utf8")
+                          .split("\n")
+                          .map((s) => s.trim())
+                          .filter((s) => !!s);
+
+                    resolve(lines.map((line,index) => {
+                        return {
+                            tarball: path.join(this.installPath,line),
+                            pack: packlist[index]
+                        };
+                    }));
+                },
+                reject
+            );
+
+            stdout.on("data",(chunk) => {
+                chunks.push(chunk);
+            });
+        });
+
+        return results;
+    }
+
+    async installNPMPack(result) {
+        // Extract package tarball.
+        await new Promise((resolve,reject) => {
+            const inputStream = fs.createReadStream(result.tarball);
+            this.extractTarball(result.pack,inputStream,resolve,reject);
+        });
+
+        // Unlink tarball file.
+        await new Promise((resolve,reject) => {
+            fs.unlink(result.tarball,(err) => {
+                err ? reject(err) : resolve();
+            });
+        });
     }
 
     installNPMManual(pack,donefn,failfn,errfn) {
@@ -433,7 +524,7 @@ class NPMPackageInstaller extends PackageInstaller {
             index >= num ? failfn() : donefn();
         };
 
-        do_install();
+        do_install().catch(errfn);
     }
 
     async installNPMRegistry(pack,registryURL,path) {
