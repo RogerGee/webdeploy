@@ -6,7 +6,7 @@
 
 const fs = require("fs");
 const pathModule = require("path");
-const { format } = require("util");
+const { format, promisify } = require("util");
 
 const sysconfig = require("./sysconfig");
 const { pluginDirectories: PLUGIN_DIRS } = sysconfig;
@@ -31,10 +31,10 @@ const AUDITED_PLUGINS = {
 
 /**
  * Provides useful functionality for a plugin to use during its audit phase.
- *
  */
 class AuditContext {
-    constructor(plugin,logger,auditor) {
+    constructor(plugin,tree,logger,auditor) {
+        this.tree = tree;
         this.logger = logger;
         this.auditor = auditor;
         this.basePath = sysconfig.makePath("cache",plugin.pluginId);
@@ -98,6 +98,46 @@ class AuditContext {
     createOrders() {
         return Object.values(this.plugins.build)
             .concat(Object.values(this.plugins.deploy));
+    }
+
+    /**
+     * Tests a path relative.
+     *
+     * @return {Promise<boolean>}
+     */
+    async testPath(path) {
+        if (!this.tree) {
+            return false;
+        }
+
+        const fullPath = pathModule.join(this.tree.getPath(),path);
+
+        try {
+            const stats = await promisify(fs.stat)(fullPath);
+            return stats.isDirectory();
+
+        } catch (ex) {
+            if (ex.code != 'ENOENT') {
+                throw ex;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Loads a blob from the attached tree (if any).
+     *
+     * @return {Promise<stream.Readable|null>}
+     *  Returns a Promise to a readable stream if the blob could be loaded,
+     *  otherwise the Promise resolves to null.
+     */
+    async getBlob(blobPath) {
+        if (this.tree) {
+            return this.tree.getBlob(blobPath);
+        }
+
+        return null;
     }
 
     /**
@@ -245,6 +285,7 @@ class PluginAuditor {
      * Creates a new PluginAuditor instance.
      */
     constructor() {
+        this.tree = null;
         this.logger = null;
         this.orders = [];
         this.plugins = { build:{}, deploy:{} };
@@ -257,10 +298,21 @@ class PluginAuditor {
     }
 
     /**
+     * Attaches a tree instance to the auditor. The tree can be used by plugins
+     * for loading files during the audit phase.
+     *
+     * @param {module:tree~TreeBase} tree
+     *  The tree instance to attach to the auditor.
+     */
+    attachTree(tree) {
+        this.tree = tree;
+    }
+
+    /**
      * Attaches a logger to the auditor. The auditor will write log messages to
      * this logger as it audits/installs plugins.
      *
-     * @param Object logger
+     * @param {object} logger
      */
     attachLogger(logger) {
         this.logger = logger;
@@ -407,7 +459,7 @@ class PluginAuditor {
 
         // If the plugin provides its own 'audit' procedure, invoke it.
         if (typeof plugin.pluginObject.audit === 'function' && settings) {
-            var context = new AuditContext(plugin,this.logger);
+            var context = new AuditContext(plugin,this.tree,this.logger);
             var promise = plugin.pluginObject.audit(context,settings);
 
             if (!(promise instanceof Promise)) {

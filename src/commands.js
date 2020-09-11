@@ -147,6 +147,7 @@ function deployBuildStep(tree,options) {
         // will ensure all plugins are loadable or that we error out if a plugin
         // is not found.
 
+        auditor.attachTree(tree);
         auditor.attachLogger(logger);
 
         return new Promise((resolve,reject) => {
