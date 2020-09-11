@@ -554,11 +554,16 @@ function config(repoOrTreePath,deployPath,key,value) {
 
 function info(repoOrTreePath,deployPath) {
     var options = {
+        createTree: false,
         createDeployment: false,
         deployPath
     };
 
     return createTreeDecide(repoOrTreePath,options).then((tree) => {
+        if (!tree.exists()) {
+            throw new WebdeployError("Path "+repoOrTreePath+" is not a webdeploy project tree");
+        }
+
         logger.log("*"+repoOrTreePath+"*");
         logger.pushIndent();
 
@@ -589,12 +594,17 @@ function info(repoOrTreePath,deployPath) {
 
 function purge(repoOrTreePath,deployPath) {
     var options = {
+        createTree: false,
         createDeployment: false,
         deployPath,
         noexist: true
     };
 
     return createTreeDecide(repoOrTreePath,options).then((tree) => {
+        if (!tree.exists()) {
+            throw new WebdeployError("Path "+repoOrTreePath+" is not a webdeploy project tree");
+        }
+
         if (!tree.hasDeployment()) {
             logger.log(
                 "No such deployment at " + logger.filter(tree.getDeployConfig('deployPath'))

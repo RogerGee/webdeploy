@@ -149,6 +149,10 @@ class TreeBase {
         row = stmt.get(treePath);
 
         if (!row) {
+            if (this.option("createTree") === false) {
+                return;
+            }
+
             info = storage.prepare(`INSERT INTO tree (path) VALUES (?)`).run(treePath);
             this.treeRecord = {
                 id: info.lastInsertRowid,
@@ -365,14 +369,27 @@ class TreeBase {
     }
 
     /**
+     * Determines if the tree exists as a webdeploy project tree.
+     *
+     * @return {boolean}
+     */
+    exists() {
+        return !!this.treeRecord;
+    }
+
+    /**
      * Gets the tree record associated with the tree.
      *
      * @return {object}
      */
     getTreeRecord() {
-        var cpy = Object.assign({},this.treeRecord);
-        delete cpy['id'];
-        return cpy;
+        if (this.treeRecord) {
+            var cpy = Object.assign({},this.treeRecord);
+            delete cpy['id'];
+            return cpy;
+        }
+
+        throw new WebdeployError("Tree does not exist");
     }
 
     /**
@@ -382,6 +399,10 @@ class TreeBase {
      * @param {string} value
      */
     writeTreeRecord(key,value) {
+        if (!this.treeRecord) {
+            throw new WebdeployError("Tree does not exist");
+        }
+
         if (key in this.treeRecord && key != 'id') {
             this.treeRecord[key] = value;
             this.dirty.treeRecord = true;
@@ -395,6 +416,10 @@ class TreeBase {
      * Saves the tree record info to disk.
      */
     saveTreeRecord() {
+        if (!this.treeRecord) {
+            throw new WebdeployError("Tree does not exist");
+        }
+
         if (!this.dirty.treeRecord) {
             return;
         }
