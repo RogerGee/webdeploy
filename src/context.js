@@ -252,10 +252,20 @@ class DeployContext {
 
                     // Create a null connection for each source ancestor in the
                     // graph. This allows the original include target to be
-                    // reloaded in a subsequent build.
-                    rm.forEach((depend) => {
-                        this.graph.addNullConnection(depend);
-                    });
+                    // ignored in a subsequent build when no other dependencies
+                    // have been loaded.
+                    if (rm.length > 0) {
+                        // Add null connections for the ancestors.
+                        rm.forEach((depend) => {
+                            this.graph.addNullConnection(depend);
+                        });
+                    }
+                    else {
+                        // If the node didn't have any ancestors (i.e. is its
+                        // own ancestor), then we add a singular null connection
+                        // to it so that it is ignored.
+                        this.graph.addNullConnection(targetPath);
+                    }
                 }
             }
         });
