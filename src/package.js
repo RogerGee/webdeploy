@@ -39,14 +39,15 @@ class PackageInstall {
     }
 
     /**
-     * Checks if the package is already installed.
+     * Checks if the package is already installed; creates the package directory
+     * if not.
      *
      * @param {function} donefn
      *  Called with 'true' if the package already exists.
      * @param {function} errfn
      *  Called when an error occurs.
      */
-    exists(donefn,errfn) {
+    initialize(donefn,errfn) {
         mkdirParents(this.packagePath,this.installPath).then(
             (ndirs) => {
                 donefn(ndirs == 0);
@@ -98,6 +99,21 @@ class PackageInstall {
     require() {
         return require(this.packagePath);
     }
+}
+
+function rollback_packlist(packlist,donefn,errfn) {
+    async function do_rollback() {
+        let i = 0;
+        while (i < packlist.length) {
+            const pack = packlist[i];
+            await new Promise((resolve,reject) => {
+                pack.rollback(resolve,reject);
+            });
+            i += 1;
+        }
+    }
+
+    do_rollback().then(donefn).catch(errfn);
 }
 
 /**
@@ -165,7 +181,7 @@ class PackageInstaller {
         const pack = new PackageInstall(this.installPath,packageName,packageVersion);
 
         // Ensure the package path exists before installation.
-        pack.exists(
+        pack.initialize(
             (already) => {
                 if (already && !this.overwrite) {
                     donefn(pack);
@@ -194,8 +210,69 @@ class PackageInstaller {
         );
     }
 
+    installPackageMultiple(packageList,donefn,failfn,errfn) {
+        const packlist = packageList.map(
+            ([name,version]) => new PackageInstall(this.installPath,name,version)
+        );
+
+        const init = Promise.all(packlist.map((pack) => {
+            return new Promise((resolve,reject) => {
+                pack.initialize(resolve,reject);
+            });
+        }));
+
+        init.then((results) => {
+            const filtered = packlist.filter((pack,index) => {
+                return !results[index];
+            });
+
+            this.installMultipleImpl(
+                filtered,
+                () => {
+                    donefn(packlist);
+                },
+                () => {
+                    rollback_packlist(filtered,failfn,errfn);
+                },
+                (err) => {
+                    rollback_packlist(filtered,() => { errfn(err); },errfn);
+                }
+            );
+        });
+
+        init.catch(errfn);
+    }
+
     installImpl(pack,donefn,failfn,errfn) {
         throw new Error("Must implement installImpl");
+    }
+
+    installMultipleImpl(packlist,donefn,failfn,errfn) {
+        const do_install = async () => {
+            let i = 0;
+            while (i < packlist.length) {
+                const pack = packlist[i];
+                const result = await new Promise((resolve,reject) => {
+                    this.installImpl(
+                        pack,
+                        () => { resolve(true); },
+                        () => { resolve(false); },
+                        reject
+                    );
+                });
+
+                if (!result) {
+                    failfn(pack);
+                    return;
+                }
+
+                i += 1;
+            }
+
+            donefn();
+        };
+
+        do_install().catch(errfn);
     }
 
     installHTTP(pack,url,donefn,failfn,errfn) {
@@ -316,7 +393,8 @@ class PackageInstaller {
             "install",
             "-s",
             "--no-package-lock",
-            "--no-audit"
+            "--no-audit",
+            "--production"
         ];
         if (this.noscripts) {
             args.push("--ignore-scripts");
@@ -398,7 +476,21 @@ class NPMPackageInstaller extends PackageInstaller {
         }
     }
 
+    installMultipleImpl(packlist,donefn,failfn,errfn) {
+        if (this.downloadViaNPM) {
+            this.installNPMCmd(packlist,donefn,failfn,errfn);
+        }
+        else {
+            PackageInstaller.prototype.installMultipleImpl.call(this,packlist,donefn,failfn,errfn);
+        }
+    }
+
     installNPMCmd(packlist,donefn,failfn,errfn) {
+        if (packlist.length == 0) {
+            donefn();
+            return;
+        }
+
         const do_install = async () => {
             const results = await this.downloadNPMTarballs(packlist);
 
