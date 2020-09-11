@@ -67,7 +67,13 @@ class RepoTree extends TreeBase {
 
     // Implements TreeBase.getPath().
     getPath() {
-        return this.repo.path();
+        let path = this.repo.path();
+        const match = path.match(/\/\.git\/?$/);
+        if (match) {
+            path = path.substring(0,path.length-match[0].length);
+        }
+
+        return path;
     }
 
     // Implements TreeBase.getBlob().

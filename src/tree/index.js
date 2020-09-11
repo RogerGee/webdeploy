@@ -4,6 +4,8 @@
  * @module tree
  */
 
+const path = require("path");
+
 const configuration = require("../config.js");
 const storage = require("../storage.js");
 const { WebdeployError } = require("../error");
@@ -268,6 +270,15 @@ class TreeBase {
      */
     getPath() {
         throw new WebdeployError("TreeBase.getPath() must be implemented");
+    }
+
+    /**
+     * Gets the path to the tree relative to the current working directory.
+     *
+     * @return {string}
+     */
+    getRelativePath() {
+        return path.relative('',this.getPath());
     }
 
     /**
