@@ -45,6 +45,7 @@ class DependencyGraph {
      */
     constructor(repr) {
         this.connections = {};
+        this.links = {};
         this.forwardMappings = new Map();
         this.reverseMappings = new Map();
         this.resolv = false;
@@ -249,8 +250,9 @@ class DependencyGraph {
     }
 
     /**
-     * Adds a raw connection to the dependency graph. The connection will denote
-     * 'a' => 'b'.
+     * Adds a connection between nodes in the dependency graph. A connection
+     * denotes that one node derives another such that A==>B means "A derives
+     * B".
      *
      * @param {string} a
      * @param {string} b
@@ -267,6 +269,24 @@ class DependencyGraph {
         }
         else {
             this.connections[a] = [b];
+        }
+    }
+
+    /**
+     * Adds a raw, null connection to the dependency graph.
+     *
+     * @param {string} a
+     */
+    addNullConnection(a) {
+        if (!a) {
+            return;
+        }
+
+        if (a in this.connections) {
+            this.connections.push(null);
+        }
+        else {
+            this.connections[a] = [null];
         }
     }
 
@@ -295,24 +315,6 @@ class DependencyGraph {
     }
 
     /**
-     * Adds a raw, null connection to the dependency graph.
-     *
-     * @param {string} a
-     */
-    addNullConnection(a) {
-        if (!a) {
-            return;
-        }
-
-        if (a in this.connections) {
-            this.connections.push(null);
-        }
-        else {
-            this.connections[a] = [null];
-        }
-    }
-
-    /**
      * Walks through each raw connection and invokes the specified callback.
      *
      * @param {module:depends~walkCallback} callback
@@ -322,6 +324,27 @@ class DependencyGraph {
 
         for (let i = 0;i < keys.length;++i) {
             callback(this,keys[i],this.connections[keys[i]]);
+        }
+    }
+
+    /**
+     * Adds a link to the dependency graph. A link is an implied connection that
+     * is only formed completely at resolve time. Link A <- B denotes that every
+     * connection from A is also from B.
+     *
+     * @param {string} a
+     * @param {string} b
+     */
+    addLink(a,b) {
+        if (a == b) {
+            return;
+        }
+
+        if (a in this.links) {
+            this.links[a].push(b);
+        }
+        else {
+            this.links[a] = [b];
         }
     }
 
@@ -342,20 +365,20 @@ class DependencyGraph {
      * list of connections required for most operations on the dependency graph.
      */
     resolve() {
-        var found = new Set();
+        const found = new Set();
         this.resolv = false;
 
         // Compute forward mappings.
-        this.forwardMappings.clear();
+        const mappings = new Map();
         Object.keys(this.connections).forEach((node) => {
-            var leaves = new Set();
-            var stk = this.connections[node].slice(0);
+            const leaves = new Set();
+            const stk = this.connections[node].slice(0);
 
             while (stk.length > 0) {
-                var next = stk.pop();
+                const next = stk.pop();
 
                 if (next in this.connections) {
-                    stk = stk.concat(this.connections[next]);
+                    this.connections[next].forEach((nextNode) => stk.push(nextNode));
                 }
                 else {
                     leaves.add(next);
@@ -364,8 +387,24 @@ class DependencyGraph {
                 found.add(next);
             }
 
-            this.forwardMappings.set(node,Array.from(leaves));
+            const nodes = [node];
+            if (node in this.links) {
+                this.links[node].forEach((linked) => nodes.push(linked));
+            }
+
+            nodes.forEach((node) => {
+                const mapping = mappings.get(node);
+                if (mapping) {
+                    leaves.forEach((x) => mapping.add(x));
+                }
+                else {
+                    mappings.set(node,leaves);
+                }
+            });
         });
+
+        this.forwardMappings.clear();
+        mappings.forEach((set,node) => this.forwardMappings.set(node,Array.from(set)));
 
         // Remove all nodes in the found set to get just the top-level nodes in
         // the mappings.
@@ -373,11 +412,11 @@ class DependencyGraph {
 
         // Invoke post-resolve hooks.
         if (this.hooks.length > 0) {
-            var keys = Array.from(this.forwardMappings.keys());
+            const keys = Array.from(this.forwardMappings.keys());
 
             for (let i = 0;i < this.hooks.length;++i) {
                 for (let j = 0;j < keys.length;++j) {
-                    var node = keys[j];
+                    const node = keys[j];
                     this.hooks[i](this,node,this.forwardMappings.get(node));
                 }
             }
@@ -393,6 +432,7 @@ class DependencyGraph {
      */
     reset() {
         this.connections = {};
+        this.links = {};
         this.forwardMappings.clear();
         this.reverseMappings.clear();
         this.resolv = false;
@@ -418,6 +458,7 @@ class DependencyGraph {
 
             var bucket = this.connections[elem];
             delete this.connections[elem];
+            delete this.links[elem];
 
             bucket.forEach((elem) => {
                 stk.push(elem);
@@ -465,6 +506,7 @@ class DependencyGraph {
                         || (children.length == 1 && children[0] === null))
                     {
                         delete this.connections[level];
+                        delete this.links[level];
 
                         const parents = this.lookupReverse(level);
                         if (parents) {
