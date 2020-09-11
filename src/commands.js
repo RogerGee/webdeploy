@@ -592,7 +592,7 @@ function info(repoOrTreePath,deployPath) {
     });
 }
 
-function purge(repoOrTreePath,deployPath) {
+function purge(repoOrTreePath,deployPath,purgeAll) {
     var options = {
         createTree: false,
         createDeployment: false,
@@ -605,14 +605,14 @@ function purge(repoOrTreePath,deployPath) {
             throw new WebdeployError("Path "+repoOrTreePath+" is not a webdeploy project tree");
         }
 
-        if (!tree.hasDeployment()) {
+        if (!purgeAll && !tree.hasDeployment()) {
             logger.log(
                 "No such deployment at " + logger.filter(tree.getDeployConfig('deployPath'))
                     + " for " + repoOrTreePath);
             return;
         }
 
-        tree.purgeDeploy();
+        tree.purgeDeploy(purgeAll);
     });
 }
 

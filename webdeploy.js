@@ -63,12 +63,13 @@ commander.command("info [deploy-path]")
 commander.command("purge [deploy-path]")
     .description("purges deployment info for a webdeploy project tree")
     .option("-p, --path [path]","Specifies the project path (default is current directory)")
+    .option("--all","Indicates that the entire project tree is to be purged")
     .action((deployPath,cmd) => {
         var localPath = resolveSourcePath(cmd.path);
         if (deployPath) {
             deployPath = path.resolve(deployPath);
         }
-        commands.purge(localPath,deployPath).catch(reject);
+        commands.purge(localPath,deployPath,!!cmd.all).catch(reject);
     });
 
 commander.command("deploy [path]")

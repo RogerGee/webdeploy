@@ -547,21 +547,47 @@ class TreeBase {
     /**
      * Deletes the deploy record associated with the tree.
      */
-    purgeDeploy() {
-        if (!this.hasDeployment()) {
+    purgeDeploy(purgeTree) {
+        const stmts = [];
+        const vals = [];
+
+        if (this.hasDeployment()) {
+            stmts.push(
+                storage.prepare(
+                    `DELETE FROM deploy_storage WHERE deploy_id = ?`
+                )
+            );
+            vals.push([this.deployId]);
+
+            stmts.push(
+                storage.prepare(
+                    `DELETE FROM deploy WHERE id = ?`
+                )
+            );
+            vals.push([this.deployId]);
+        }
+
+        if (purgeTree && this.exists()) {
+            stmts.push(
+                storage.prepare(
+                    `DELETE FROM tree WHERE id = ?`
+                )
+            );
+            vals.push([this.treeRecord.id]);
+        }
+
+        if (stmts.length == 0) {
             return;
         }
 
-        var stmt1 = storage.prepare(
-            `DELETE FROM deploy_storage WHERE deploy_id = ?`
-        );
-        var stmt2 = storage.prepare(
-            `DELETE FROM deploy WHERE id = ?`
-        );
+        const tr = storage.transaction(() => {
+            for (let i = 0;i < stmts.length;++i) {
+                stmts[i].run(...vals[i]);
+            }
 
-        var tr = storage.transaction(() => {
-            stmt1.run(this.deployId);
-            stmt2.run(this.deployId);
+            if (purgeTree) {
+                this.dirty.treeRecord = false;
+            }
             this.dirty.deployConfig = false;
         });
 
