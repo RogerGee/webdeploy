@@ -101,7 +101,15 @@ function requirePlugin(pluginInfo,kind) {
     }
 
     if (!plugin) {
-        throw new WebdeployError("Cannot load plugin '" + pluginId + "': " + firstErr.toString());
+        if (firstErr.code !== 'MODULE_NOT_FOUND') {
+            throw firstErr;
+        }
+
+        if (!firstErr.message.match(pluginId)) {
+            throw firstErr;
+        }
+
+        throw new WebdeployError("Cannot load plugin '" + pluginId + "'");
     }
 
     // Make sure the plugin module exports the correct interface (i.e. it has an
