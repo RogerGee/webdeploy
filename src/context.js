@@ -53,7 +53,11 @@ class DeployContext {
 
         this.deployPath = deployPath;
         this.builder = builder;
+
+        // Create a link between the builder's output targets and the context's
+        // internal list of targets.
         this.targets = builder.outputTargets;
+
         this.map = {};
         this.graph = builder.options.graph; // DependencyGraph
         this.tree = tree; // git.Tree
@@ -216,6 +220,20 @@ class DeployContext {
         }
 
         return false;
+    }
+
+    /**
+     * Sets up a target to be built using the builder attached to the
+     * context. The target will be automatically removed from the context (if it
+     * was a previous output target); its build product will be added back once
+     * the builder execution is finished.
+     *
+     * @param {module:target~Target[]} target
+     * @param {object[]} handlers
+     */
+    buildTarget(target,handlers) {
+        this.builder.pushInitialTargetWithHandlers(target,handlers);
+        this.removeTargets(target);
     }
 
     /**

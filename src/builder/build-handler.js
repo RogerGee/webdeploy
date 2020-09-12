@@ -27,7 +27,13 @@ class BuildHandler {
      */
     constructor(key,settings) {
         this.key = key;
-        Object.assign(this,settings);
+
+        if (typeof settings === "object") {
+            Object.assign(this,settings);
+        }
+        else {
+            this.id = settings;
+        }
 
         // Apply defaults.
         if (typeof this.dev === 'undefined') {
