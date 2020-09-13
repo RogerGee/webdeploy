@@ -5,7 +5,6 @@
  */
 
 const { DeployConfig } = require("./deploy-config");
-const { parseFullPluginId } = require("../plugin");
 const audit = require("../audit");
 const DeployContext = require("../context");
 const { WebdeployError } = require("../error");
@@ -42,7 +41,6 @@ class Deployer {
             throw new WebdeployError("No tree specified in deployment options");
         }
 
-        this.context = null; // NOTE: DeployContext is created during execute() step.
         this.deployConfig = new DeployConfig(options.deployConfig);
         this.deployPath = options.deployPath;
         this.callbacks = options.callbacks || {};
@@ -74,12 +72,12 @@ class Deployer {
             // instances.)
             for (let i = 0;i < results.length;++i) {
                 if (typeof results[i].resolve == "function") {
-                    results[i].resolve(results[i].pluginObject);
+                    results[i].resolve(results[i].plugin);
                 }
             }
 
             this.state = DEPLOYER_STATE_FINALIZED;
-        })
+        });
     }
 
     /**
@@ -96,45 +94,20 @@ class Deployer {
             throw new WebdeployError("Deployer has invalid state: not finalized");
         }
 
-        this.context = new DeployContext(this.deployPath,builder,this.tree,this.prevGraph);
-
-        // Hijack the chain() method so we can allow string plugin IDs that map
-        // to the current deploy plugin's requires and issue the chain
-        // callbacks.
-
-        this.context.chain = (nextPlugin,settings) => {
-            var plugin;
-
-            if (typeof nextPlugin === "object") {
-                plugin = nextPlugin;
-            }
-            else {
-                var desc = parseFullPluginId(nextPlugin);
-                plugin = {
-                    id: desc.pluginId,
-                    version: desc.pluginVersion
-                }
-            }
-
-            if (this.callbacks.beforeChain) {
-                this.callbacks.beforeChain(this.context.currentPlugin,plugin);
-            }
-
-            return DeployContext.prototype.chain.call(this.context,plugin,settings).then((retval) => {
-                if (this.callbacks.afterChain) {
-                    this.callbacks.afterChain(plugin);
-                }
-
-                return retval;
-            })
-        }
+        const context = new DeployContext(
+            this.deployPath,
+            builder,
+            this.tree,
+            this.prevGraph,
+            this.callbacks
+        );
 
         // Execute deploy plugin(s).
 
-        return this.deployConfig.execute(this.context);
+        return this.deployConfig.execute(context);
     }
 }
 
 module.exports = {
     Deployer
-}
+};

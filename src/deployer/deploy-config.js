@@ -4,7 +4,9 @@
  * @module deployer/deploy-config
  */
 
-const { PLUGIN_KINDS, parseFullPluginId } = require("../plugin");
+const { format } = require("util");
+const { Plugin } = require("../plugin");
+const { BuildHandler } = require("../builder/build-handler");
 const { WebdeployError } = require("../error");
 
 /**
@@ -15,7 +17,6 @@ class DeployConfig {
      * @param {object} settings
      *  Settings passed in from the deploy configuration.
      * @param {string} settings.id
-     * @param {string} [settings.version="latest"]
      * @param {object} [settings.chain]
      * @param {object[]} [settings.chain.predeploy]
      * @param {object[]} [settings.chain.postdeploy]
@@ -34,12 +35,6 @@ class DeployConfig {
 
         // Apply defaults.
 
-        if (typeof this.version === "undefined") {
-            var full = parseFullPluginId(this.id);
-            this.id = full.pluginId,
-            this.version = full.pluginVersion;
-        }
-
         this.plugin = null; // set later after auditing
 
         if (typeof this.requires === "undefined") {
@@ -57,10 +52,6 @@ class DeployConfig {
 
         if (typeof this.id !== "string") {
             throw new WebdeployError("Cannot create deploy config: invalid or missing 'id' property");
-        }
-
-        if (typeof this.version !== "string") {
-            throw new WebdeployError("Cannot create deploy config: invalid 'version' property");
         }
 
         if (this.chain) {
@@ -91,19 +82,17 @@ class DeployConfig {
         }
 
         for (var key of ['build','deploy']) {
-            if (!Array.isArray(this.requires[key])) {
+            if (typeof this.requires[key] === "undefined") {
+                this.requires[key] = [];
+            }
+            else if (!Array.isArray(this.requires[key])) {
                 this.requires[key] = [this.requires[key]];
             }
-            for (let i = 0;i < this.requires[key].length;++i) {
-                let value = this.requires[key][i];
-                if (typeof value == "string") {
-                    this.requires[key][i] = parseFullPluginId(value);
-                }
-                else if (typeof value !== "object" || typeof value.id !== "string") {
-                    throw new WebdeployError("Cannot create deploy config: invalid plugin in 'requires'");
-                }
-            }
         }
+
+        const buildKey = format("%s.requires.build",this.id);
+        this.requires.build = this.requires.build.map((req) => new BuildHandler(buildKey,req));
+        this.requires.deploy = this.requires.deploy.map((req) => new DeployConfig(req));
     }
 
     /**
@@ -113,48 +102,33 @@ class DeployConfig {
      * @return {module:audit~auditOrder[]}
      */
     getAuditOrders() {
-        var orders = [];
+        let orders = [];
 
         // Add configured deploy plugin first.
         orders.push({
-            plugin: {
-                pluginId: this.id,
-                pluginVersion: this.version,
-                pluginKind: PLUGIN_KINDS.DEPLOY_PLUGIN,
+            desc: {
+                id: this.id,
+                type: Plugin.TYPES.DEPLOY,
 
                 // NOTE: This function is used by the Deployer class to set the
                 // plugin on this DeployConfig instance.
-                resolve: (pluginObject) => {
-                    this.plugin = pluginObject;
+                resolve: (plugin) => {
+                    this.plugin = plugin;
                 }
             },
 
             settings: this
         });
 
-        // Add requires configured in deploy plugin. Note that these requires do
-        // not allow a config so we pass an empty object.
-        for (let key of ['build','deploy']) {
-            let pluginKind =
-                (key == 'build')
-                ? PLUGIN_KINDS.BUILD_PLUGIN
-                : PLUGIN_KINDS.DEPLOY_PLUGIN;
+        // Add plugin requires: build and deploy.
 
-            for (let i = 0;i < this.requires[key].length;++i) {
-                orders.push({
-                    plugin: Object.assign(
-                        {
-                            pluginKind
-                        },
-                        this.requires[key][i]
-                    ),
-
-                    settings: (key == 'build' ? [{}] : {})
-                });
-            }
-        }
+        this.requires.build.forEach((handler) => orders.push(handler.makeAuditOrder()));
+        this.requires.deploy.forEach((config) => {
+            orders = orders.concat(config.getAuditOrders());
+        });
 
         // Recursively add all chained plugins.
+
         for (var key in this.chain) {
             for (var i = 0;i < this.chain[key].length;++i) {
                 let chain = this.chain[key][i];
@@ -178,44 +152,34 @@ class DeployConfig {
      * @return {Promise}
      *  Promise resolves when the execution has finished.
      */
-    execute(context,asChain) {
-        var predeploy = this.makeChainCallback(context,'predeploy');
-        var exec = () => {
-            if (asChain) {
-                return context.chain(this.plugin,this);
-            }
-
-            return context.execute(this.plugin,this);
-        };
-        var postdeploy = this.makeChainCallback(context,'postdeploy');
-
-        return predeploy(false).then(exec).then(postdeploy);
+    async execute(context,asChain) {
+        await this.executeChain(context,"predeploy");
+        if (asChain) {
+            await context.chain(this.plugin,this);
+        }
+        else {
+            await context.execute(this.plugin,this);
+        }
+        await this.executeChain(context,"postdeploy");
     }
 
     /**
-     * Creates a callback for invoking deploy chains.
+     * Executes a deploy chain.
      *
      * @param {string} type
      *  Either 'predeploy' or 'postdeploy'.
      *
-     * @return {function}
+     * @return {Promise}
      */
-    makeChainCallback(context,type) {
-        var index = 0;
-        var callback;
+    async executeChain(context,type) {
+        const chain = this.chain[type];
 
-        callback = (done) => {
-            if (index >= this.chain[type].length) {
-                return Promise.resolve(true);
-            }
-
-            return this.chain[type][index++].execute(context,true).then(callback);
-        };
-
-        return callback;
+        for (let i = 0;i < chain.length;++i) {
+            await chain[i].execute(context,true);
+        }
     }
 }
 
 module.exports = {
     DeployConfig
-}
+};

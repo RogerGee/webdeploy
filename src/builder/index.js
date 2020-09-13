@@ -11,6 +11,7 @@ const { format } = require("util");
 const audit = require("../audit");
 const { BuildInclude } = require("./build-include");
 const { BuildHandler } = require("./build-handler");
+const { Plugin } = require("../plugin");
 const { Target } = require("../target");
 const { WebdeployError } = require("../error");
 
@@ -138,38 +139,35 @@ class Builder {
             throw new WebdeployError("Builder has invalid state: cannot finalize");
         }
 
-        var auditOrders = {}; // Generate audit orders grouped by plugin.
-        var inlineHandlers = []; // List all inline handlers.
+        const auditOrders = {}; // Generate audit orders grouped by plugin.
+        const inlineHandlers = []; // List all inline handlers.
 
         // Determine the list of plugins to keep for each include. Also compile
         // the unique set of plugins for the entire build.
 
-        for (var i = 0;i < this.includes.length;++i) {
-            var keep = [];
-            var include = this.includes[i];
+        for (let i = 0;i < this.includes.length;++i) {
+            const keep = [];
+            const include = this.includes[i];
 
-            for (var j = 0;j < include.handlers.length;++j) {
-                var plugin = include.handlers[j];
+            for (let j = 0;j < include.handlers.length;++j) {
+                const handler = include.handlers[j];
 
-                if (!this.acceptsHandler(plugin)) {
+                if (!this.acceptsHandler(handler)) {
                     continue;
                 }
 
-                keep.push(plugin);
+                keep.push(handler);
 
-                if (!plugin.loaderInfo) {
-                    inlineHandlers.push(plugin);
+                if (handler.hasInlinePlugin()) {
+                    inlineHandlers.push(handler);
                     continue;
                 }
 
-                if (plugin.id in auditOrders) {
-                    auditOrders[plugin.id].settings.push(plugin);
+                if (handler.id in auditOrders) {
+                    auditOrders[handler.id].settings.push(handler);
                 }
                 else {
-                    auditOrders[plugin.id] = {
-                        plugin: plugin.loaderInfo,
-                        settings: [plugin]
-                    };
+                    auditOrders[handler.id] = handler.makeAuditOrder();
                 }
             }
 
@@ -187,27 +185,24 @@ class Builder {
             // Set plugins from results.
 
             for (let i = 0;i < results.length;++i) {
-                var result = results[i];
-
-                this.plugins[result.pluginId] = result.pluginObject;
+                const desc = results[i];
+                this.plugins[desc.id] = desc.plugin;
             }
 
             // Create on-the-fly (i.e. inline) plugins for plugin objects
             // providing inline handlers.
 
             for (let i = 0;i < inlineHandlers.length;++i) {
-                var plugin = inlineHandlers[i];
+                const handler = inlineHandlers[i];
 
-                if (plugin.id in this.plugins) {
+                if (handler.id in this.plugins) {
                     throw new WebdeployError(
-                        format(
-                            "Plugin '%s' is already defined: cannot define inline plugin handler",
-                            plugin.id
-                        )
+                        "Plugin '%s' is already defined: cannot define inline plugin handler",
+                        handler.id
                     );
                 }
 
-                this.plugins[plugin.id] = plugin.makeInlinePlugin();
+                this.plugins[handler.id] = handler.makeInlinePlugin();
             }
 
             this.state = BUILDER_STATE_FINALIZED;
@@ -218,7 +213,7 @@ class Builder {
             }
 
             throw err;
-        })
+        });
     }
 
     /**
@@ -299,22 +294,22 @@ class Builder {
         }
 
         for (let i = 0;i < handlers.length;++i) {
-            let plugin = handlers[i];
+            const handler = handlers[i];
 
-            if (plugin.id in this.plugins) {
-                if (plugin.handler) {
+            if (handler.id in this.plugins) {
+                if (handler.handler) {
                     throw new WebdeployError(
                         format("Plugin '%s' is already defined: cannot define inline plugin handler",
-                               plugin.id)
+                               handler.id)
                     );
                 }
             }
             else {
-                if (plugin.handler) {
-                    this.plugins[plugin.id] = plugin.makeInlinePlugin();
+                if (handler.hasInlinePlugin()) {
+                    this.plugins[handler.id] = handler.makeInlinePlugin();
                 }
                 else {
-                    this.plugins[plugin.id] = audit.lookupBuildPlugin(plugin.loaderInfo);
+                    this.plugins[handler.id] = audit.lookupBuildPlugin(handler.id);
                 }
             }
         }

@@ -4,9 +4,7 @@
  * @module builder/build-handler
  */
 
-const { format } = require("util");
-
-const { PLUGIN_KINDS, parseFullPluginId } = require("../plugin");
+const { Plugin } = require("../plugin");
 const { WebdeployError } = require("../error");
 
 /**
@@ -47,38 +45,56 @@ class BuildHandler {
 
         if (typeof this.id !== "string") {
             throw WebdeployError(
-                format("Handler '%s' is malformed: invalid or missing 'id' property",this.key)
+                "Handler '%s' is malformed: invalid or missing 'id' property",
+                this.key
             );
         }
 
         if (typeof this.dev !== "boolean") {
             throw WebdeployError(
-                format("Handler '%s' (%s) is malformed: invalid 'dev' property",this.key,this.id)
+                "Handler '%s' (%s) is malformed: invalid 'dev' property",
+                this.key,
+                this.id
             );
         }
 
         if (typeof this.build !== "boolean") {
             throw WebdeployError(
-                format("Handler '%s' (%s) is malformed: invalid 'build' property",this.key,this.id)
+                "Handler '%s' (%s) is malformed: invalid 'build' property",
+                this.key,
+                this.id
             );
         }
 
-        // Parse a full plugin ID if no version was provided.
-        if (typeof this.version === "undefined") {
-            var full = parseFullPluginId(this.id);
-            this.id = full.pluginId,
-            this.version = full.pluginVersion;
+        if (this.handler && typeof this.handler !== "function") {
+            throw WebdeployError(
+                "Handler '%s' (%s) is malformed: inline handler must be function",
+                this.key,
+                this.id
+            );
         }
+    }
 
-        // If the handler doesn't supply an inline handler, then we assume it is
-        // to be loaded from a plugin.
-        if (!this.handler) {
-            this.loaderInfo = {
-                pluginId: this.id,
-                pluginVersion: this.version,
-                pluginKind: PLUGIN_KINDS.BUILD_PLUGIN
-            }
-        }
+    /**
+     * @return {module:audit~auditOrder}
+     */
+    makeAuditOrder() {
+        return {
+            desc: {
+                id: this.id,
+                type: Plugin.TYPES.BUILD,
+            },
+            settings: [this]
+        };
+    }
+
+    /**
+     * Determines if the handler has an inline plugin.
+     *
+     * @return {boolean}
+     */
+    hasInlinePlugin() {
+        return !!this.handler;
     }
 
     /**
@@ -94,10 +110,10 @@ class BuildHandler {
 
         return {
             exec: this.handler
-        }
+        };
     }
 }
 
 module.exports = {
     BuildHandler
-}
+};

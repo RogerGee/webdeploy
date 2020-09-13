@@ -6,7 +6,6 @@
 
 const minimatch = require("minimatch");
 const { format } = require("util");
-
 const { BuildHandler } = require("./build-handler");
 const { WebdeployError } = require("../error");
 
@@ -70,7 +69,8 @@ class BuildInclude {
         }
         else if (typeof this.match != "undefined") {
             throw new WebdeployError(
-                format("Include '%s' is malformed: invalid 'match' property",this.key)
+                "Include '%s' is malformed: invalid 'match' property",
+                this.key
             );
         }
 
@@ -82,7 +82,8 @@ class BuildInclude {
         }
         else if (typeof this.pattern != "undefined") {
             throw new WebdeployError(
-                format("Include '%s' is malformed: invalid 'pattern' property",this.key)
+                "Include '%s' is malformed: invalid 'pattern' property",
+                this.key
             );
         }
 
@@ -94,7 +95,8 @@ class BuildInclude {
         }
         else if (typeof this.exclude != "undefined") {
             throw new WebdeployError(
-                format("Include '%s' is malformed: invalid 'exclude' property",this.key)
+                "Include '%s' is malformed: invalid 'exclude' property",
+                this.key
             );
         }
 
@@ -103,19 +105,22 @@ class BuildInclude {
         }
         else {
             throw new WebdeployError(
-                format("Include '%s' is malformed: invalid 'handlers' property",this.key)
+                "Include '%s' is malformed: invalid 'handlers' property",
+                this.key
             );
         }
 
         if (typeof this.build != "boolean") {
             throw new WebdeployError(
-                format("Include '%s' is malformed: invalid 'build' property",this.key)
+                "Include '%s' is malformed: invalid 'build' property",
+                this.key
             );
         }
 
         if (typeof this.options != "object") {
             throw new WebdeployError(
-                format("Include '%s' is malformed: invalid 'options' property",this.key)
+                "Include '%s' is malformed: invalid 'options' property",
+                this.key
             );
         }
     }
@@ -155,4 +160,4 @@ class BuildInclude {
 
 module.exports = {
     BuildInclude
-}
+};

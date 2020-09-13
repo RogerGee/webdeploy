@@ -6,22 +6,22 @@
 
 const pathModule = require("path");
 const { format } = require("util");
-
 const { Builder } = require("./builder");
 const { makeOutputTarget } = require("./target");
 const { lookupDeployPlugin } = require("./audit");
+const { Plugin } = require("./plugin");
+const { WebdeployError } = require("./error");
 
-function resolveDeployPlugin(plugin) {
-    // If the object does not have the correct interface, then assume it is a
-    // description and look up the required plugin.
-    if (!plugin.exec) {
-        return lookupDeployPlugin({
-            pluginId: plugin.id,
-            pluginVersion: plugin.version
-        });
+function resolve_deploy_plugin(plugin) {
+    if (plugin instanceof Plugin) {
+        return plugin;
     }
 
-    return plugin;
+    if (typeof plugin !== "string") {
+        throw new WebdeployError("Cannot execute deploy plugin: %s",JSON.stringify(plugin));
+    }
+
+    return lookupDeployPlugin(plugin);
 }
 
 /**
@@ -48,8 +48,9 @@ class DeployContext {
      *  The git tree instance associated with the deployment.
      * @param {module:depends~ConstDependencyGraph} prevGraph
      *  The previous dependency graph state.
+     * @param {object} callbacks
      */
-    constructor(deployPath,builder,tree,prevGraph) {
+    constructor(deployPath,builder,tree,prevGraph,callbacks) {
         this.deployPath = deployPath;
         this.builder = builder;
 
@@ -62,6 +63,7 @@ class DeployContext {
         this.prevGraph = prevGraph;
         this.tree = tree; // git.Tree
         this.logger = require("./logger");
+        this.callbacks = callbacks;
         this.currentPlugin = null;
 
         // Create map for faster target lookup.
@@ -340,7 +342,7 @@ class DeployContext {
      * @return {Promise}
      */
     execute(plugin,settings) {
-        plugin = resolveDeployPlugin(plugin);
+        plugin = resolve_deploy_plugin(plugin);
         this.currentPlugin = plugin;
 
         return plugin.exec(this,settings || {});
@@ -356,11 +358,20 @@ class DeployContext {
      *
      * @return {Promise}
      */
-    chain(nextPlugin,settings) {
-        var plugin = resolveDeployPlugin(nextPlugin);
+    async chain(nextPlugin,settings) {
+        const plugin = resolve_deploy_plugin(nextPlugin);
+
+        if (this.callbacks.beforeChain) {
+            this.callbacks.beforeChain(this.currentPlugin,plugin);
+        }
+
         this.currentPlugin = plugin;
 
-        return plugin.exec(this,settings || {});
+        await plugin.exec(this,settings || {});
+
+        if (this.callbacks.afterChain) {
+            this.callbacks.afterChain(plugin);
+        }
     }
 
     /**

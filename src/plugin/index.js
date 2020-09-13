@@ -4,240 +4,194 @@
  * @module plugin
  */
 
-const pathModule = require("path");
+const path = require("path");
 const { format } = require("util");
-
 const { build: DEFAULT_BUILD_PLUGINS,
         deploy: DEFAULT_DEPLOY_PLUGINS } = require("./default");
-const sysconfig = require("../sysconfig");
+const { pluginDirectories: PLUGIN_DIRS } = require("../sysconfig");
 const { WebdeployError } = require("../error");
 
-/**
- * Enumerates the various plugins kinds defined in webdeploy.
- */
-const PLUGIN_KINDS = {
+const PLUGIN_PREFIX = "@webdeploy/plugin-";
+
+function lookup_default_plugin(id,type) {
+    let plugins;
+    if (type == Plugin.TYPES.BUILD) {
+        plugins = DEFAULT_BUILD_PLUGINS;
+    }
+    else if (type == Plugin.TYPES.DEPLOY) {
+        plugins = DEFAULT_DEPLOY_PLUGINS;
+    }
+    else {
+        throw new WebdeployError("Plugin type '%s' is invalid");
+    }
+
+    if (id in plugins) {
+        return plugins[id];
+    }
+
+    return null;
+}
+
+function require_plugin(path) {
+    try {
+        return require(path);
+    } catch (err) {
+        if (err.code !== 'MODULE_NOT_FOUND' || !err.message.match(path)) {
+            throw err;
+        }
+    }
+
+    return null;
+}
+
+class Plugin {
+    constructor(id,type) {
+        this.id = id;
+        this.type = type;
+
+        let plugin = null;
+
+        // Attempt to load default plugin.
+
+        plugin = lookup_default_plugin(this.id,this.type);
+
+        this._default = !!plugin;
+        this._project = false;
+        this._global = false;
+
+        // Attempt to load plugin using node_modules.
+
+        if (!plugin) {
+            plugin = require_plugin(PLUGIN_PREFIX + id);
+            this._project = !!plugin;
+        }
+
+        // Try configured plugin directories if not found. This is designed to
+        // development purposes.
+
+        if (!plugin) {
+            let i = 0;
+            while (i < PLUGIN_DIRS.length && !plugin) {
+                plugin = require_plugin(path.join(PLUGIN_DIRS[i],this.id));
+                i += 1;
+            }
+
+            this._global = !!plugin;
+        }
+
+        if (!plugin) {
+            throw new WebdeployError("Plugin '%s' could not be loaded",this.id);
+        }
+
+        this._setPlugin(plugin);
+    }
+
+    getType() {
+        return this.type;
+    }
+
+    /**
+     * Determines if the plugin can be audited.
+     *
+     * @return {boolean}
+     */
+    canAudit() {
+        return typeof this._audit !== "undefined";
+    }
+
+    /**
+     * Invokes the plugin audit routine. If the plugin did not provide an audit
+     * procedure, then this method does nothing.
+     *
+     * @param {module:audit~AuditContext} context
+     * @param {module:deployer/deploy-config~DeployConfig|module:builder/build-handler~BuildHandler[]} settings
+     *
+     * @return {Promise}
+     */
+    async audit(context,settings) {
+        if (typeof this._audit === "undefined") {
+            return;
+        }
+
+        if (typeof this._audit !== "function") {
+            throw new WebdeployError("Plugin '%s' audit property must be function");
+        }
+
+        // Settings based to build plugins for audit routine must be an array.
+        if (this.type == Plugin.TYPES.BUILD && !Array.isArray(settings)) {
+            settings = [settings];
+        }
+
+        return this._audit(context,settings);
+    }
+
+    _setPlugin(plugin) {
+        // Set plugin properties we care about on this object. All other
+        // properties are ignored.
+
+        this.requires = plugin.requires || {};
+
+        // Make sure the plugin module exports the correct interface (i.e. it
+        // has an exec() function or employs the dual-plugin interface).
+        if (typeof plugin.exec !== "function") {
+            if ((typeof plugin.build !== "function"
+                 && this.type == Plugin.TYPES.BUILD)
+                || (typeof plugin.deploy !== "function"
+                    && this.type == Plugin.TYPES.DEPLOY))
+            {
+                throw new WebdeployError(
+                    "Plugin '%s' does not provide required interface",
+                    this.id
+                );
+            }
+
+            if (this.type == Plugin.TYPES.BUILD) {
+                this.exec = plugin.build;
+            }
+            else if (this.type == Plugin.TYPES.DEPLOY) {
+                this.exec = plugin.deploy;
+            }
+            else {
+                throw new WebdeployError("Plugin type '%s' is incorrect",this.type);
+            }
+        }
+        else {
+            this.exec = plugin.exec;
+        }
+
+        if (typeof plugin.audit !== "undefined") {
+            if (typeof plugin.audit !== "function") {
+                throw new WebdeployError("Plugin '%s' audit property must be function");
+            }
+            this._audit = plugin.audit;
+        }
+    }
+}
+
+Plugin.TYPES = {
     /**
      * A build plugin is used to translate a single target from one state to
      * another in a build.
      */
-    BUILD_PLUGIN: 0,
+    BUILD: 'build',
 
     /**
      * A deploy plugin is used to translate one or more targets from one state
      * to another during a deploy.
      */
-    DEPLOY_PLUGIN: 1
-}
-
-/**
- * Creates a fully-qualified plugin ID.
- *
- * @param {object} pluginInfo
- *  Plugin descriptor representing plugin to load.
- * @param {string} pluginInfo.pluginId
- * @param {string} pluginInfo.pluginVersion
- *
- * @return {string}
- */
-function makeFullPluginId(pluginInfo) {
-    var { pluginId, pluginVersion } = pluginInfo;
-
-    if (pluginVersion && pluginVersion != "latest") {
-        pluginId += "@" + pluginVersion;
-    }
-
-    return pluginId;
-}
-
-/**
- * Converts a fully-qualified plugin ID into a plugin descriptor.
- *
- * @param {string} pluginIdString
- *
- * @return {object}
- */
-function parseFullPluginId(pluginIdString) {
-    var parts = pluginIdString.split('@');
-
-    if (parts.length == 1) {
-        return {
-            pluginId: parts[0],
-            pluginVersion: 'latest'
-        }
-    }
-
-    if (parts.length != 2) {
-        throw new WebdeployError(format("Invalid plugin '%s'",pluginIdString));
-    }
-
-    return {
-        pluginId: parts[0],
-        pluginVersion: parts[1]
-    }
-}
-
-function requirePlugin(pluginInfo,kind) {
-    // There is nothing special about a plugin - it's just a NodeJS module that
-    // we "require" like any other. Plugins are loaded from plugin directories
-    // configured in the system configuration.
-
-    const PLUGIN_DIRS = sysconfig.pluginDirectories;
-    const pluginId = makeFullPluginId(pluginInfo);
-
-    var firstErr = null;
-    for (let i = 0;i < PLUGIN_DIRS.length;++i) {
-        let next = PLUGIN_DIRS[i];
-
-        try {
-            var plugin = require(pathModule.join(next,pluginId));
-            break;
-        } catch (err) {
-            if (!firstErr) {
-                firstErr = err;
-            }
-
-            continue;
-        }
-    }
-
-    if (!plugin) {
-        if (firstErr.code !== 'MODULE_NOT_FOUND') {
-            throw firstErr;
-        }
-
-        if (!firstErr.message.match(pluginId)) {
-            throw firstErr;
-        }
-
-        throw new WebdeployError("Cannot load plugin '" + pluginId + "'");
-    }
-
-    // Make sure the plugin module exports the correct interface (i.e. it has an
-    // exec() function or employs the dual-plugin interface).
-    if (typeof plugin.exec != "function") {
-        if (!plugin.build && kind == PLUGIN_KINDS.BUILD_PLUGIN
-            || !plugin.deploy && kind == PLUGIN_KINDS.DEPLOY_PLUGIN)
-        {
-            throw new WebdeployError("Plugin '" + pluginId + "' does not provide required interface.");
-        }
-
-        if (kind == PLUGIN_KINDS.BUILD_PLUGIN) {
-            plugin = plugin.build;
-        }
-        else if (kind == PLUGIN_KINDS.DEPLOY_PLUGIN) {
-            plugin = plugin.deploy;
-        }
-        else {
-            throw new Error("Plugin kind in not specified or incorrect");
-        }
-    }
-
-    // Augment/overwrite the plugin object with its fully-qualified ID.
-    plugin.id = pluginId;
-
-    return plugin;
-}
-
-function lookupDefaultPlugin(pluginInfo,kind) {
-    if (kind == PLUGIN_KINDS.BUILD_PLUGIN) {
-        var database = DEFAULT_BUILD_PLUGINS;
-    }
-    else if (kind == PLUGIN_KINDS.DEPLOY_PLUGIN) {
-        var database = DEFAULT_DEPLOY_PLUGINS;
-    }
-    else {
-        return;
-    }
-
-    if (pluginInfo.pluginId in database) {
-        if (pluginInfo.pluginVersion && pluginInfo.pluginVersion != "latest") {
-            // TODO Warn about default plugin not having latest version.
-
-        }
-
-        var plugin = database[pluginInfo.pluginId];
-        plugin.id = pluginInfo.pluginId;
-        return plugin;
-    }
-}
-
-/**
- * Determines if the plugin is a default plugin.
- *
- * @param {object} pluginInfo
- *  Plugin descriptor representing plugin to load.
- * @param {string} pluginInfo.pluginId
- * @param {string} pluginInfo.pluginVersion
- *
- * @return {boolean}
- */
-function isDefaultPlugin(pluginInfo) {
-    if (pluginInfo.pluginId in DEFAULT_BUILD_PLUGINS
-        || pluginInfo.pluginId in DEFAULT_DEPLOY_PLUGINS)
-    {
-        return true;
-    }
-
-    return false;
-}
-
-/**
- * Loads a plugin by kind.
- *
- * @param {object} pluginInfo
- *  Plugin descriptor representing plugin to load.
- * @param {string} pluginInfo.pluginId
- * @param {string} pluginInfo.pluginVersion
- * @param {number} kind
- *  One of the PLUGIN_KIND constants.
- *
- * @return {object}
- */
-function loadPluginByKind(pluginInfo,kind) {
-    var plugin = lookupDefaultPlugin(pluginInfo,kind);
-    if (!plugin) {
-        plugin = requirePlugin(pluginInfo,kind);
-    }
-
-    return plugin;
-}
-
-/**
- * Looks up a default build plugin.
- *
- * @param {object} pluginInfo
- *  Plugin descriptor representing plugin to load.
- * @param {string} pluginInfo.pluginId
- * @param {string} pluginInfo.pluginVersion
- *
- * @return {object}
- */
-function lookupDefaultBuildPlugin(pluginInfo) {
-    return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.BUILD_PLUGIN);
-}
-
-/**
- * Looks up a default deploy plugin.
- *
- * @param {object} pluginInfo
- *  Plugin descriptor representing plugin to load.
- * @param {string} pluginInfo.pluginId
- * @param {string} pluginInfo.pluginVersion
- *
- * @return {object}
- */
-function lookupDefaultDeployPlugin(pluginInfo) {
-    return lookupDefaultPlugin(pluginInfo,PLUGIN_KINDS.DEPLOY_PLUGIN);
-}
+    DEPLOY: 'deploy'
+};
 
 module.exports = {
-    PLUGIN_KINDS,
+    Plugin,
 
-    isDefaultPlugin,
-    loadPluginByKind,
-    lookupDefaultBuildPlugin,
-    lookupDefaultDeployPlugin,
+    make_default_plugin(id,type) {
+        const plugin = lookup_default_plugin(id,type);
 
-    makeFullPluginId,
-    parseFullPluginId
-}
+        if (plugin) {
+            return new Plugin(id,type);
+        }
+
+        return null;
+    }
+};

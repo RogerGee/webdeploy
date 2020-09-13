@@ -7,12 +7,6 @@
 const fs = require("fs");
 const path = require("path");
 const { format } = require("util");
-const http = require("http");
-const https = require("https");
-const urlparse = require("url").parse;
-const child_process = require("child_process");
-const tar = require("tar");
-
 const sysconfig = require("../sysconfig");
 const { NPMPackageInstaller, HTTPPackageInstaller } = require("../package");
 const { WebdeployError } = require("../error");

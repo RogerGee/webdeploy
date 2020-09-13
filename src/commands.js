@@ -151,16 +151,7 @@ function deployBuildStep(tree,options) {
         auditor.attachTree(tree);
         auditor.attachLogger(logger);
 
-        return new Promise((resolve,reject) => {
-            auditor.audit(function(error) {
-                if (error) {
-                    reject(error);
-                }
-                else {
-                    resolve();
-                }
-            });
-        });
+        return auditor.audit();
 
     }).then(() => {
         // Calculate the set of ignored targets given a dependency graph.
