@@ -283,7 +283,7 @@ class DependencyGraph {
         }
 
         if (a in this.connections) {
-            this.connections.push(null);
+            this.connections[a].push(null);
         }
         else {
             this.connections[a] = [null];
@@ -403,8 +403,26 @@ class DependencyGraph {
             });
         });
 
+        // Create mappings lists on graph.
         this.forwardMappings.clear();
-        mappings.forEach((set,node) => this.forwardMappings.set(node,Array.from(set)));
+        mappings.forEach((set,node) => {
+            // Get unique list.
+            let list = Array.from(set);
+            list = list.filter((v,i,a) => a.indexOf(v) === i);
+
+            // Do not include null connections if non-null connections exist.
+            if (list.length > 2) {
+                list = list.filter((x) => !!x);
+                if (list.length == 0) {
+                    list.push(null);
+                }
+            }
+
+            this.forwardMappings.set(
+                node,
+                list
+            );
+        });
 
         // Remove all nodes in the found set to get just the top-level nodes in
         // the mappings.
