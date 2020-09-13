@@ -1,5 +1,5 @@
 {
-  "name": "@tccl/webdeploy",
+  "name": "@webdeploy/core",
   "version": "0.4.0-dev",
   "description": "A utility for building and deploying websites from git repositories",
   "main": "webdeploy.js",
