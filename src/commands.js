@@ -1,29 +1,44 @@
-// commands.js
+/**
+ * commands.js
+ *
+ * @module commands
+ */
 
 const assert = require("assert");
-const pathModule = require("path").posix;
+const path = require("path").posix;
+const fs = require("fs");
 const git = require("nodegit");
 
-const treeLoader = require("./tree");
-const targetModule = require("./target");
-const Builder = require("./builder");
-const Deployer = require("./deployer");
-const { PluginAuditor } = require("./audit");
-const depends = require("./depends");
+const { DependencyGraph, ConstDependencyGraph } = require("./depends");
 const logger = require("./logger");
+const { RepoTree } = require("./tree/repo-tree");
+const { PathTree } = require("./tree/path-tree");
+const { DelayedTarget } = require("./target");
+const { Builder } = require("./builder");
+const { Deployer } = require("./deployer");
+const { PluginAuditor } = require("./audit");
 const { WebdeployError } = require("./error");
-const { prepareConfigPath } = require("./utils");
 
-const DEPLOY_TYPES = {
-    // Uses the config's "build" deployment.
+/**
+ * Enumerates the configuation types supported by webdeploy.
+ */
+const CONFIG_TYPES = {
+    // Uses the config's "build" configuration.
     TYPE_BUILD: 'build',
 
-    // Uses the config's "deploy" deployment.
+    // Uses the config's "deploy" configuration.
     TYPE_DEPLOY: 'deploy'
 }
 
+const DEPENDS_CONFIG_KEY = "cache.depends";
+
 function deployBeforeChainCallback(currentPlugin,chainedPlugin) {
-    logger.log("Chain deploy _" + currentPlugin.id + "_ -> _" + chainedPlugin.id + "_");
+    if (!currentPlugin) {
+        logger.log("Predeploy -> *" + chainedPlugin.id + "*");
+    }
+    else {
+        logger.log("Chain deploy *" + currentPlugin.id + "* -> *" + chainedPlugin.id + "*");
+    }
     logger.pushIndent();
 }
 
@@ -33,8 +48,7 @@ function deployAfterChainCallback() {
 
 function printNewTargetsCallback(target,plugin,newTargets) {
     if (newTargets.length > 0) {
-        logger.pushIndent(target.level);
-        var prefix = "exec _" + target.targetName + "_"
+        var prefix = "Exec _" + target.targetName + "_"
             + " -> *" + plugin.id + "* -> ";
 
         newTargetNames = newTargets.map((x) => { return x.targetName });
@@ -43,17 +57,16 @@ function printNewTargetsCallback(target,plugin,newTargets) {
             logger.log(" ".repeat(prefix.length - 7) + "-> _"
                        + newTargetNames[j] + "_");
         }
-        logger.popIndent(target.level);
     }
 }
 
 function deployDeployStep(deployer,builder,options) {
-    logger.log("Deploying targets: _" + deployer.deployPlugin.id + "_");
+    logger.log("Deploying targets: *" + deployer.deployConfig.id + "*");
 
     if (builder.outputTargets.length == 0) {
         if (options.ignored) {
             logger.pushIndent();
-            if (options.type == DEPLOY_TYPES.TYPE_BUILD) {
+            if (options.type == CONFIG_TYPES.TYPE_BUILD) {
                 logger.log("*All Targets Ignored - Build Up-to-date*");
             }
             else {
@@ -75,26 +88,27 @@ function deployDeployStep(deployer,builder,options) {
     return deployer.execute(builder).then(() => {
         logger.popIndent();
         return true;
-    })
+    });
 }
 
 function deployBuildStep(tree,options) {
     var builder;
     var deployer;
     var auditor = new PluginAuditor();
-    var targetBasePath = "";
 
-    return tree.getConfigParameter("info").then((configInfo) => {
+    return tree.getTargetConfig("info").then((configInfo) => {
         logger.log("Loaded target tree config from _" + configInfo.file + "_");
 
         // Load base path from config. This config parameter is optional.
 
-        return tree.getConfigParameter("basePath").then((theBasePath) => {
-            targetBasePath = theBasePath;
-        }, (e) => {})
+        return tree.getTargetConfig("basePath",true);
 
-    }).then(() => {
-        return tree.getConfigParameter("includes");
+    }).then((basePath) => {
+        tree.addOption('basePath',basePath);
+
+        // Load 'includes' section from target config.
+
+        return tree.getTargetConfig("includes");
 
     }).then((includes) => {
         // Create builder required for the run. Finalize the builder so that all
@@ -113,18 +127,19 @@ function deployBuildStep(tree,options) {
         builder.pushIncludes(includes);
         builder.finalize(auditor);
 
-        // Create deployer required for the run. Finalize the deployer so that all
-        // required plugins will be sent to the auditor
+        // Create deployer required for the run. Then finalize the deployer so
+        // that all required plugins will be sent to the auditor
 
         const deployerOptions = {
-            deployPlugin: options.deployPlugin,
-            deployPath: options.deployPath,
+            deployConfig: options.deployConfig,
+            deployPath: tree.getDeployConfig('deployPath'),
             callbacks: {
                 beforeChain: deployBeforeChainCallback,
                 afterChain: deployAfterChainCallback
             },
-            tree
-        }
+            tree,
+            prevGraph: options.prevGraph
+        };
 
         deployer = new Deployer(deployerOptions);
         deployer.finalize(auditor);
@@ -133,20 +148,25 @@ function deployBuildStep(tree,options) {
         // will ensure all plugins are loadable or that we error out if a plugin
         // is not found.
 
+        auditor.attachTree(tree);
         auditor.attachLogger(logger);
 
-        return auditor.audit();
+        return new Promise((resolve,reject) => {
+            auditor.audit(function(error) {
+                if (error) {
+                    reject(error);
+                }
+                else {
+                    resolve();
+                }
+            });
+        });
 
     }).then(() => {
-        // Display message denoting number of build plugins loaded.
-
-        var n = builder.getPluginCount();
-        logger.log("Loaded _" + n + "_ build " + logger.plural(n,"plugin"));
-
         // Calculate the set of ignored targets given a dependency graph.
         // Otherwise return an empty set.
 
-        if (options.graph && options.graph.isLoaded()) {
+        if (options.graph && options.graph.isResolved()) {
             return options.graph.getIgnoreSources(tree);
         }
 
@@ -164,14 +184,8 @@ function deployBuildStep(tree,options) {
 
         var targetPromises = [];
 
-        return tree.walk((path,name,createInputStream) => {
-            // Normalize path relative to configured target base path.
-            if (targetBasePath) {
-                path = pathModule.relative(targetBasePath,path);
-            }
-
-            var relativePath = pathModule.relative(options.buildPath,path);
-            var ref = pathModule.join(relativePath,name);
+        var walkcb = ({ targetPath, targetName },createInputStream) => {
+            var ref = path.join(targetPath,targetName);
 
             // Ignore potential targets that were determined to not belong in
             // the build since they map to build products that are already
@@ -184,51 +198,58 @@ function deployBuildStep(tree,options) {
 
             // Create a delayed target object and attempt to add it to the
             // builder.
-            var delayedTarget = {
-                path: relativePath,
-                name: name,
-                createStream: createInputStream
-            }
+            var delayedTarget = new DelayedTarget(
+                targetPath,
+                targetName,
+                {
+                    createStreamFn: createInputStream
+                }
+            );
 
             // If a potential target does not have a build product (i.e. is a
             // trivial product), then check to see if it is modified and should
             // be included or not.
 
-            if (!options.force && options.graph && !options.graph.hasProductForSource(ref)) {
-                var realRef = pathModule.join(targetBasePath,ref);
-                targetPromises.push(tree.isBlobModified(realRef).then((result) => {
-                    if (result) {
-                        var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
-                        if (newTarget) {
-                            logger.log("add _" + newTarget.getSourceTargetPath() + "_");
+            if (!options.force
+                && options.graph.isResolved()
+                && !options.graph.hasProductForSource(ref))
+            {
+                targetPromises.push(
+                    tree.isBlobModified(ref).then((result) => {
+                        if (result) {
+                            var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
+                            if (newTarget) {
+                                logger.log("Add _" + newTarget.getSourceTargetPath() + "_");
+                            }
                         }
-                    }
-                    else {
-                        options.ignored = true;
-                    }
-                }))
+                        else {
+                            options.ignored = true;
+                        }
+                    })
+                );
             }
             else {
                 var newTarget = builder.pushInitialTargetDelayed(delayedTarget);
                 if (newTarget) {
-                    logger.log("add _" + newTarget.getSourceTargetPath() + "_");
+                    logger.log("Add _" + newTarget.getSourceTargetPath() + "_");
                 }
             }
+        };
 
-        }, {
-            filter: (path) => {
+        var walkopts = {
+            filter: function(targetPath) {
                 // Ignore any hidden paths.
-                if (path[0] == ".") {
+                if (targetPath[0] == ".") {
                     return false;
                 }
 
                 return true;
-            },
-            basePath: targetBasePath
+            }
+        };
 
-        }).then(() => {
+        return tree.walk(walkcb,walkopts).then(() => {
             return Promise.all(targetPromises);
-        })
+        });
 
     }).then(() => {
         if (builder.targets.length == 0) {
@@ -239,90 +260,48 @@ function deployBuildStep(tree,options) {
 
         logger.popIndent();
         logger.log("Building targets:");
+        logger.pushIndent();
 
         if (builder.targets.length == 0) {
-            logger.pushIndent();
             logger.log("*No Targets*");
-            logger.popIndent();
         }
 
         return builder.execute();
 
     }).then(() => {
+        logger.popIndent();
+
         return deployDeployStep(deployer,builder,options);
-    })
+    });
 }
 
 function deployStartStep(tree,options) {
-    assert(options.type == DEPLOY_TYPES.TYPE_BUILD
-           || options.type == DEPLOY_TYPES.TYPE_DEPLOY);
+    assert(options.type == CONFIG_TYPES.TYPE_BUILD
+           || options.type == CONFIG_TYPES.TYPE_DEPLOY);
 
     var storeKey;
 
-    // Obtain the deploy plugin name.
+    // Load deploy plugin config from target tree config.
 
-    return tree.getConfigParameter(options.type).then((deployPlugin) => {
-        if (typeof deployPlugin !== "object") {
+    return tree.getTargetConfig(options.type).then((deployConfig) => {
+        if (typeof deployConfig !== "object") {
             throw new WebdeployError("Config parameter '" + options.type + "' must be a plugin object");
         }
-        if (!deployPlugin.id) {
+        if (!deployConfig.id) {
             throw new WebdeployError("Config parameter '" + options.type + "' must have plugin id");
         }
 
-        options.deployPlugin = deployPlugin;
+        options.deployConfig = deployConfig;
 
-        // Load up any extra deploy plugin options from the git-config.
+        // Load up dependency graph from tree deployment.
 
-        return tree.getConfigSection(deployPlugin.id);
+        return tree.getStorageConfig(DEPENDS_CONFIG_KEY);
 
-    }).then((sectionConfig) => {
-        // Augment existing plugin object with discovered config section.
-        var keys = Object.keys(sectionConfig);
-        for (var i = 0;i < keys.length;++i) {
-            asset(keys[i] != "id");
-            options.deployPlugin[keys[i]] = sectionConfig[keys[i]];
-        }
+    }).then((repr) => {
+        options.graph = new DependencyGraph(repr);
+        options.prevGraph = new ConstDependencyGraph(repr);
 
-        // Set build path. RepoTrees will return an empty string.
-
-        options.buildPath = tree.getPath();
-        if (!options.buildPath) {
-            options.buildPath = "";
-        }
-
-        // For a TYPE_DEPLOY deployment, we need a deploy path. This may have
-        // been specified by the user in the options object, OR we lookup the
-        // default deploy path stored in the tree configuration.
-
-        if (options.type == DEPLOY_TYPES.TYPE_DEPLOY) {
-            if (!options.deployPath) {
-                return tree.getConfigParameter("deployPath");
-            }
-            else {
-                return Promise.resolve(options.deployPath);
-            }
-        }
-
-        // Otherwise for TYPE_BUILD deployments the deploy path is the same as
-        // the build path (since local builds deploy to the same location).
-
-        return Promise.resolve(options.buildPath);
-
-    }).then((deployPath) => {
-        // Set deploy path; also set the deploy path as the storage key for the
-        // tree. This is used by RepoTree's for config lookup purposes.
-
-        storeKey = prepareConfigPath(deployPath);
-
-        options.deployPath = deployPath;
-        tree.addOption('storeKey',storeKey);
-
-        // Load up dependency graph.
-
-        return depends.loadFromTree(tree,storeKey);
-
-    }).then((graph) => {
-        options.graph = graph;
+        // Reset dependency graph if set in options.
 
         if (options.force) {
             options.graph.reset();
@@ -334,93 +313,319 @@ function deployStartStep(tree,options) {
         return deployBuildStep(tree,options);
 
     }).then(() => {
-        // Save the dependency graph if available.
-        if (options.graph) {
-            return depends.saveToTree(tree,options.graph,storeKey);
-        }
+        // Save dependency graph.
+
+        var repr;
+        options.graph.resolve();
+        repr = options.graph.getStorageRepr();
+
+        return tree.writeStorageConfig(DEPENDS_CONFIG_KEY,repr);
 
     }).then(() => {
-        if (tree.name == 'RepoTree') {
-            return tree.saveDeployCommit(options.deployPath);
+        // Perform tree finalization.
+
+        return tree.finalize();
+    });
+}
+
+/**
+ * Creates a new RepoTree for the specified repository.
+ *
+ * @param {string} repoPath
+ *  The path where the repository lives.
+ * @param {object} options
+ *  Extra options for the RepoTree.
+ *
+ * @return {Promise<module:tree/repo-tree~RepoTree>}
+ */
+function createRepoTree(repoPath,options) {
+    return git.Repository.discover(repoPath,0,"").then((discoveredPath) => {
+        return git.Repository.open(discoveredPath);
+
+    }).then((repository) => {
+        return new RepoTree(repository,options);
+    });
+}
+
+/**
+ * Creates a new PathTree for the specified path in the filesystem.
+ *
+ * @param {string} treePath
+ *  The path to load.
+ * @param {object} options
+ *  Extra options for the PathTree.
+ *
+ * @return {Promise<module:tree/path-tree~PathTree>}
+ */
+function createPathTree(treePath,options) {
+    return new Promise((resolve,reject) => {
+        if (options.noexist) {
+            resolve(new PathTree(treePath,options));
+            return;
         }
 
-    })
+        fs.stat(treePath,(err,stats) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+
+            resolve(new PathTree(treePath,options));
+        });
+    });
+}
+
+/**
+ * Creates a tree instance. The type of tree is determined based on the path. If
+ * the points to a git repository, then a RepoTree instance is loaded; otherwise
+ * a PathTree instance is loaded.
+ *
+ * @param {string} repoOrTreePath
+ *  The path to the a git repository or local path.
+ * @param {object} options
+ *  The list of options to pass to the commands.
+ *
+ * @return {Promise<module:tree~Tree>}
+ */
+function createTreeDecide(repoOrTreePath,options) {
+    var prevPath = path.resolve(path.join(repoOrTreePath,".."));
+
+    // If the indicated path refers to a discoverable git repository, then we
+    // create a RepoTree. Otherwise we create a PathTree. NOTE: This will prefer
+    // RepoTree for a bare git repository and PathTree for a working tree.
+
+    return git.Repository.discover(repoOrTreePath,0,prevPath).then((repoPath) => {
+        return createRepoTree(repoOrTreePath,options);
+
+    }, (err) => {
+        return createPathTree(repoOrTreePath,options);
+    });
 }
 
 /**
  * Initiates a deployment using the specified git repository.
  *
- * @param {string} repo - The path to the git repository to load
- * @param {Object} options - The list of options to pass to the commands
- * @param {String} options.type - One of the commands.types enumerators
+ * @param {string} repo
+ *  The path to the git repository to load.
+ * @param {object} options
+ *  The list of options to pass to the commands.
+ * @param {string} options.type
+ *  One of the commands.types enumerators.
  *
- * @return {Promise} - Returns a Promise that resolves when the operation
- *  completes or rejects when the operation fails.
+ * @return {Promise}
+ *  Returns a Promise that resolves when the operation completes or rejects when
+ *  the operation fails.
  */
 function deployRepository(repo,options) {
-    var treeOptions = {
+    // We always use a root (i.e. empty) build path when deploying projects via
+    // RepoTree.
+    options.buildPath = "";
+
+    // Isolate options that we provide to the repo tree.
+    const treeOptions = {
+        deployPath: options.deployPath,
         deployBranch: options.deployBranch,
         deployTag: options.deployTag
-    }
+    };
 
-    return treeLoader.createRepoTree(repo,treeOptions).then((tree) => {
+    return createRepoTree(repo,treeOptions).then((tree) => {
         return deployStartStep(tree,options);
-    })
+    });
 }
 
 /**
  * Initiates a deployment using the specified tree from the local filesystem.
  *
- * @param {string} path - The path to the tree to deploy.
- * @param {Object} options - The list of options to pass to the commands
- * @param {String} options.type - One of the commands.types enumerators
+ * @param {string} treePath
+ *  The path to the tree to deploy.
+ * @param {object} options
+ *  The list of options to pass to the commands.
+ * @param {string} options.type
+ *  One of the commands.types enumerators.
  *
- * @return {Promise} - Returns a Promise that resolves when the operation
- *  completes or rejects when the operation fails.
+ * @return {Promise}
+ *  Returns a Promise that resolves when the operation completes or rejects when
+ *  the operation fails.
  */
-function deployLocal(path,options) {
-    return treeLoader.createPathTree(path).then((tree) => {
+function deployLocal(treePath,options) {
+    // Set build path for local deployment. For PathTree instances, this is
+    // always the same as the path to the tree.
+    options.buildPath = treePath;
+
+    const treeOptions = {
+        deployPath: treePath
+    };
+
+    return createPathTree(treePath,treeOptions).then((tree) => {
         return deployStartStep(tree,options);
-    })
+    });
 }
 
 /**
- * Callback for deployDecide function.
- *
- * @callback decideCallback
- * @param {string} type - Either "repo" or "local"
+ * Callback for 'deployDecide' function.
+ * @callback module:commands~decideCallback
+ * @param {string} type
+ *  One of either "repo" or "local".
  */
 
 /**
  * Initiates a deployment, deciding whether or not to use a local directory or a
  * git repository. Git repositories have precedence.
  *
- * @param {string} path - The path to the a git repository or local path
- * @param {Object} options - The list of options to pass to the commands
- * @param {String} options.type - One of the commands.types enumerators
- * @param {decideCallback} decideCallback - A callback that is passed the
- *   decision that was made.
+ * @param {string} repoOrTreePath
+ *  The path to the a git repository or local path.
+ * @param {object} options
+ *  The list of options to pass to the commands.
+ * @param {string} options.type
+ *  One of the CONFIG_TYPES enumerators.
+ * @param {module:commands~decideCallback} decideCallback
+ *  A callback that is passed the decision that was made.
  *
- * @return {Promise} - Returns a Promise that resolves when the operation
- *  completes or rejects when the operation fails.
+ * @return {Promise}
+ *  Returns a Promise that resolves when the operation completes or rejects when
+ *  the operation fails.
  */
-function deployDecide(path,options,decideCallback) {
-    var prevPath = pathModule.resolve(pathModule.join(path,".."));
+function deployDecide(repoOrTreePath,options,decideCallback) {
+    var prevPath = path.resolve(path.join(repoOrTreePath,".."));
 
-    return git.Repository.discover(path,0,prevPath).then((repoPath) => {
+    // NOTE: This prefers git repositories over path trees. This means that we
+    // will choose a git repository (.git subfolder) over the working tree.
+
+    return git.Repository.discover(repoOrTreePath,0,prevPath).then((repoPath) => {
         decideCallback("repo");
         return deployRepository(repoPath,options);
 
     }, (err) => {
         decideCallback("local");
-        return deployLocal(path,options);
-    })
+        return deployLocal(repoOrTreePath,options);
+    });
+}
+
+function configdef(repoOrTreePath,key,value) {
+    var options = {
+        createDeployment: false
+    };
+
+    return createTreeDecide(repoOrTreePath,options).then((tree) => {
+        var record = tree.getTreeRecord();
+        if (value) {
+            if (!tree.writeTreeRecord(key,value)) {
+                throw new WebdeployError("Key '"+key+"' is not a valid default setting");
+            }
+        }
+        else {
+            var treeRecord = tree.getTreeRecord();
+            if (key in treeRecord) {
+                if (treeRecord[key]) {
+                    logger.log(treeRecord[key]);
+                }
+            }
+            else {
+                throw new WebdeployError("Key '"+key+"' is not a valid default setting");
+            }
+        }
+
+        return tree.finalize();
+    });
+}
+
+function config(repoOrTreePath,deployPath,key,value) {
+    var options = {
+        createDeployment: true,
+        deployPath
+    };
+
+    return createTreeDecide(repoOrTreePath,options).then((tree) => {
+        var record = tree.getTreeRecord();
+
+        if (value) {
+            if (!tree.writeDeployConfig(key,value)) {
+                throw new WebdeployError("Key '"+key+"' is not a valid deployment setting");
+            }
+        }
+        else {
+            var display = tree.getDeployConfig(key);
+            if (display) {
+                logger.log(display);
+            }
+        }
+
+        return tree.finalize();
+    });
+}
+
+function info(repoOrTreePath,deployPath) {
+    var options = {
+        createTree: false,
+        createDeployment: false,
+        deployPath
+    };
+
+    return createTreeDecide(repoOrTreePath,options).then((tree) => {
+        if (!tree.exists()) {
+            throw new WebdeployError("Path "+repoOrTreePath+" is not a webdeploy project tree");
+        }
+
+        logger.log("*"+repoOrTreePath+"*");
+        logger.pushIndent();
+
+        var treeRecord = tree.getTreeRecord();
+
+        logger.log("*Defaults*:");
+        logger.pushIndent();
+        logger.log("Target Tree: " + logger.filter(treeRecord.targetTree,'(root)'));
+        logger.log("Deploy Path: " + logger.filter(treeRecord.deployPath));
+        logger.log("Deploy Branch: " + logger.filter(treeRecord.deployBranch));
+        logger.popIndent();
+
+        logger.log("*Deployment*:");
+        logger.pushIndent();
+        if (tree.hasDeployment()) {
+            logger.log("Deploy Path: " + logger.filter(tree.getDeployConfig('deployPath')));
+            logger.log("Deploy Branch: " + logger.filter(tree.getDeployConfig('deployBranch')));
+            logger.log("Last Deploy Revision: " + logger.filter(tree.getDeployConfig('lastRevision')));
+        }
+        else {
+            logger.log("No such deployment at " + logger.filter(tree.getDeployConfig('deployPath')));
+        }
+        logger.popIndent();
+
+        logger.popIndent();
+    });
+}
+
+function purge(repoOrTreePath,deployPath,purgeAll) {
+    var options = {
+        createTree: false,
+        createDeployment: false,
+        deployPath,
+        noexist: true
+    };
+
+    return createTreeDecide(repoOrTreePath,options).then((tree) => {
+        if (!tree.exists()) {
+            throw new WebdeployError("Path "+repoOrTreePath+" is not a webdeploy project tree");
+        }
+
+        if (!purgeAll && !tree.hasDeployment()) {
+            logger.log(
+                "No such deployment at " + logger.filter(tree.getDeployConfig('deployPath'))
+                    + " for " + repoOrTreePath);
+            return;
+        }
+
+        tree.purgeDeploy(purgeAll);
+    });
 }
 
 module.exports = {
-    deployRepository: deployRepository,
-    deployLocal: deployLocal,
-    deployDecide: deployDecide,
+    deployRepository,
+    deployLocal,
+    deployDecide,
+    configdef,
+    config,
+    info,
+    purge,
 
-    types: DEPLOY_TYPES
+    CONFIG_TYPES
 }

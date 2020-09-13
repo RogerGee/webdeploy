@@ -1,5 +1,7 @@
+# .gitignore - webdeploy
+
 /node_modules/
 /plugins/*/
+.npmignore
+/doc/jsdocs/
 
-test.js
-/test/

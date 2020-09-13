@@ -7,9 +7,17 @@ const path = require("path");
 
 const logger = require("./src/logger");
 const commands = require("./src/commands");
+const sysconfig = require("./src/sysconfig");
+const storage = require("./src/storage");
 const { WebdeployError } = require("./src/error");
-const { load: loadSysconfig } = require("./src/sysconfig");
-const { version: VERSION } = require("./package.json")
+const { version: VERSION } = require("./package.json");
+
+function resolveSourcePath(sourcePath) {
+    if (sourcePath) {
+        return path.resolve(sourcePath);
+    }
+    return path.resolve(".");
+}
 
 function reject(err) {
     logger.resetIndent();
@@ -21,6 +29,48 @@ function reject(err) {
 }
 
 commander.version(VERSION,"-v, --version");
+
+commander.command("configdef <key> [value]")
+    .description("gets/sets defaults for a webdeploy project tree")
+    .option("-p, --path [path]","Specifies the project path (default is current directory)")
+    .action((key,value,cmd) => {
+        var localPath = resolveSourcePath(cmd.path);
+        commands.configdef(localPath,key,value).catch(reject);
+    });
+
+commander.command("config <deploy-path> <key> [value]")
+    .description("gets/sets deployment config for a webdeploy project tree")
+    .option("-p, --path [path]","Specifies the project path (default is current directory)")
+    .action((deployPath,key,value,cmd) => {
+        var localPath = resolveSourcePath(cmd.path);
+        if (deployPath) {
+            deployPath = path.resolve(deployPath);
+        }
+        commands.config(localPath,deployPath,key,value).catch(reject);
+    });
+
+commander.command("info [deploy-path]")
+    .description("displays info about a webdeploy tree")
+    .option("-p, --path [path]","Specifies the project path (default is current directory)")
+    .action((deployPath,cmd) => {
+        var localPath = resolveSourcePath(cmd.path);
+        if (deployPath) {
+            deployPath = path.resolve(deployPath);
+        }
+        commands.info(localPath,deployPath).catch(reject);
+    });
+
+commander.command("purge [deploy-path]")
+    .description("purges deployment info for a webdeploy project tree")
+    .option("-p, --path [path]","Specifies the project path (default is current directory)")
+    .option("--all","Indicates that the entire project tree is to be purged")
+    .action((deployPath,cmd) => {
+        var localPath = resolveSourcePath(cmd.path);
+        if (deployPath) {
+            deployPath = path.resolve(deployPath);
+        }
+        commands.purge(localPath,deployPath,!!cmd.all).catch(reject);
+    });
 
 commander.command("deploy [path]")
     .description("runs the deploy task on a webdeploy project")
@@ -34,22 +84,17 @@ commander.command("deploy [path]")
         }
 
         var options = {
-            type: commands.types.TYPE_DEPLOY,
+            type: commands.CONFIG_TYPES.TYPE_DEPLOY,
             force: cmd.force ? true : false,
             deployBranch: cmd.deployBranch,
             deployTag: cmd.deployTag,
             deployPath: cmd.deployPath
-        }
+        };
 
-        if (sourcePath) {
-            var localPath = path.resolve(sourcePath);
-        }
-        else {
-            var localPath = path.resolve(".");
-        }
+        var localPath = resolveSourcePath(sourcePath);
 
         commands.deployDecide(localPath, options, (type) => {
-            logger.log("*[DEPLOY]* _" + type + "_: exec " + localPath);
+            logger.log("*[DEPLOY]* *" + type + "*: exec " + localPath);
             logger.pushIndent();
 
         }, reject).then(() => {
@@ -57,7 +102,7 @@ commander.command("deploy [path]")
             logger.log("*[DONE]*");
 
         }).catch(reject)
-    })
+    });
 
 commander.command("build [path]")
     .description("runs the build task on a webdeploy project")
@@ -66,24 +111,19 @@ commander.command("build [path]")
     .option("-f, --force","Force full build without consulting dependencies")
     .action((sourcePath,cmd) => {
         if (cmd.prod && cmd.dev) {
-            logger.error("webdeploy: build: Please specify one of _prod_ or _dev_.".bold);
+            logger.error("webdeploy: build: Please specify one of *prod* or *dev*.".bold);
             return;
         }
 
         var options = {
             dev: cmd.dev || !cmd.prod,
-            type: commands.types.TYPE_BUILD,
+            type: commands.CONFIG_TYPES.TYPE_BUILD,
             force: cmd.force ? true : false
-        }
+        };
 
-        if (sourcePath) {
-            var localPath = path.resolve(sourcePath);
-        }
-        else {
-            var localPath = path.resolve(".");
-        }
+        var localPath = resolveSourcePath(sourcePath);
 
-        logger.log("*[BUILD]* _local_: exec " + localPath);
+        logger.log("*[BUILD]* *local*: exec " + localPath);
         logger.pushIndent();
 
         commands.deployLocal(localPath,options).then(() => {
@@ -91,15 +131,13 @@ commander.command("build [path]")
             logger.log("*[DONE]*");
 
         }, reject).catch(reject);
-    })
+    });
 
 // Run the program.
 
-loadSysconfig().then(() => {
+sysconfig.load((config) => {
+    storage.load();
+
     commander.parse(process.argv);
 
-    if (commander.args.length == 0) {
-        commander.help();
-    }
-
-}).catch(reject);
+}, reject);

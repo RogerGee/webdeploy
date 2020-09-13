@@ -1,7 +1,35 @@
-// utils.js
+/**
+ * utils.js
+ *
+ * @module utils
+ */
 
 const fs = require("fs");
 const pathModule = require("path");
+
+function getPathParents(path,base) {
+    var parsed = pathModule.parse(path);
+
+    if (!base) {
+        path = parsed.root;
+    }
+    else {
+        // Assume base exists.
+        path = base;
+    }
+
+    if (parsed.dir.substr(0,path.length) == path) {
+        parsed.dir = parsed.dir.substr(path.length);
+    }
+
+    var parts = pathModule.join(parsed.dir,parsed.base)
+        .split(pathModule.sep)
+        .filter((x) => {
+            return Boolean(x);
+        });
+
+    return { path, parts };
+}
 
 /**
  * Creates a directory and any parents that do not exist.
@@ -9,28 +37,44 @@ const pathModule = require("path");
  * @param {string} path
  *  The path to create.
  * @param {string} base
- *  Optional base path denoting the existing base. This merely optimizes the
+ *  Base path denoting the existing base. May be null. This merely optimizes the
  *  operation since the function assumes the base path already exists.
+ *
+ * @return {Promise<number>}
+ *  Resolves to the number of directories created.
  */
-module.exports.mkdirParents = function(path,base) {
-    var parsed = pathModule.parse(path);
+module.exports.mkdirParents = async function(path,base) {
+    var n = 0;
+    var { parts, path } = getPathParents(path,base);
 
-    if (!base) {
-        path = parsed.root;
+    for (let i = 0;i < parts.length;++i) {
+        path = pathModule.join(path,parts[i]);
 
-        if (parsed.dir.substr(0,parsed.root.length) == parsed.root) {
-            parsed.dir = parsed.dir.substr(parsed.root.length);
+        var err = await new Promise((resolve,reject) => {
+            fs.mkdir(path,resolve);
+        });
+        if (err && err.code != 'EEXIST') {
+            throw err;
+        }
+        if (!err) {
+            n += 1;
         }
     }
-    else {
-        // Assume base exists.
-        path = base;
-    }
 
-    var parts = pathModule.join(parsed.dir,parsed.base).split(pathModule.sep)
-        .filter((x) => {
-            return Boolean(x);
-        })
+    return n;
+};
+
+/**
+ * Creates a directory and any parents that do not exist.
+ *
+ * @param {string} path
+ *  The path to create.
+ * @param {string} [base]
+ *  Base path denoting the existing base. This merely optimizes the operation
+ *  since the function assumes the base path already exists.
+ */
+module.exports.mkdirParentsSync = function(path,base) {
+    var { parts, path } = getPathParents(path,base);
 
     for (var i = 0;i < parts.length;++i) {
         path = pathModule.join(path,parts[i]);
@@ -43,7 +87,48 @@ module.exports.mkdirParents = function(path,base) {
             }
         }
     }
-}
+};
+
+/**
+ * Removes a single branch in a directory tree up until an indicated base
+ * directory OR up until the first non-empty directory.
+ *
+ * @param {string} base
+ *  The base directory at which point the operation stops.
+ * @param {string} path
+ *  The directory to remove. All its parent directories are removed as well up
+ *  until the base directory.
+ *
+ * @return {Promise<number>}
+ *  Resolves to the number of directories removed.
+ */
+module.exports.rmdirParents = async function(parent,path) {
+    var rm = [];
+    var currentPath = path;
+
+    while (currentPath.substring(0,parent.length) == parent) {
+        if (currentPath == parent) {
+            break;
+        }
+
+        rm.push(currentPath);
+        currentPath = pathModule.parse(currentPath).dir;
+    }
+
+    for (let i = 0;i < rm.length;++i) {
+        var err = await new Promise((resolve,reject) => {
+            fs.rmdir(rm[i],resolve);
+        });
+        if (err) {
+            if (err.code == 'ENOTEMPTY') {
+                break;
+            }
+            throw err;
+        }
+    }
+
+    return rm.length;
+};
 
 /**
  * Prepares a path as a git-config key.
@@ -52,6 +137,7 @@ module.exports.mkdirParents = function(path,base) {
  *  The path to create.
  *
  * @return {string}
+ *  The prepared path.
  */
 module.exports.prepareConfigPath = function(path) {
     var result = path.replace(/\/|\\/g,'--').replace(/\./g,'-');
@@ -60,4 +146,4 @@ module.exports.prepareConfigPath = function(path) {
     }
 
     return result;
-}
+};

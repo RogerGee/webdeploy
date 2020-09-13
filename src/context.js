@@ -1,9 +1,34 @@
-// context.js
+/**
+ * context.js
+ *
+ * @module context
+ */
 
 const pathModule = require("path");
+const { format } = require("util");
 
-const targetModule = require("./target");
+const { Builder } = require("./builder");
+const { makeOutputTarget } = require("./target");
 const { lookupDeployPlugin } = require("./audit");
+
+function resolveDeployPlugin(plugin) {
+    // If the object does not have the correct interface, then assume it is a
+    // description and look up the required plugin.
+    if (!plugin.exec) {
+        return lookupDeployPlugin({
+            pluginId: plugin.id,
+            pluginVersion: plugin.version
+        });
+    }
+
+    return plugin;
+}
+
+/**
+ * @callback module:context~DeployContext~TargetCallback
+ * @param {module:target~Target} target
+ *  The current target being selected for this iteration.
+ */
 
 /**
  * DeployContext
@@ -12,14 +37,32 @@ const { lookupDeployPlugin } = require("./audit");
  * for processing.
  */
 class DeployContext {
-    constructor(deployPath,builder,tree) {
+    /**
+     * Creates a new DeployContext instance.
+     *
+     * @param {string} deployPath
+     *  The base path to which targets are written.
+     * @param {module:builder~Builder} builder
+     *  The builder associated with the deployment.
+     * @param {nodegit.Tree} tree
+     *  The git tree instance associated with the deployment.
+     * @param {module:depends~ConstDependencyGraph} prevGraph
+     *  The previous dependency graph state.
+     */
+    constructor(deployPath,builder,tree,prevGraph) {
         this.deployPath = deployPath;
         this.builder = builder;
+
+        // Create a link between the builder's output targets and the context's
+        // internal list of targets.
         this.targets = builder.outputTargets;
+
         this.map = {};
         this.graph = builder.options.graph; // DependencyGraph
+        this.prevGraph = prevGraph;
         this.tree = tree; // git.Tree
         this.logger = require("./logger");
+        this.currentPlugin = null;
 
         // Create map for faster target lookup.
         this.targets.forEach((target) => {
@@ -29,33 +72,94 @@ class DeployContext {
         this.setTargetsDeployPath();
     }
 
-    // Creates an absolute path with a relative path within the deploy path.
+    /**
+     * Determines if the deployment is a development deployment.
+     *
+     * @return {boolean}
+     */
+    isDevDeployment() {
+        // NOTE: A deployment is a development deployment if the build was a
+        // development build.
+        return this.builder.isDevBuild();
+    }
+
+    /**
+     * Creates an absolute path with a relative path within the deploy path.
+     *
+     * @param {string} path
+     *  The relative path to create into a deploy path.
+     *
+     * @return {string}
+     */
     makeDeployPath(path) {
         return pathModule.join(this.deployPath,path);
     }
 
-    // Sets the deployment path for each target.
+    /**
+     * Sets the deployment path for each target.
+     *
+     * @param {boolean} force
+     *  By default, the deploy path is only set on targets that do *not* have a
+     *  deploy path set. If force is set to true, this behavior is overridden to
+     *  where the deploy path is unconditionally set.
+     */
     setTargetsDeployPath(force) {
         for (var i = 0;i < this.targets.length;++i) {
-            if (!this.targets[i].deployPath || force) {
+            if (!this.targets[i].hasDeployPath() || force) {
                 this.targets[i].setDeployPath(this.deployPath);
             }
         }
     }
 
-    // Wrapper for builder.execute() that sets output targets deploy paths.
+    /**
+     * Creates an external sub-builder to use for recursive builds.
+     *
+     * @return {module:builder~Builder}
+     */
+    createBuilder() {
+        return new Builder(this.builder.tree,this.builder.options);
+    }
+
+    /**
+     * Wrapper for builder.execute() that sets output targets deploy paths. This
+     * is the preferred way to execute the builder.
+     *
+     * @return {Promise}
+     */
     executeBuilder() {
         return this.builder.execute().then(() => {
             this.setTargetsDeployPath();
-        })
+        });
     }
 
-    // Gets Target. Creates a new target having the given path. The final
-    // parameter is an options object with the following keys:
-    //   - parents: Array of Target denoting parent targets for dependency
-    //     management
-    //   - isOutputTarget: true if new target should be added as an output
-    //     target [default=true]
+    /**
+     * Executes an external, sub-builder. This is the preferred way to execute a
+     * sub-builder.
+     *
+     * @return {Promise}
+     */
+    executeExternalBuilder(builder) {
+        return this.builder.executeAndMerge(builder).then(() => {
+            this.setTargetsDeployPath();
+        });
+    }
+
+    /**
+     * Creates a new target having the given path.
+     *
+     * @param {string} newTargetPath
+     *  The path for the new target (relative to the deploy path).
+     * @param {object} options
+     *  List of options to configure the target creation.
+     * @param {module:target~Target[]} options.parents
+     *  List of parent targets used to create dependencies in the internal
+     *  dependency graph.
+     * @param {boolean} options.isOutputTarget
+     *  Determines if the target should be added to the context as an output
+     *  target. The default is true.
+     *
+     * @return {module:target~Target}
+     */
     createTarget(newTargetPath,options) {
         // Normalize and unpack options.
         options = options || {};
@@ -70,7 +174,7 @@ class DeployContext {
             }
         }
 
-        var target = targetModule.makeOutputTarget(newTargetPath);
+        var target = makeOutputTarget(newTargetPath);
         target.setDeployPath(this.deployPath);
         if (isOutputTarget) {
             this.targets.push(target);
@@ -79,8 +183,37 @@ class DeployContext {
         return target;
     }
 
-    // Looks up a target by its source path. Returns false if no such target was
-    // found.
+    /**
+     * Gets a list of all targets in the context.
+     *
+     * @return {module:target~Target[]}
+     */
+    getTargets() {
+        return this.targets.slice();
+    }
+
+    /**
+     * Iterates through all targets in the context and invokes the specified
+     * callback.
+     *
+     * @param {module:context~DeployContext~TargetCallback} callback
+     *  The callback to invoke.
+     */
+    forEachTarget(callback) {
+        for (let i = 0;i < this.targets.length;++i) {
+            callback(this.targets[i]);
+        }
+    }
+
+    /**
+     * Looks up a target by its source path.
+     *
+     * @param {string} targetPath
+     *  A path relative to the deploy path.
+     *
+     * @return {module:target~Target|boolean}
+     *  Returns the target if found, false otherwise.
+     */
     lookupTarget(targetPath) {
         if (targetPath in this.map) {
             return this.map[targetPath];
@@ -89,9 +222,35 @@ class DeployContext {
         return false;
     }
 
-    // Removes targets from the context. This is the preferred way of removing
-    // targets.
-    removeTargets(removeTargets) {
+    /**
+     * Sets up a target to be built using the builder attached to the
+     * context. The target will be automatically removed from the context (if it
+     * was a previous output target); its build product will be added back once
+     * the builder execution is finished.
+     *
+     * @param {module:target~Target[]} target
+     * @param {object[]} handlers
+     */
+    buildTarget(target,handlers) {
+        this.builder.pushInitialTargetWithHandlers(target,handlers);
+        this.removeTargets(target);
+    }
+
+    /**
+     * Removes targets from the context. This is the preferred way of removing
+     * targets.
+     *
+     * @param {module:target~Target[]} removeTargets
+     *  The list of targets to remove. A single Target instance may also be
+     *  passed.
+     * @param {boolean} [removeFromGraph]
+     *  Determines if the targets should be removed from the dependency graph
+     *  associated with the context. If true, then the targets are interpreted
+     *  as build products. The dependency graph is updated such that removed
+     *  targets may be reloaded in another build given an out-of-date output
+     *  target.
+     */
+    removeTargets(removeTargets,removeFromGraph) {
         if (!Array.isArray(removeTargets)) {
             removeTargets = [removeTargets];
         }
@@ -100,52 +259,136 @@ class DeployContext {
         removeTargets.forEach((elem) => {
             var index = this.targets.indexOf(elem);
             if (index >= 0) {
+                let targetPath = elem.getSourceTargetPath();
+
                 this.targets.splice(index,1);
-                delete this.map[elem.getSourceTargetPath()];
+                delete this.map[targetPath];
+
+                if (removeFromGraph) {
+                    // Remove targets from the dependency graph.
+                    let rm = this.graph.removeConnectionGivenProduct(targetPath);
+
+                    // Create a null connection for each source ancestor in the
+                    // graph. This allows the original include target to be
+                    // ignored in a subsequent build when no other dependencies
+                    // have been loaded.
+                    if (rm.length > 0) {
+                        // Add null connections for the ancestors.
+                        rm.forEach((depend) => {
+                            this.graph.addNullConnection(depend);
+                        });
+                    }
+                    else {
+                        // If the node didn't have any ancestors (i.e. is its
+                        // own ancestor), then we add a singular null connection
+                        // to it so that it is ignored.
+                        this.graph.addNullConnection(targetPath);
+                    }
+                }
             }
-        })
+        });
     }
 
-    // Resolves the set of "removeTargets" into a new target with the given
-    // path. This essentially collapses existing targets down to a single new
-    // target. The "newTargetPath" must contain both the target path and
-    // name. The new target is added to the context's list of targets. The final
-    // parameter is an options object with the following keys:
-    //   - isOutputTarget: true if new target should be added as an output
-    //     target [default=true]
+    /**
+     * Resolves zero or more targets into a new target with the given path.
+     *
+     * @param {string} newTargetPath
+     *  The target path. The final component in the path is the target
+     *  name. Pass an empty value to avoid creating a new target.
+     * @param {module:target~Target[]} removeTargets
+     *  The list of targets to remove. This list may be empty.
+     * @param {object} options
+     * @param {boolean} options.isOutputTarget
+     *  True if the resulting target is added as an output target. Default is
+     *  true.
+     * @param {boolean} options.removeFromGraph
+     *  Parameter passed to context.removeTargets().
+     *
+     * @return {module:target~Target}
+     *  A Target instance is only returned if a new target path was provided.
+     */
     resolveTargets(newTargetPath,removeTargets,options) {
         // Normalize and unpack options.
         options = options || {};
-        var { isOutputTarget } = options;
-        isOutputTarget = (isOutputTarget !== "undefined") ? isOutputTarget : true
+        var { isOutputTarget, removeFromGraph } = options;
+        isOutputTarget = (typeof isOutputTarget !== 'undefined') ? !!isOutputTarget : true;
+        removeFromGraph = (typeof removeFromGraph !== 'undefined') ? !!removeFromGraph : false;
 
         if (removeTargets) {
-            this.removeTargets(removeTargets);
+            this.removeTargets(removeTargets,removeFromGraph);
         }
 
         // Create new target if path is specified.
         if (newTargetPath) {
             var createOpts = {
                 parents: removeTargets,
-                isOutputTarget: isOutputTarget
+                isOutputTarget
             }
 
             return this.createTarget(newTargetPath,createOpts);
         }
     }
 
-    // Gets Promise. Sends control to another deploy plugin. The 'nextPlugin'
-    // must be an object, either an already loaded plugin or a plugin loader
-    // object.
+    /**
+     * Executes the specified deploy plugin.
+     *
+     * @param {object} plugin
+     *  A loaded deploy plugin or a plugin loader object.
+     * @param {module:plugin/deploy-plugin~DeployPlugin} settings
+     *  The deploy plugin configuration object to pass to the deploy plugin.
+     *
+     * @return {Promise}
+     */
+    execute(plugin,settings) {
+        plugin = resolveDeployPlugin(plugin);
+        this.currentPlugin = plugin;
+
+        return plugin.exec(this,settings || {});
+    }
+
+    /**
+     * Sends control to another deploy plugin.
+     *
+     * @param {object} nextPlugin
+     *  A loaded deploy plugin or a plugin loader object.
+     * @param {object} settings
+     *  Settings to pass to the deploy plugin.
+     *
+     * @return {Promise}
+     */
     chain(nextPlugin,settings) {
-        // Execute plugin directly if it is an already-loaded plugin
-        // object. This is just anything that has an exec property.
+        var plugin = resolveDeployPlugin(nextPlugin);
+        this.currentPlugin = plugin;
 
-        if (nextPlugin.exec) {
-            return nextPlugin.exec(this,settings || {});
-        }
+        return plugin.exec(this,settings || {});
+    }
 
-        return lookupDeployPlugin(nextPlugin).exec(this,settings || {});
+    /**
+     * Writes a cached property. The property is written to per-deployment
+     * storage.
+     *
+     * @param {string} key
+     * @param {*} value
+     *
+     * @return {Promise}
+     */
+    writeCacheProperty(key,value) {
+        return this.tree.writeStorageConfig(this._makeCacheKey(key),value);
+    }
+
+    /**
+     * Reads a cached property.
+     *
+     * @param {string} key
+     *
+     * @return {Promise}
+     */
+    readCacheProperty(key) {
+        return this.tree.getStorageConfig(this._makeCacheKey(key));
+    }
+
+    _makeCacheKey(key) {
+        return format("cache.custom.%s",key);
     }
 }
 

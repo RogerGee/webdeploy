@@ -1,4 +1,8 @@
-// logger.js
+/**
+ * logger.js
+ *
+ * @module logger
+ */
 
 const os = require("os");
 const process = require("process");
@@ -45,11 +49,20 @@ function parseMessage(message) {
 }
 
 module.exports = {
-    resetIndent: () => {
+    /**
+     * Resets the logging indentation.
+     */
+    resetIndent() {
         indent = 0;
     },
 
-    pushIndent: (n) => {
+    /**
+     * Increases the logging indentation.
+     *
+     * @param {number} n
+     *  The number of steps to indent.
+     */
+    pushIndent(n) {
         if (!n || n <= 0) {
             n = 1;
         }
@@ -57,7 +70,13 @@ module.exports = {
         indent += INDENT_STEP * n;
     },
 
-    popIndent: (n) => {
+    /**
+     * Decreases the logging indentation.
+     *
+     * @param {number} n
+     *  The number of steps to unindent.
+     */
+    popIndent(n) {
         if (!n || n <= 0) {
             n = 1;
         }
@@ -68,11 +87,25 @@ module.exports = {
         }
     },
 
-    setIndent: (newIndent) => {
-        indent = newIndent;
+    /**
+     * Sets the logging indentation level.
+     *
+     * @param {number} n
+     *  The indentation step level.
+     */
+    setIndent(n) {
+        indent = INDENT_STEP * n;
     },
 
-    log: (message,noeol) => {
+    /**
+     * Logs a message to the standard output.
+     *
+     * @param {string} message
+     *  The message to log.
+     * @param {boolean} noeol
+     *  Determines if an end-of-line is appended to the log message.
+     */
+    log(message,noeol) {
         if (noeol) {
             process.stdout.write(makeIndent() + parseMessage(message));
         }
@@ -81,7 +114,15 @@ module.exports = {
         }
     },
 
-    error: (message,noeol) => {
+    /**
+     * Logs a message to the standard error.
+     *
+     * @param {string} message
+     *  The message to log.
+     * @param {boolean} noeol
+     *  Determines if an end-of-line is appended to the log message.
+     */
+    error(message,noeol) {
         if (noeol) {
             process.stderr.write(makeIndent() + parseMessage(message).red);
         }
@@ -90,11 +131,31 @@ module.exports = {
         }
     },
 
-    plural: (n,thing,suffix) => {
+    /**
+     * Encapsulates making a string plural.
+     *
+     * @param {number} n
+     *  The number of things rerepresented by the thing.
+     * @param {string} thing
+     *  The think to potentially make plural.
+     * @param {string} suffix
+     *  The suffix to append if the thing is plural.
+     */
+    plural(n,thing,suffix) {
         if (!suffix) {
             suffix = "s";
         }
 
         return n > 1 || n == 0 ? thing + suffix : thing;
+    },
+
+    filter(val,defval) {
+        if (val) {
+            return val;
+        }
+        if (typeof defval === 'undefined') {
+            return '(none)';
+        }
+        return defval;
     }
-}
+};
