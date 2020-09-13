@@ -28,6 +28,8 @@ class Deployer {
      *  The deploy plugin to utilize for the deployment.
      * @param {nodegit.Tree} options.tree
      *  The git tree instance associated with the deployment.
+     * @param {module:depends~ConstDependencyGraph} options.prevGraph
+     *  The dependency graph for the previous deployment.
      */
     constructor(options) {
         if (!options.deployPath) {
@@ -46,6 +48,7 @@ class Deployer {
         this.callbacks = options.callbacks || {};
         this.state = DEPLOYER_STATE_INITIAL;
         this.tree = options.tree;
+        this.prevGraph = options.prevGraph
     }
 
     /**
@@ -93,7 +96,7 @@ class Deployer {
             throw new WebdeployError("Deployer has invalid state: not finalized");
         }
 
-        this.context = new DeployContext(this.deployPath,builder,this.tree);
+        this.context = new DeployContext(this.deployPath,builder,this.tree,this.prevGraph);
 
         // Hijack the chain() method so we can allow string plugin IDs that map
         // to the current deploy plugin's requires and issue the chain

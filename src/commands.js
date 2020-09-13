@@ -9,7 +9,7 @@ const path = require("path").posix;
 const fs = require("fs");
 const git = require("nodegit");
 
-const { DependencyGraph } = require("./depends");
+const { DependencyGraph, ConstDependencyGraph } = require("./depends");
 const logger = require("./logger");
 const { RepoTree } = require("./tree/repo-tree");
 const { PathTree } = require("./tree/path-tree");
@@ -137,7 +137,8 @@ function deployBuildStep(tree,options) {
                 beforeChain: deployBeforeChainCallback,
                 afterChain: deployAfterChainCallback
             },
-            tree
+            tree,
+            prevGraph: options.prevGraph
         };
 
         deployer = new Deployer(deployerOptions);
@@ -298,6 +299,7 @@ function deployStartStep(tree,options) {
 
     }).then((repr) => {
         options.graph = new DependencyGraph(repr);
+        options.prevGraph = new ConstDependencyGraph(repr);
 
         // Reset dependency graph if set in options.
 

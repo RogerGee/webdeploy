@@ -46,11 +46,10 @@ class DeployContext {
      *  The builder associated with the deployment.
      * @param {nodegit.Tree} tree
      *  The git tree instance associated with the deployment.
-     * @param {object} [settings]
+     * @param {module:depends~ConstDependencyGraph} prevGraph
+     *  The previous dependency graph state.
      */
-    constructor(deployPath,builder,tree,settings) {
-        settings = settings || {};
-
+    constructor(deployPath,builder,tree,prevGraph) {
         this.deployPath = deployPath;
         this.builder = builder;
 
@@ -60,6 +59,7 @@ class DeployContext {
 
         this.map = {};
         this.graph = builder.options.graph; // DependencyGraph
+        this.prevGraph = prevGraph;
         this.tree = tree; // git.Tree
         this.logger = require("./logger");
         this.currentPlugin = null;

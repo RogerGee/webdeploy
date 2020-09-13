@@ -31,9 +31,8 @@ const { format } = require("util");
  */
 
 /**
- * Stores target dependencies such that a set of source targets is associated
- * with a set of build products. The associations are always non-trivial,
- * meaning a dependency A -> A is never represented but A -> B is represented.
+ * Provides a dependency graph implementation for tracking source targets and
+ * build products.
  */
 class DependencyGraph {
     /**
@@ -633,6 +632,48 @@ class DependencyGraph {
     }
 }
 
-module.exports = {
-    DependencyGraph
+/**
+ * A read-only variant of DependencyGraph.
+ */
+class ConstDependencyGraph extends DependencyGraph {
+    addConnection() {
+        throw new Error("Cannot modify ConstDependencyGraph!");
+    }
+
+    addNullConnection() {
+        throw new Error("Cannot modify ConstDependencyGraph!");
+    }
+
+    addLink() {
+        throw new Error("Cannot modify ConstDependencyGraph!");
+    }
+
+    addResolveHook() {
+        throw new Error("Cannot modify ConstDependencyGraph!");
+    }
+
+    resolve() {
+        if (this.resolv) {
+            throw new Error("Cannot modify ConstDependencyGraph!");
+        }
+
+        DependencyGraph.prototype.resolve.call(this);
+    }
+
+    reset() {
+        throw new Error("Cannot modify ConstDependencyGraph!");
+    }
+
+    removeConnectionGivenSource(source,sync) {
+        throw new Error("Cannot modify ConstDependencyGraph!");
+    }
+
+    removeConnectionGivenProduct(product,sync) {
+        throw new Error("Cannot modify ConstDependencyGraph!");
+    }
 }
+
+module.exports = {
+    DependencyGraph,
+    ConstDependencyGraph
+};
