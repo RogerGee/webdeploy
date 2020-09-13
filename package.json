@@ -22,6 +22,7 @@
     "better-sqlite3": "^5.4.3",
     "colors": "^1.4.0",
     "commander": "^5.0.0",
+    "minimatch": "^3.0.4",
     "nodegit": "^0.26.2",
     "require-from-string": "^2.0.2",
     "tar": "^4.4.13"

@@ -4,6 +4,7 @@
  * @module builder/build-include
  */
 
+const minimatch = require("minimatch");
 const { format } = require("util");
 
 const { BuildHandler } = require("./build-handler");
@@ -130,34 +131,22 @@ class BuildInclude {
      *  Returns whether the candidate is included.
      */
     doesInclude(candidate) {
-        // Make sure the candidate is not excluded.
+        // Try excludes (glob match).
 
-        if (this.exclude) {
-            for (var i = 0;i < this.exclude.length;++i) {
-                if (candidate.match(this.exclude[i])) {
-                    return false;
-                }
-            }
+        if (this.exclude && this.exclude.some((e) => minimatch(candidate,e))) {
+            return false;
         }
 
-        // Try matches (exact match).
+        // Try matches (glob match).
 
-        if (this.match) {
-            for (var i = 0;i < this.match.length;++i) {
-                if (candidate == this.match[i]) {
-                    return true;
-                }
-            }
+        if (this.match && this.match.some((m) => minimatch(candidate,m))) {
+            return true;
         }
 
         // Try patterns (regex match).
 
-        if (this.pattern) {
-            for (var i = 0;i < this.pattern.length;++i) {
-                if (candidate.match(this.pattern[i])) {
-                    return true;
-                }
-            }
+        if (this.pattern && this.pattern.some((p) => candidate.match(p))) {
+            return true;
         }
 
         return false;
