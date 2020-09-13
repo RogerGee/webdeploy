@@ -25,12 +25,10 @@ function make_path(...parts) {
 }
 
 const USER_CONFIG_FILE = make_path('webdeployrc');
-const USER_PLUGIN_DIR = make_path('plugin-cache');
 const USER_STORAGE_FILE = make_path('storage.db');
 
 const DEFAULTS = {
     pluginDirectories: [],
-    pluginCacheDir: USER_PLUGIN_DIR,
     webRepos: [],
     npmRepos: [],
     storageFile: USER_STORAGE_FILE
@@ -44,9 +42,8 @@ class Sysconfig {
      * Creates a new Sysconfig instance.
      */
     constructor() {
-        // Make sure the default user plugin directory exists. (This also
-        // indirectly makes sure the base directory exists.)
-        mkdirParentsSync(USER_PLUGIN_DIR,HOMEDIR);
+        // Make sure the root directory exists.
+        mkdirParentsSync(DEFAULT_ROOT,HOMEDIR);
 
         // Apply defaults.
         Object.assign(this,DEFAULTS);
@@ -91,10 +88,6 @@ class Sysconfig {
                     }
                 }
             }
-
-            // Finalize: ensure plugin cache directory is ordered last in plugin
-            // directories list.
-            this.pluginDirectories.push(this.pluginCacheDir);
 
             // Finalize: ensure storage file is absolute path.
             if (!path.isAbsolute(this.storageFile)) {
