@@ -28,7 +28,18 @@ function resolveSourcePath(sourcePath) {
     if (sourcePath) {
         return path.resolve(sourcePath);
     }
+
+    // Resolve empty source path to working directory.
     return path.resolve(".");
+}
+
+function resolveDeployPath(deployPath) {
+    if (deployPath) {
+        return path.resolve(deployPath);
+    }
+
+    // Keep empty deploy path empty so tree can decide.
+    return deployPath;
 }
 
 /**
@@ -383,7 +394,7 @@ commander.command("deploy [path]")
             force: cmd.force ? true : false,
             deployBranch: cmd.deployBranch,
             deployTag: cmd.deployTag,
-            deployPath: cmd.deployPath
+            deployPath: resolveDeployPath(cmd.deployPath)
         };
 
         var localPath = resolveSourcePath(sourcePath);
