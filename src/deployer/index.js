@@ -19,34 +19,25 @@ class Deployer {
     /**
      * Creates a new Deployer instance.
      *
+     * @param {object} config
+     *  The selected deploy config to use for the deployment.
+     * @param {module:tree~TreeBase} tree
+     *  The project tree being deployed.
      * @param {object} options
      *  Options used to configure the deployer
-     * @param {string} options.deployPath
-     *  The deploy path to configure for the deployment.
-     * @param {object} options.deployConfig
-     *  The deploy plugin to utilize for the deployment.
-     * @param {nodegit.Tree} options.tree
-     *  The git tree instance associated with the deployment.
+     * @param {object} options.callbacks
+     *  Callbacks passed to the deploy context at execute time.
      * @param {module:depends~ConstDependencyGraph} options.prevGraph
      *  The dependency graph for the previous deployment.
      */
-    constructor(options) {
-        if (!options.deployPath) {
-            throw new WebdeployError("No deploy path is provided in deployment options");
-        }
-        if (!options.deployConfig) {
-            throw new WebdeployError("No deploy plugin is provided in deployment options");
-        }
-        if (!options.tree) {
-            throw new WebdeployError("No tree specified in deployment options");
-        }
-
-        this.deployConfig = new DeployConfig(options.deployConfig);
-        this.deployPath = options.deployPath;
+    constructor(config,tree,options) {
+        this.tree = tree;
+        this.deployConfig = new DeployConfig(config);
+        this.deployPath = tree.getDeployConfig("deployPath");
         this.callbacks = options.callbacks || {};
+        this.prevGraph = options.prevGraph;
+
         this.state = DEPLOYER_STATE_INITIAL;
-        this.tree = options.tree;
-        this.prevGraph = options.prevGraph
     }
 
     /**
