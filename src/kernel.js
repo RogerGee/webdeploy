@@ -7,6 +7,7 @@
 const xpath = require("path").posix;
 const assert = require("assert");
 const logger = require("./logger");
+const subsystem = require("./subsystem");
 const { DependencyGraph, ConstDependencyGraph } = require("./depends");
 const { DelayedTarget } = require("./target");
 const { Builder } = require("./builder");
@@ -72,6 +73,10 @@ class Kernel {
     }
 
     async execute() {
+        // Load project in subsystem.
+
+        await subsystem.loadProject(this.tree);
+
         // Load initial config from project tree.
 
         this.deployConfig = await this.tree.getTargetConfig(this.options.type);

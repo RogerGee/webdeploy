@@ -5,6 +5,7 @@
  */
 
 const path = require("path");
+const subsystem = require("../subsystem");
 const { format } = require("util");
 const { build: DEFAULT_BUILD_PLUGINS,
         deploy: DEFAULT_DEPLOY_PLUGINS } = require("./default");
@@ -32,8 +33,12 @@ function lookup_default_plugin(id,type) {
     return null;
 }
 
-function require_plugin(path) {
+function require_plugin(path,project) {
     try {
+        if (project) {
+            return subsystem.requireProject(path);
+        }
+
         return require(path);
     } catch (err) {
         if (err.code !== 'MODULE_NOT_FOUND' || !err.message.match(path)) {
@@ -62,7 +67,7 @@ class Plugin {
         // Attempt to load plugin using node_modules.
 
         if (!plugin) {
-            plugin = require_plugin(PLUGIN_PREFIX + id);
+            plugin = require_plugin(PLUGIN_PREFIX + id,true);
             this._project = !!plugin;
         }
 

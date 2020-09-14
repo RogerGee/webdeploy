@@ -10,9 +10,16 @@ const path = require("path");
 const storage = require("./storage");
 const { promisify } = require("util");
 const { mkdirParents } = require("./utils");
+const { WebdeployError } = require("./error");
 
 const HOMEDIR = os.homedir();
-const DEFAULT_ROOT = path.join(HOMEDIR,'.webdeploy');
+const DEFAULT_ROOT = path.join(HOMEDIR,".webdeploy");
+
+const PROXY_FILE = ".webdeploy.proxy.js";
+const PROXY_CODE = `
+// webdeploy proxy snippet
+module.exports = require;
+`;
 
 /**
  * Core webdeploy subsystem functionality.
@@ -26,11 +33,33 @@ class Subsystem {
         this.configFile = this.makePath("webdeployrc");
         this.storageFile = this.makePath("storage.db");
 
+        this.proxy = null;
+
         // Add the 'plugins' directory under the webdeploy distribution to the
         // list of plugin directories. This is designed for testing purposes.
         this.pluginDirectories.push(
             path.resolve(path.join(__dirname,"../plugins"))
         );
+    }
+
+    /**
+     * Requires a node module from the current project. The module is loaded
+     * from the project via a proxy module.
+     *
+     * @param {string} path
+     *
+     * @return {*}
+     */
+    requireProject(path) {
+        if (!this.proxy) {
+            throw new WebdeployError("Project module proxy is not configured");
+        }
+
+        if (this.proxy === true) {
+            return null;
+        }
+
+        return this.proxy(path);
     }
 
     makePath(...parts) {
@@ -56,6 +85,47 @@ class Subsystem {
         await this._loadConfig();
 
         storage.load(this.storageFile);
+    }
+
+    /**
+     * Configures the subsystem for the given project tree.
+     *
+     * @param {module:tree~TreeBase} tree
+     */
+    async loadProject(tree) {
+        const proxyPath = path.join(tree.getPath(),"node_modules",PROXY_FILE);
+        const stat = promisify(fs.stat);
+
+        let err;
+        try {
+            const results = await stat(proxyPath);
+            if (!results.isFile()) {
+                err = new WebdeployError(
+                    "Proxy could not be established: '%s' is not a file",
+                    proxyPath
+                );
+            }
+
+        } catch (ex) {
+            if (ex.code == "ENOENT") {
+                const writer = fs.createWriteStream(proxyPath);
+                writer.end(PROXY_CODE);
+
+                await new Promise((resolve,reject) => {
+                    writer.on("finish",resolve);
+                    writer.on("error",reject);
+                });
+            }
+            else {
+                err = ex;
+            }
+        }
+
+        if (err) {
+            throw err;
+        }
+
+        this.proxy = require(proxyPath);
     }
 
     async _loadConfig() {
