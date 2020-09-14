@@ -5,6 +5,7 @@
  */
 
 const pathModule = require("path");
+const subsystem = require("./subsystem");
 const { format } = require("util");
 const { Builder } = require("./builder");
 const { makeOutputTarget } = require("./target");
@@ -63,6 +64,7 @@ class DeployContext {
         this.prevGraph = prevGraph;
         this.tree = tree; // git.Tree
         this.logger = require("./logger");
+        this.nodeModules = subsystem.nodeModules;
         this.callbacks = callbacks;
         this.currentPlugin = null;
 

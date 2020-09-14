@@ -6,9 +6,9 @@
 
 const assert = require("assert");
 const pathModule = require("path").posix;
-const { format } = require("util");
-
 const audit = require("../audit");
+const { format } = require("util");
+const { BuildContext } = require("./build-context");
 const { BuildInclude } = require("./build-include");
 const { BuildHandler } = require("./build-handler");
 const { Plugin } = require("../plugin");
@@ -520,9 +520,7 @@ class Builder {
      * @return {Promise}
      */
     execute() {
-        const context = {
-            basePath: this.tree.getPath()
-        };
+        const context = new BuildContext(this.tree);
 
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");
