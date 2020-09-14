@@ -224,7 +224,7 @@ class PluginAuditor {
         const queue = Object.values(this.plugins.build)
               .concat(Object.values(this.plugins.deploy));
 
-        this.log("Auditing plugins");
+        this.log("Auditing plugins:");
         this.beginLog();
 
         while (queue.length > 0) {
@@ -263,6 +263,9 @@ class PluginAuditor {
                 order.callback(order.plugins);
             }
         });
+
+        this.log("*Done*");
+        this.endLog();
     }
 }
 
