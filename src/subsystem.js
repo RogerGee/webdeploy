@@ -8,8 +8,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const storage = require("./storage");
+const logger = require("./logger");
 const { promisify } = require("util");
-const { mkdirParents } = require("./utils");
+const { mkdirParents, flattenPath, runNPM } = require("./utils");
 const { WebdeployError } = require("./error");
 
 const HOMEDIR = os.homedir();
@@ -20,6 +21,25 @@ const PROXY_CODE = `
 // webdeploy proxy snippet
 module.exports = require;
 `;
+
+const NODE_MODULES_SUBPATH = "node-modules";
+
+class PackageFile {
+    constructor(readStream,outputPath) {
+        this.readStream = readStream;
+        this.outputPath = outputPath;
+    }
+
+    writeOut() {
+        const writer = fs.createWriteStream(this.outputPath);
+
+        return new Promise((resolve,reject) => {
+            this.readStream.pipe(writer);
+            this.readStream.on("end",resolve);
+            this.readStream.on("error",reject);
+        });
+    }
+}
 
 /**
  * Core webdeploy subsystem functionality.
@@ -33,6 +53,7 @@ class Subsystem {
         this.configFile = this.makePath("webdeployrc");
         this.storageFile = this.makePath("storage.db");
 
+        this.nodeModules = false;
         this.proxy = null;
 
         // Add the 'plugins' directory under the webdeploy distribution to the
@@ -93,36 +114,35 @@ class Subsystem {
      * @param {module:tree~TreeBase} tree
      */
     async loadProject(tree) {
-        const proxyPath = path.join(tree.getPath(),"node_modules",PROXY_FILE);
-        const stat = promisify(fs.stat);
+        this.nodeModules = await this._checkNodeModules(tree);
+        if (!this.nodeModules) {
+            this.proxy = true;
+            return;
+        }
 
-        let err;
+        const proxyPath = path.join(this.nodeModules,PROXY_FILE);
+
         try {
-            const results = await stat(proxyPath);
+            const results = await promisify(fs.stat)(proxyPath);
             if (!results.isFile()) {
-                err = new WebdeployError(
+                throw new WebdeployError(
                     "Proxy could not be established: '%s' is not a file",
                     proxyPath
                 );
             }
 
         } catch (ex) {
-            if (ex.code == "ENOENT") {
-                const writer = fs.createWriteStream(proxyPath);
-                writer.end(PROXY_CODE);
-
-                await new Promise((resolve,reject) => {
-                    writer.on("finish",resolve);
-                    writer.on("error",reject);
-                });
+            if (ex.code != "ENOENT") {
+                throw ex;
             }
-            else {
-                err = ex;
-            }
-        }
 
-        if (err) {
-            throw err;
+            const writer = fs.createWriteStream(proxyPath);
+            writer.end(PROXY_CODE);
+
+            await new Promise((resolve,reject) => {
+                writer.on("finish",resolve);
+                writer.on("error",reject);
+            });
         }
 
         this.proxy = require(proxyPath);
@@ -161,6 +181,106 @@ class Subsystem {
                 this.storageFile = this.makePath(this.storageFile);
             }
         }
+    }
+
+    async _checkNodeModules(tree) {
+        let dir;
+        if (tree.isLocal()) {
+            dir = path.join(tree.getPath(),"node_modules");
+        }
+        else {
+            dir = this.makePath(NODE_MODULES_SUBPATH,"PROJ"+flattenPath(tree.getPath()));
+        }
+
+        try {
+            const stats = await promisify(fs.stat)(dir);
+            if (!stats.isDirectory() && !tree.isLocal()) {
+                throw new WebdeployError("Project cannot load: '%s' must be a directory",dir);
+            }
+
+            if (!tree.isLocal()) {
+                await this._installNodeModules(tree,dir,true);
+            }
+
+        } catch (ex) {
+            if (ex.code != "ENOENT") {
+                throw ex;
+            }
+
+            // Local trees do not require node_modules.
+            if (tree.isLocal()) {
+                return false;
+            }
+
+            // Create node_modules under path using package.json and
+            // package-lock.json.
+            if (!(await this._installNodeModules(tree,dir,false))) {
+                return false;
+            }
+        }
+
+        return dir;
+    }
+
+    async _installNodeModules(tree,dir,incremental) {
+        // Skip if package and package-lock were not modified.
+        if (incremental
+            && !(await tree.isBlobModified("package.json"))
+            && !(await tree.isBlobModified("package-lock.json")))
+        {
+            return true;
+        }
+
+        // Load files needed for node_modules deployment.
+        const files = [];
+        try {
+            files.push(
+                new PackageFile(
+                    await tree.getBlob("package.json"),
+                    path.join(dir,"package.json")
+                )
+            );
+            files.push(
+                new PackageFile(
+                    await tree.getBlob("package-lock.json"),
+                    path.join(dir,"package-lock.json")
+                )
+            );
+        } catch (ex) {
+            // If package files were not found then we ignore node_modules.
+            return false;
+        }
+
+        if (!incremental) {
+            // Ensure directory exists.
+            await mkdirParents(dir,this.makePath());
+        }
+
+        if (incremental) {
+            logger.log("Updating node_modules...");
+        }
+        else {
+            logger.log("Installing node_modules...");
+        }
+        logger.pushIndent();
+
+        for (let i = 0;i < files.length;++i) {
+            await files[i].writeOut();
+        }
+
+        const args = [
+            "install",
+            "-s",
+            "--no-audit",
+            "--no-bin-links"
+        ];
+
+        await promisify(runNPM)(args,dir,false);
+
+        logger.log("*Done*");
+        logger.popIndent();
+
+        return true;
     }
 }
 

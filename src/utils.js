@@ -6,6 +6,7 @@
 
 const fs = require("fs");
 const pathModule = require("path");
+const child_process = require("child_process");
 
 function getPathParents(path,base) {
     var parsed = pathModule.parse(path);
@@ -146,4 +147,57 @@ module.exports.prepareConfigPath = function(path) {
     }
 
     return result;
+};
+
+/**
+ * Mangles a file path to a single value that can be used as a file system entry
+ * name.
+ *
+ * @param {string} filePath
+ *
+ * @return {string}
+ */
+module.exports.flattenPath = function(filePath) {
+    let result = filePath;
+    result = result.replace(/[\/\\]+$/,'');
+    return result.replace(/\/|\\/g,'--');
+};
+
+/**
+ * Executes NPM.
+ *
+ * @param {string[]} args
+ * @param {string} cwd
+ * @param {boolean} hasStdout
+ * @param {function} donefn
+ * @param {function} errfn
+ *
+ * @returns {stream.Readable}
+ */
+module.exports.runNPM = function(args,cwd,hasStdout,callback) {
+    const command = process.platform == 'win32' ? 'npm.cmd' : 'npm';
+
+    const stdio = ['ignore','ignore','inherit'];
+    if (hasStdout) {
+        stdio[1] = 'pipe';
+    }
+
+    const proc = child_process.spawn(command,args,{
+        cwd,
+        stdio
+    });
+
+    proc.on('exit', (code,signal) => {
+        if (signal) {
+            callback(new WebdeployError("The 'npm' subprocess exited with signal '%s'",signal));
+        }
+        else if (code != 0) {
+            callback(new WebdeployError("The 'npm' subprocess exited non-zero"));
+        }
+        else {
+            callback();
+        }
+    });
+
+    return proc.stdout;
 };

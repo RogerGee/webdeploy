@@ -41,6 +41,11 @@ class PathTree extends TreeBase {
         return this.basePath;
     }
 
+    // Implements TreeBase.isLocal().
+    isLocal() {
+        return true;
+    }
+
     // Implements TreeBase.getBlob().
     getBlob(blobPath) {
         blobPath = this.makePath(blobPath);

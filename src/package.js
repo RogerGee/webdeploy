@@ -14,7 +14,7 @@ const child_process = require("child_process");
 const tar = require("tar");
 
 const { WebdeployError } = require("./error");
-const { mkdirParents, rmdirParents } = require("./utils");
+const { mkdirParents, rmdirParents, runNPM } = require("./utils");
 
 const TARBALL_MIME_TYPES = [
     /application\/(x-)?gzip/,
@@ -343,47 +343,6 @@ class PackageInstaller {
         inputStream.pipe(tarstream);
     }
 
-    runNPMCommand(args,cwd,hasStdout,donefn,errfn) {
-        const command = process.platform == 'win32' ? 'npm.cmd' : 'npm';
-
-        const stdio = ['ignore','ignore','inherit'];
-        if (hasStdout) {
-            stdio[1] = 'pipe';
-        }
-
-        const proc = child_process.spawn(command,args,{
-            cwd,
-            stdio
-        });
-
-        proc.on('exit', (code,signal) => {
-            if (signal) {
-                errfn(
-                    new WebdeployError(
-                        format(
-                            "The 'npm' subprocess exited with signal '%s'",
-                            signal
-                        )
-                    )
-                );
-            }
-            else if (code != 0) {
-                errfn(
-                    new WebdeployError(
-                        format(
-                            "The 'npm' subprocess exited non-zero"
-                        )
-                    )
-                );
-            }
-            else {
-                donefn();
-            }
-        });
-
-        return proc.stdout;
-    }
-
     runNpmInstall(pack,donefn,errfn) {
         if (this.logger) {
             this.logger.log(format("Executing 'npm install' on extracted archive"));
@@ -400,7 +359,9 @@ class PackageInstaller {
             args.push("--ignore-scripts");
         }
 
-        this.runNPMCommand(args,pack.getPackagePath(),false,donefn,errfn);
+        runNPM(args,pack.getPackagePath(),false,(err) => {
+            err ? errfn(err) : donefn();
+        });
     }
 }
 
@@ -529,11 +490,16 @@ class NPMPackageInstaller extends PackageInstaller {
 
         const results = await new Promise((resolve,reject) => {
             const chunks = [];
-            const stdout = this.runNPMCommand(
+            const stdout = runNPM(
                 args,
                 this.installPath,
                 true,
-                () => {
+                (err) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+
                     const lines = Buffer.concat(chunks).toString("utf8")
                           .split("\n")
                           .map((s) => s.trim())
@@ -545,8 +511,7 @@ class NPMPackageInstaller extends PackageInstaller {
                             pack: packlist[index]
                         };
                     }));
-                },
-                reject
+                }
             );
 
             stdout.on("data",(chunk) => {

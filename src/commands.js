@@ -349,9 +349,7 @@ commander.command("config <deploy-path> <key> [value]")
     .option("-p, --path [path]","Specifies the project path (default is current directory)")
     .action((deployPath,key,value,cmd) => {
         var localPath = resolveSourcePath(cmd.path);
-        if (deployPath) {
-            deployPath = path.resolve(deployPath);
-        }
+        deployPath = resolveDeployPath(deployPath);
         config(localPath,deployPath,key,value).catch(webdeploy_fail);
     });
 
@@ -360,9 +358,7 @@ commander.command("info [deploy-path]")
     .option("-p, --path [path]","Specifies the project path (default is current directory)")
     .action((deployPath,cmd) => {
         var localPath = resolveSourcePath(cmd.path);
-        if (deployPath) {
-            deployPath = path.resolve(deployPath);
-        }
+        deployPath = resolveDeployPath(deployPath);
         info(localPath,deployPath).catch(webdeploy_fail);
     });
 
@@ -372,9 +368,7 @@ commander.command("purge [deploy-path]")
     .option("--all","Indicates that the entire project tree is to be purged")
     .action((deployPath,cmd) => {
         var localPath = resolveSourcePath(cmd.path);
-        if (deployPath) {
-            deployPath = path.resolve(deployPath);
-        }
+        deployPath = resolveDeployPath(deployPath);
         purge(localPath,deployPath,!!cmd.all).catch(webdeploy_fail);
     });
 

@@ -73,13 +73,12 @@ class Kernel {
     }
 
     async execute() {
-        // Load project in subsystem.
-
-        await subsystem.loadProject(this.tree);
-
         // Load initial config from project tree.
 
         this.deployConfig = await this.tree.getTargetConfig(this.options.type);
+        if (!this.deployConfig) {
+            throw new WebdeployError("Deploy config was not found in target tree config");
+        }
 
         const depends = await this.tree.getStorageConfig(DEPENDS_CONFIG_KEY);
         this.graph = new DependencyGraph(depends);
@@ -90,6 +89,10 @@ class Kernel {
         if (this.options.force) {
             this.graph.reset();
         }
+
+        // Load project in subsystem.
+
+        await subsystem.loadProject(this.tree);
 
         // Perform audit step to ensure all plugins and configuration is good to
         // go.

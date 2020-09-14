@@ -126,14 +126,13 @@ class TreeBase {
      * is used.
      */
     init() {
-        var defaults = {};
+        const defaults = {};
         var stmt, info, row;
-        var path = this.getPath();
 
         // Ensure a tree record exists. We normalize the tree path so that the
         // record is shared between 'path' and 'repo' tree variants.
 
-        var treePath = normalizeTreePath(path);
+        const treePath = normalizeTreePath(this.getPath());
 
         stmt = storage.prepare(
             `SELECT
@@ -169,8 +168,8 @@ class TreeBase {
         // from options first; if not found, then we look at defaults from the
         // tree record.
 
-        var deployPath = this.option('deployPath') || this.treeRecord.deployPath || treePath;
-        var deployBranch = this.option('deployBranch') || this.treeRecord.deployBranch;
+        let deployPath = this.option('deployPath') || this.treeRecord.deployPath || treePath;
+        const deployBranch = this.option('deployBranch') || this.treeRecord.deployBranch;
 
         if (!deployPath && this.option('createDeployment') !== false) {
             throw new WebdeployError("Deployment config missing 'deployPath'");
@@ -223,7 +222,7 @@ class TreeBase {
 
         // Override deploy config with options.
         for (let key in this.deployConfig) {
-            var value = this.option(key);
+            const value = this.option(key);
             if (value) {
                 this.deployConfig[key] = value;
             }
@@ -274,6 +273,16 @@ class TreeBase {
      */
     getPath() {
         throw new WebdeployError("TreeBase.getPath() must be implemented");
+    }
+
+    /**
+     * Determines if the tree represents a local project. A local project is one
+     * that has a working tree.
+     *
+     * @return {boolean}
+     */
+    isLocal() {
+        throw new WebdeployError("TreeBase.isLocal() must be implemented");
     }
 
     /**

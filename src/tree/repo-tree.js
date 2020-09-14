@@ -58,6 +58,20 @@ class RepoTree extends TreeBase {
         this.gitConfig = null;
         this.gitConfigCache = {};
 
+        // If the repo path ends with a '.git' component, then the tree is
+        // considered local and we modify the path to be (at least what is
+        // conventionally) the working tree.
+        this.repoPath = this.repo.path();
+        const match = this.repoPath.match(/[\/\\]\.git[\/\\]*$/);
+        if (match) {
+            this.local = true;
+            this.repoPath = this.repoPath.substring(0,this.repoPath.length-match[0].length);
+        }
+        else {
+            this.local = false;
+            this.repoPath = this.repoPath.replace(/[\/\\]+$/,"")
+        }
+
         // Cache Promises to certain, often-accessed resources.
         this.deployCommits = {};
         this.targetTrees = {};
@@ -67,13 +81,12 @@ class RepoTree extends TreeBase {
 
     // Implements TreeBase.getPath().
     getPath() {
-        let path = this.repo.path();
-        const match = path.match(/\/\.git\/?$/);
-        if (match) {
-            path = path.substring(0,path.length-match[0].length);
-        }
+        return this.repoPath;
+    }
 
-        return path;
+    // Implements TreeBase.isLocal().
+    isLocal() {
+        return this.local;
     }
 
     // Implements TreeBase.getBlob().
@@ -132,47 +145,38 @@ class RepoTree extends TreeBase {
     }
 
     // Implements TreeBase.isBlobModified().
-    isBlobModified(blobPath,mtime) {
-        var prevreq = this.getPreviousCommit().then((commit) => {
-            if (!commit) {
-                return null;
-            }
+    async isBlobModified(blobPath,mtime) {
+        const prevCommit = await this.getPreviousCommit();
+        if (!prevCommit) {
+            return false;
+        }
 
-            return this.getTargetTree(commit);
+        const prevTree = await this.getTargetTree(prevCommit);
+        const targetTree = await this.getTargetTree();
 
-        }).then((tree) => {
-            return tree.entryByPath(blobPath);
+        let prevEntry;
+        let entry;
 
-        }).then((entry) => {
-            return entry;
-
-        }).catch((err) => {
-            return Promise.resolve(null);
-        });
-
-        var currentreq = this.getTargetTree().then((targetTree) => {
-            return targetTree.entryByPath(blobPath);
-
-        }).catch((err) => {
-            return Promise.resolve(null);
-        });
-
-        return Promise.all([prevreq,currentreq]).then(([ previousBlob, currentBlob ]) => {
+        try {
+            prevEntry = await prevTree.entryByPath(blobPath);
+        } catch (ex) {
             // If the previous entry wasn't found, then report that the blob was
             // modified.
-            if (!previousBlob) {
-                return true;
-            }
+            return true;
+        }
 
+        try {
+            entry = await targetTree.entryByPath(blobPath);
+        } catch (ex) {
             // If the current entry doesn't exist (i.e. it was removed), then
             // report that the blob was not modified (i.e. there is no action we
             // should take on it).
-            if (!currentBlob) {
-                return false;
-            }
+            return false;
+        }
 
-            return !previousBlob.id().equal(currentBlob.id());
-        });
+        // Otherwise see if the OID changed.
+
+        return prevEntry.id().equal(entry.id());
     }
 
     // Implements TreeBase.getMTime().
