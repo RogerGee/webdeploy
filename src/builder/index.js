@@ -520,6 +520,10 @@ class Builder {
      * @return {Promise}
      */
     execute() {
+        const context = {
+            basePath: this.tree.getPath()
+        };
+
         if (this.state != BUILDER_STATE_FINALIZED) {
             throw new WebdeployError("Builder has invalid state: not finalized");
         }
@@ -557,7 +561,7 @@ class Builder {
                 target.applySettings(handler);
 
                 // Execute plugin.
-                var promise = plugin.exec(target,handler).then((newTargets) => {
+                var promise = plugin.exec(target,handler,context).then((newTargets) => {
                     if (newTargets) {
                         // Normalize newTargets into an array.
                         if (newTargets && !Array.isArray(newTargets)) {
