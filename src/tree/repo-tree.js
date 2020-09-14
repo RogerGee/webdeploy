@@ -84,7 +84,7 @@ class RepoTree extends TreeBase {
     }
 
     // Implements TreeBase.walk().
-    walk(callback,options) {
+    async walk(callback,options) {
         if (options) {
             options = Object.assign({},options);
         }
@@ -92,28 +92,23 @@ class RepoTree extends TreeBase {
             options = {};
         }
 
-        return this.getTargetTree().then((tree) => {
-            // Look up subtree of target tree if base path is specified.
-            if (options.basePath) {
-                return tree.getEntry(options.basePath).then((entry) => {
-                    if (!entry.isTree()) {
-                        return Promise.reject(
-                            new WebdeployError(
-                                "Base path '" + options.basePath + "' does not refer to a tree"
-                            )
-                        );
-                    }
+        let tree = await this.getTargetTree();
 
-                    return entry.getTree();
-                });
+        // Look up subtree of target tree if base path is specified.
+        if (options.basePath) {
+            const entry = await tree.getEntry(options.basePath);
+            if (!entry.isTree()) {
+                throw new WebdeployError(
+                    "Base path '%s' does not refer to a tree",
+                    options.basePath
+                );
             }
 
-            return tree;
+            tree = await entry.getTree();
+        }
 
-        }).then((tree) => {
-            options.targetTree = tree;
-            return this.walkImpl(tree.path(),tree,callback,options);
-        });
+        options.targetTree = tree;
+        await this.walkImpl(tree.path(),tree,callback,options);
     }
 
     // Implements TreeBase.walkExtraneous().
@@ -399,62 +394,34 @@ class RepoTree extends TreeBase {
         }).then(makeBlobStream);
     }
 
-    walkImpl(prefix,tree,callback,options) {
-        return new Promise((resolve,reject) => {
-            let entries = tree.entries();
-            let outstanding = 1;
+    async walkImpl(prefix,tree,callback,options) {
+        const entries = tree.entries();
+        const targetPath = path.relative(options.targetTree.path(),prefix);
 
-            function attemptResolution() {
-                if (--outstanding <= 0) {
-                    resolve();
-                }
-            }
+        for (let i = 0;i < entries.length;++i) {
+            let ent = entries[i];
 
-            let targetPath = path.relative(options.targetTree.path(),prefix);
-
-            for (let i = 0;i < entries.length;++i) {
-                let ent = entries[i];
-
-                if (ent.isBlob()) {
-                    outstanding += 1;
-                    this.repo.getBlob(ent.oid()).then(
-                        (blob) => {
-                            try {
-                                callback(
-                                    {
-                                        filePath: ent.path(),
-                                        targetPath,
-                                        targetName: ent.name()
-                                    },
-                                    () => {
-                                        return makeBlobStream(blob);
-                                    }
-                                );
-                            } catch (ex) {
-                                reject(ex);
-                                return;
-                            }
-
-                            attemptResolution();
-
-                        },
-                        reject
-                    );
-                }
-                else if (ent.isTree()) {
-                    let newPrefix = path.join(prefix,ent.name());
-                    if (!options.filter || options.filter(newPrefix)) {
-                        outstanding += 1;
-                        this.repo.getTree(ent.oid()).then((nextTree) => {
-                            return this.walkImpl(newPrefix,nextTree,callback,options);
-
-                        }, reject).then(attemptResolution);
+            if (ent.isBlob()) {
+                const blob = await this.repo.getBlob(ent.oid());
+                await callback(
+                    {
+                        filePath: ent.path(),
+                        targetPath,
+                        targetName: ent.name()
+                    },
+                    () => {
+                        return makeBlobStream(blob);
                     }
+                );
+            }
+            else if (ent.isTree()) {
+                const newPrefix = path.join(prefix,ent.name());
+                if (!options.filter || options.filter(newPrefix)) {
+                    const nextTree = await this.repo.getTree(ent.oid());
+                    await this.walkImpl(newPrefix,nextTree,callback,options);
                 }
             }
-
-            attemptResolution();
-        });
+        }
     }
 
     walkExtraneousImpl(prefix,tree,curTree,callback) {

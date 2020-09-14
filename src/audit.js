@@ -236,13 +236,13 @@ class PluginAuditor {
             // Enqueue plugin requires.
 
             if (plugin.requires.build) {
-                requires.build.forEach(
+                plugin.requires.build.forEach(
                     (req) => queue.push(parse_requires(plugin,req,Plugin.TYPES.BUILD))
                 );
             }
 
             if (plugin.requires.deploy) {
-                requires.deploy.forEach(
+                plugin.requires.deploy.forEach(
                     (req) => queue.push(parse_requires(plugin,req,Plugin.TYPES.DEPLOY))
                 );
             }

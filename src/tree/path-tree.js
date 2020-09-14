@@ -6,7 +6,7 @@
 
 const fs = require("fs");
 const path = require("path");
-
+const { promisify } = require("util");
 const { TreeBase } = require("./");
 const { WebdeployError } = require("../error");
 
@@ -58,72 +58,43 @@ class PathTree extends TreeBase {
     }
 
     // Implements TreeBase.walk().
-    walk(callback,options) {
+    async walk(callback,options) {
         options = options || {};
 
-        var basePath = this.makeBasePath(options.basePath);
+        const readdir = promisify(fs.readdir);
+        const lstat = promisify(fs.lstat);
+        const basePath = this.makeBasePath(options.basePath);
 
-        return new Promise((resolve,reject) => {
-            let outstanding = 1;
-            let rejected = false;
+        const stk = [basePath];
 
-            function attemptResolution() {
-                if (--outstanding <= 0) {
-                    resolve();
+        while (stk.length > 0) {
+            const dirname = stk.pop();
+            const files = await readdir(dirname);
+            const targetPath = path.relative(basePath,dirname);
+
+            for (let i = 0;i < files.length;++i) {
+                const filePath = path.join(dirname,files[i]);
+
+                const stat = await lstat(filePath);
+                if (stat.isFile()) {
+                    await callback(
+                        {
+                            filePath,
+                            targetPath,
+                            targetName: files[i]
+                        },
+                        () => {
+                            return fs.createReadStream(filePath);
+                        }
+                    );
+                }
+                else if (stat.isDirectory()) {
+                    if (!options.filter || options.filter(files[i])) {
+                        stk.push(filePath);
+                    }
                 }
             }
-
-            function walkRecursive(dirname) {
-                fs.readdir(
-                    dirname,
-                    (err,files) => {
-                        if (err) {
-                            reject(err);
-                            rejected = true;
-                        }
-                        if (rejected) {
-                            return;
-                        }
-
-                        let targetPath = path.relative(basePath,dirname);
-
-                        for (let i = 0;i < files.length;++i) {
-                            let filePath = path.join(dirname,files[i]);
-
-                            let stat = fs.lstatSync(filePath);
-                            if (stat.isFile()) {
-                                try {
-                                    callback(
-                                        {
-                                            filePath,
-                                            targetPath,
-                                            targetName: files[i]
-                                        },
-                                        () => {
-                                            return fs.createReadStream(filePath);
-                                        }
-                                    );
-                                } catch (ex) {
-                                    reject(ex);
-                                    rejected = true;
-                                    return;
-                                }
-                            }
-                            else if (stat.isDirectory()) {
-                                if (!options.filter || options.filter(files[i])) {
-                                    outstanding += 1;
-                                    walkRecursive(filePath);
-                                }
-                            }
-                        }
-
-                        attemptResolution();
-                    }
-                );
-            }
-
-            walkRecursive(basePath);
-        });
+        }
     }
 
     // Implements TreeBase.isBlobModified().

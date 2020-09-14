@@ -302,10 +302,9 @@ class TreeBase {
     /**
      * Walks the tree recursively and calls the callback.
      *
-     * @param {Function} callback
-     *  Function with signature: callback(path,name,streamFunc)
-     *   The 'streamFunc' parameter is a function that creates a stream for the
-     *   blob entry.
+     * @param {function} callback
+     *  Function with signature: async callback(path,name,streamFunc)
+     *  The callback resolves before the next file is visited.
      * @param {object} options
      * @param {Function} options.filter
      *  Function like 'filter(path)' such that 'filter(path) => false' heads off

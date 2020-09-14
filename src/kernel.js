@@ -230,7 +230,6 @@ class Kernel {
             }
         };
 
-        const promises = [];
         const callback = async ({targetPath,targetName},stream) => {
             const ref = xpath.join(targetPath,targetName);
 
@@ -253,47 +252,40 @@ class Kernel {
                 }
             );
 
-            promises.push(this.addTarget(delayed));
+            // If a potential target does not have a build product (i.e. is a
+            // trivial product), then check to see if it is modified and should
+            // be included or not.
+
+            let newTarget;
+
+            if (!this.options.force
+                && this.graph.isResolved()
+                && !this.graph.hasProductForSource(ref))
+            {
+                const result = await this.tree.isBlobModified(ref);
+
+                if (result) {
+                    newTarget = this.builder.pushInitialTargetDelayed(delayed);
+                }
+                else {
+                    this.ignored = true;
+                }
+            }
+            else {
+                newTarget = this.builder.pushInitialTargetDelayed(delayed);
+            }
+
+            if (newTarget) {
+                logger.log("Add _" + ref + "_");
+            }
         };
 
         await this.tree.walk(callback,opts);
-        await Promise.all(promises);
 
         if (this.builder.targets.length == 0) {
             logger.log("*No Targets*");
         }
         logger.popIndent();
-    }
-
-    async addTarget(delayed) {
-        // If a potential target does not have a build product (i.e. is a
-        // trivial product), then check to see if it is modified and should be
-        // included or not.
-
-        const ref = delayed.getSourceTargetPath();
-
-        let newTarget;
-
-        if (!this.options.force
-            && this.graph.isResolved()
-            && !this.graph.hasProductForSource(ref))
-        {
-            const result = await this.tree.isBlobModified(ref);
-
-            if (result) {
-                newTarget = this.builder.pushInitialTargetDelayed(delayed);
-            }
-            else {
-                this.ignored = true;
-            }
-        }
-        else {
-            newTarget = this.builder.pushInitialTargetDelayed(delayed);
-        }
-
-        if (newTarget) {
-            logger.log("Add _" + ref + "_");
-        }
     }
 }
 
