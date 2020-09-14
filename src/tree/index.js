@@ -576,6 +576,26 @@ class TreeBase {
         }
 
         if (purgeTree && this.exists()) {
+            if (!this.hasDeployment()) {
+                stmts.push(
+                    storage.prepare(
+                        `DELETE FROM deploy_storage
+                         WHERE
+                           deploy_id IN (SELECT id FROM deploy WHERE tree_id = ?)`
+                    )
+                );
+                vals.push([this.treeRecord.id]);
+
+                stmts.push(
+                    storage.prepare(
+                        `DELETE FROM deploy
+                         WHERE
+                           tree_id = ?`
+                    )
+                );
+                vals.push([this.treeRecord.id]);
+            }
+
             stmts.push(
                 storage.prepare(
                     `DELETE FROM tree WHERE id = ?`
