@@ -8,7 +8,7 @@ const path = require("path");
 const { format } = require("util");
 const { build: DEFAULT_BUILD_PLUGINS,
         deploy: DEFAULT_DEPLOY_PLUGINS } = require("./default");
-const { pluginDirectories: PLUGIN_DIRS } = require("../sysconfig");
+const { pluginDirectories: PLUGIN_DIRS } = require("../subsystem");
 const { WebdeployError } = require("../error");
 
 const PLUGIN_PREFIX = "@webdeploy/plugin-";

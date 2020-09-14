@@ -7,7 +7,7 @@
 const fs = require("fs");
 const pathModule = require("path");
 const { promisify } = require("util");
-const sysconfig = require("./sysconfig");
+const subsystem = require("./subsystem");
 const { Plugin, make_default_plugin } = require("./plugin");
 const { WebdeployError } = require("./error");
 const { mkdirParents } = require("./utils");
@@ -281,7 +281,7 @@ class AuditContext {
         this.tree = tree;
         this.logger = logger;
         this.auditor = auditor;
-        this.basePath = sysconfig.makePath("cache",plugin.id);
+        this.basePath = subsystem.makePath("cache",plugin.id);
         this.package = require("./package");
         this.plugins = make_plugin_buckets();
     }
@@ -327,7 +327,7 @@ class AuditContext {
      */
     async makeCachePath(path) {
         var cachePath = pathModule.join(this.basePath,path);
-        await mkdirParents(cachePath,sysconfig.makePath());
+        await mkdirParents(cachePath,subsystem.makePath());
 
         return cachePath;
     }
