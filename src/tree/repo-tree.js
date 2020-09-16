@@ -96,6 +96,19 @@ class RepoTree extends TreeBase {
         });
     }
 
+    // Implements TreeBase.testTree().
+    async testTree(treePath) {
+        const tree = await this.getTargetTree();
+        try {
+            const entry = await tree.getEntry(treePath);
+            return entry.isTree();
+        } catch (ex) {
+
+        }
+
+        return false;
+    }
+
     // Implements TreeBase.walk().
     async walk(callback,options) {
         if (options) {

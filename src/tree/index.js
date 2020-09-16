@@ -309,6 +309,19 @@ class TreeBase {
     }
 
     /**
+     * Determines if the specified path exists as a subtree in the project tree.
+     *
+     * @param {string} treePath
+     *  The path denoting the tree to test. The path is relative to the target
+     *  tree or base path
+     *
+     * @return {Promise<boolean>}
+     */
+    testTree(treePath) {
+        throw new WebdeployError("TreeBase.getBlob() must be implemented");
+    }
+
+    /**
      * Walks the tree recursively and calls the callback.
      *
      * @param {function} callback

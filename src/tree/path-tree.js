@@ -62,6 +62,28 @@ class PathTree extends TreeBase {
         });
     }
 
+    // Implements TreeBase.testTree().
+    async testTree(treePath) {
+        treePath = this.makePath(treePath);
+        treePath = path.join(this.basePath,treePath);
+
+        const lstat = promisify(fs.lstat);
+
+        try {
+            const stats = await lstat(treePath);
+            if (stats.isDirectory()) {
+                return true;
+            }
+
+        } catch (ex) {
+            if (ex.code != "ENOENT") {
+                throw ex;
+            }
+        }
+
+        return false;
+    }
+
     // Implements TreeBase.walk().
     async walk(callback,options) {
         options = options || {};

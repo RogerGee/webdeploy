@@ -161,7 +161,7 @@ class Subsystem {
         }
 
         if (data) {
-            configPayload = JSON.parse(data);
+            const configPayload = JSON.parse(data);
 
             // Merge file-based configuration into the global config.
 
