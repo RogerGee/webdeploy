@@ -18,28 +18,45 @@ const rename_build = {
     exec: async (target,settings) => {
         const path = require("path").posix;
 
-        var newName;
-        var newPath;
+        let newName;
+        let newPath;
 
         if (settings.targetNameOnly) {
-            newName = settings.name || "";
-            if (!newName && settings.match && settings.replace) {
+            newPath = target.getSourcePath();
+
+            if (settings.name) {
+                newName = settings.name;
+            }
+            else if (settings.match && settings.replace) {
                 newName = target
                     .getTargetName()
                     .replace(settings.match,settings.replace);
             }
+            else {
+                newName = target.getTargetName();
+            }
         }
         else {
-            var newTargetPath = settings.name || "";
-            if (!newTargetPath && settings.match && settings.replace) {
+            let newTargetPath;
+            if (settings.name) {
+                newTargetPath = settings.name;
+            }
+            else if (settings.match && settings.replace) {
                 newTargetPath = target
                     .getSourceTargetPath()
                     .replace(settings.match,settings.replace);
             }
+            else {
+                newTargetPath = target.getSourceTargetPath();
+            }
 
-            var parsed = path.parse(newTargetPath);
+            const parsed = path.parse(newTargetPath);
             newPath = parsed.dir;
             newName = parsed.base;
+        }
+
+        if (settings.base) {
+            newPath = path.join(settings.base,newPath);
         }
 
         return target.pass(newName,newPath);
