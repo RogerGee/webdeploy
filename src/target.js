@@ -22,55 +22,42 @@ function makeTargetStream() {
 }
 
 /**
- * Creates a new output target.
- *
- * @param {string} newTargetPath
- *  The path for the new output target.
- * @param {string} newTargetName
- *  The name of the new output target.
- * @param {object} options
- *  The options assigned to the new output target.
- *
- * @return {module:target~Target}
- */
-function makeOutputTarget(newTargetPath,newTargetName,options) {
-    // If no broken down name was specified, then assume the name is in the
-    // path.
-    if (!newTargetName) {
-        var parsed = pathModule.parse(newTargetPath);
-        newTargetPath = parsed.dir;
-        newTargetName = parsed.base;
-    }
-
-    var memoryStream = makeTargetStream();
-    var newTarget = new Target(newTargetPath,newTargetName,memoryStream,options);
-
-    return newTarget;
-}
-
-/**
  * Encapsulates output target functionality
  */
 class Target {
     /**
      * Creates a new Target instance.
      *
-     * @param {string} sourcePath
-     * @param {string} targetName
-     * @param {stream.Readable} stream
-     *  The stream from which the target's content is read
-     * @param {object} options
+     * @param {string} path
+     *  The path to the target. If 'name' is provided, then this is interpreted
+     *  as the leading source path.
+     * @param {string} [name]
+     *  The name of the target. If empty, then the name component is parsed from
+     *  the trailing component of 'path'.
+     * @param {stream.Readable} [stream]
+     *  The stream from which the target's content is read. If empty, then an
+     *  empty target stream is created.
+     * @param {object} [options]
      *  Options passed for the target (and any child target)
      */
-    constructor(sourcePath,targetName,stream,options) {
+    constructor(path,name,stream,options) {
+        let targetName = name;
+        let sourcePath = path;
+        if (!targetName) {
+            const parts = pathModule.parse(path);
+            sourcePath = parts.dir;
+            targetName = parts.base;
+        }
+
         // Ensure the sourcePath is never an absolute path.
         if (pathModule.isAbsolute(sourcePath)) {
             throw new WebdeployError("Target sourcePath cannot be an absolute path");
         }
 
         // The stream is available for reading/writing the target's content.
-        stream.setEncoding("utf8");
-        this.stream = stream;
+        let targetStream = stream || makeTargetStream();
+        targetStream.setEncoding("utf8");
+        this.stream = targetStream;
         this.content = undefined;
 
         // The sourcePath is a relative path under the source tree to the target,
@@ -217,21 +204,21 @@ class Target {
     /**
      * Creates an output target that inherits from the parent target.
      *
-     * @param {string} newTargetName
-     * @param {string} newTargetPath
+     * @param {string} name
+     * @param {string} path
      *
      * @return {module:target~Target}
      */
-    makeOutputTarget(newTargetName,newTargetPath) {
-        if (!newTargetName) {
-            newTargetName = this.targetName;
+    makeOutputTarget(name,path) {
+        if (!name) {
+            name = this.targetName;
         }
 
-        if (!newTargetPath) {
-            newTargetPath = this.deploySourcePath;
+        if (!path) {
+            path = this.deploySourcePath;
         }
 
-        return makeOutputTarget(newTargetPath,newTargetName,this.options);
+        return new Target(path,name,null,this.options);
     }
 
     /**
@@ -353,6 +340,5 @@ class DelayedTarget {
 module.exports = {
     Target,
     DelayedTarget,
-    makeTargetStream,
-    makeOutputTarget
+    makeTargetStream
 }

@@ -445,8 +445,7 @@ class Builder {
         }
 
         return this.tree.getBlob(path).then((blobStream) => {
-            var parsed = pathModule.parse(path);
-            var newTarget = new Target(parsed.dir,parsed.base,blobStream);
+            var newTarget = new Target(path,null,blobStream);
 
             return this.pushInitialTarget(newTarget,true);
         })

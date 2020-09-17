@@ -8,7 +8,7 @@ const pathModule = require("path");
 const subsystem = require("./subsystem");
 const { format } = require("util");
 const { Builder } = require("./builder");
-const { makeOutputTarget } = require("./target");
+const { Target } = require("./target");
 const { lookupDeployPlugin } = require("./audit");
 const { Plugin } = require("./plugin");
 const { WebdeployError } = require("./error");
@@ -178,12 +178,33 @@ class DeployContext {
             }
         }
 
-        var target = makeOutputTarget(newTargetPath);
+        var target = new Target(newTargetPath);
         target.setDeployPath(this.deployPath);
         if (isOutputTarget) {
             this.targets.push(target);
             this.map[newTargetPath] = target;
         }
+        return target;
+    }
+
+    /**
+     * Creates a new target from the given path in the project tree.
+     *
+     * @param {string} targetPath
+     * @param {boolean} isOutputTarget
+     *  If true, then the target is added to the list of output targets.
+     *
+     * @return {Promise<module:target~Target}
+     */
+    async createTargetFromTree(targetPath,isOutputTarget) {
+        const blob = await this.tree.getBlob(targetPath);
+        const target = new Target(targetPath,null,blob);
+
+        if (isOutputTarget) {
+            this.targets.push(target);
+            this.map[targetPath] = target;
+        }
+
         return target;
     }
 
