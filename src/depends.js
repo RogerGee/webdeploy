@@ -63,7 +63,7 @@ class DependencyGraph {
      * @return {object}
      */
     getStorageRepr() {
-        assert(this.resolv);
+        this.resolve();
 
         return {
             reverse: Array.from(this.reverseMappings.entries())
@@ -79,6 +79,8 @@ class DependencyGraph {
      * @return {string[]}
      */
     calculateRequired(node) {
+        this.resolve();
+
         if (!this.forwardMappings.has(node)) {
             return [];
         }
@@ -118,7 +120,7 @@ class DependencyGraph {
      * @return {string[]}
      */
     getProducts() {
-        assert(this.resolv);
+        this.resolve();
 
         return Array.from(this.reverseMappings.keys());
     }
@@ -130,7 +132,7 @@ class DependencyGraph {
      * @return {Promise<module:depends~productObject>}
      */
     getOutOfDateProducts(tree) {
-        assert(this.resolv);
+        this.resolve();
 
         var products = this.getProducts();
         var promises = [];
@@ -185,7 +187,7 @@ class DependencyGraph {
      * @return {Promise<Set<string>>}
      */
     getIgnoreSources(tree) {
-        assert(this.resolv);
+        this.resolve();
 
         // Compute set of source nodes not reachable by the set of out-of-date
         // build products.
@@ -219,8 +221,7 @@ class DependencyGraph {
      *  Returns false if the source wasn't found.
      */
     hasProductForSource(source) {
-        assert(this.resolv);
-
+        this.resolve();
         return this.forwardMappings.has(source);
     }
 
@@ -231,8 +232,7 @@ class DependencyGraph {
      * @return {string[]}
      */
     lookupForward(a) {
-        assert(this.resolv);
-
+        this.resolve();
         return this.forwardMappings.get(a);
     }
 
@@ -243,8 +243,7 @@ class DependencyGraph {
      * @return {string[]}
      */
     lookupReverse(b) {
-        assert(this.resolv);
-
+        this.resolve();
         return this.reverseMappings.get(b);
     }
 
@@ -269,6 +268,8 @@ class DependencyGraph {
         else {
             this.connections[a] = [b];
         }
+
+        this.resolv = false;
     }
 
     /**
@@ -287,6 +288,8 @@ class DependencyGraph {
         else {
             this.connections[a] = [null];
         }
+
+        this.resolv = false;
     }
 
     /**
@@ -345,6 +348,8 @@ class DependencyGraph {
         else {
             this.links[a] = [b];
         }
+
+        this.resolv = false;
     }
 
     /**
@@ -364,8 +369,11 @@ class DependencyGraph {
      * list of connections required for most operations on the dependency graph.
      */
     resolve() {
+        if (this.resolv) {
+            return;
+        }
+
         const found = new Set();
-        this.resolv = false;
 
         // Compute forward mappings.
         const mappings = new Map();
@@ -482,6 +490,7 @@ class DependencyGraph {
             });
         }
 
+        this.resolv = false;
         if (sync) {
             this.resolve();
         }
@@ -563,6 +572,7 @@ class DependencyGraph {
                 });
             }
 
+            this.resolv = false;
             if (sync) {
                 this.resolve();
             }
