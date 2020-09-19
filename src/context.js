@@ -225,8 +225,9 @@ class DeployContext {
      *  The callback to invoke.
      */
     forEachTarget(callback) {
-        for (let i = 0;i < this.targets.length;++i) {
-            callback(this.targets[i]);
+        const targets = this.targets.slice();
+        for (let i = 0;i < targets.length;++i) {
+            callback(targets[i]);
         }
     }
 
@@ -352,6 +353,30 @@ class DeployContext {
 
             return this.createTarget(newTargetPath,createOpts);
         }
+    }
+
+    /**
+     * Calls .pass() on a target and adds it to the set of output targets. The
+     * old target is removed (if it was a current output target). This is the
+     * preferred way to invoke .pass().
+     *
+     * @param {module:target~Target} target
+     * @param {string} name
+     * @param {string} path
+     *
+     * @return {module:target~Target}
+     */
+    passTarget(target,name,path) {
+        const newTarget = target.pass(name,path);
+
+        this.graph.addConnection(target.getSourceTargetPath(),
+                                 newTarget.getSourceTargetPath());
+
+        this.removeTargets(target);
+        this.targets.push(newTarget);
+        newTarget.setDeployPath(this.deployPath);
+
+        return newTarget;
     }
 
     /**
