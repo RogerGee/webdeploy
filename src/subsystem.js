@@ -185,41 +185,69 @@ class Subsystem {
 
     async _checkNodeModules(tree) {
         let dir;
+
         if (tree.isLocal()) {
-            dir = path.join(tree.getPath(),"node_modules");
+            dir = await this._findNodeModulesPath(tree.getPath());
         }
         else {
             dir = this.makePath(NODE_MODULES_SUBPATH,"PROJ"+flattenPath(tree.getPath()));
-        }
 
-        try {
-            const stats = await promisify(fs.stat)(dir);
-            if (!stats.isDirectory() && !tree.isLocal()) {
-                throw new WebdeployError("Project cannot load: '%s' must be a directory",dir);
-            }
+            try {
+                const stats = await promisify(fs.stat)(dir);
+                if (!stats.isDirectory()) {
+                    throw new WebdeployError("Project cannot load: '%s' must be a directory",dir);
+                }
 
-            if (!tree.isLocal()) {
                 await this._installNodeModules(tree,dir,true);
-            }
 
-        } catch (ex) {
-            if (ex.code != "ENOENT") {
-                throw ex;
-            }
+            } catch (ex) {
+                if (ex.code != "ENOENT") {
+                    throw ex;
+                }
 
-            // Local trees do not require node_modules.
-            if (tree.isLocal()) {
-                return false;
-            }
-
-            // Create node_modules under path using package.json and
-            // package-lock.json.
-            if (!(await this._installNodeModules(tree,dir,false))) {
-                return false;
+                // Create node_modules under path using package.json and
+                // package-lock.json.
+                if (!(await this._installNodeModules(tree,dir,false))) {
+                    dir = false;
+                }
             }
         }
 
         return dir;
+    }
+
+    async _findNodeModulesPath(initialBasePath) {
+        const stat = promisify(fs.stat);
+        let basePath = initialBasePath;
+        let dir = path.join(basePath,"node_modules");
+
+        // Search for node_modules similarly to nodejs.
+
+        while (true) {
+            try {
+                const stats = await stat(dir);
+                if (stats.isDirectory()) {
+                    return dir;
+                }
+
+            } catch (ex) {
+                if (ex.code != "ENOENT") {
+                    throw ex;
+                }
+
+            }
+
+            basePath = path.dirname(basePath);
+            const next = path.join(basePath,"node_modules");
+
+            if (next == dir) {
+                break;
+            }
+
+            dir = next;
+        }
+
+        return false;
     }
 
     async _installNodeModules(tree,dir,incremental) {
