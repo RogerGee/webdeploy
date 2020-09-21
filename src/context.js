@@ -249,6 +249,24 @@ class DeployContext {
     }
 
     /**
+     * Determines if the specified input target is out of date with respect to
+     * the indicated output target file.
+     *
+     * @param {string} inputTargetPath
+     *  The path to the input target to check.
+     * @param {string} outputTargetPath
+     *  The path to the output target to use to determine if the input target is
+     *  out of date.
+     *
+     * @return {Promise<boolean>}
+     */
+    async isTargetOutOfDate(inputTargetPath,outputTargetPath) {
+        const mtime = await this.tree.getMTime(outputTargetPath);
+
+        return await this.tree.isBlobModified(inputTargetPath,mtime);
+    }
+
+    /**
      * Sets up a target to be built using the builder attached to the
      * context. The target will be automatically removed from the context (if it
      * was a previous output target); its build product will be added back once
