@@ -15,6 +15,7 @@ const { prepareConfigPath } = require("../utils");
 const { WebdeployError } = require("../error");
 
 const COMMIT_KEY = "DEPLOY";
+const PREV_COMMIT_KEY = "DEPLOY-PREV";
 
 function makeBlobStream(blob) {
     // Fake a stream for the content buffer. It doesn't seem nodegit provides
@@ -189,7 +190,7 @@ class RepoTree extends TreeBase {
 
         // Otherwise see if the OID changed.
 
-        return prevEntry.id().equal(entry.id());
+        return !prevEntry.id().equal(entry.id());
     }
 
     // Implements TreeBase.getMTime().
@@ -325,10 +326,8 @@ class RepoTree extends TreeBase {
         // NOTE: The promise resolves to null if the commit was not
         // found. Rejection occurs on any other, unanticipated error.
 
-        const COMMIT_KEY = "DEPLOY-PREV";
-
-        if (COMMIT_KEY in this.deployCommits) {
-            return this.deployCommits[COMMIT_KEY];
+        if (PREV_COMMIT_KEY in this.deployCommits) {
+            return this.deployCommits[PREV_COMMIT_KEY];
         }
 
         var lastRevision = this.getDeployConfig('lastRevision');
@@ -337,7 +336,7 @@ class RepoTree extends TreeBase {
         }
 
         var promise = this.repo.getCommit(lastRevision);
-        this.deployCommits[COMMIT_KEY] = promise;
+        this.deployCommits[PREV_COMMIT_KEY] = promise;
 
         return promise;
     }
