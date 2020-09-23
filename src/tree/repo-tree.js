@@ -200,64 +200,6 @@ class RepoTree extends TreeBase {
         return 0
     }
 
-    // Implements TreeBase.getStorageConfigAlt().
-    getStorageConfigAlt(param) {
-        // Gets a config value from the git-config.
-
-        param = this.getStoreSection(param);
-
-        return new Promise((resolve,reject) => {
-            if (param in this.gitConfigCache) {
-                resolve(this.gitConfigCache[param]);
-                return;
-            }
-
-            this.getConfigObject().then((config) => {
-                return config.getStringBuf("webdeploy." + param);
-
-            }).then((buf) => {
-                var value = buf.toString('utf8');
-                try {
-                    value = JSON.parse(value);
-                } catch (ex) {
-                    // leave value as-is if parsing fails
-                }
-
-                this.gitConfigCache[param] = value;
-                resolve(value);
-
-            }, (err) => {
-                if (err.errno == -3) {
-                    resolve(null);
-                }
-                else {
-                    reject(err);
-                }
-
-            }).catch(reject);
-        });
-    }
-
-    // Implements TreeBase.writeStorageConfigAlt().
-    writeStorageConfigAlt(param,value) {
-        if (typeof value === 'object') {
-            value = JSON.stringify(value);
-        }
-
-        // Force param key under webdeploy section.
-        param = "webdeploy." + this.getStoreSection(param);
-
-        if (typeof value == 'Number') {
-            return this.getConfigObject().then((config) => {
-                return config.setInt64(param,value);
-            });
-        }
-
-        return this.getConfigObject().then((config) => {
-            return config.setString(param,value);
-        });
-    }
-
     // Implements TreeBase.finalizeImpl().
     finalizeImpl() {
         if (COMMIT_KEY in this.deployCommits) {
@@ -493,14 +435,48 @@ class RepoTree extends TreeBase {
         });
     }
 
-    getStoreSection(section) {
+    getStorageConfig_Old(param) {
+        // Gets a config value from the git-config. This is the way older
+        // versions of webdeploy used to keep track of deployments. We've kept
+        // this for migration purposes.
+
         var deployPath = this.getDeployConfig('deployPath');
         var storeKey = prepareConfigPath(deployPath);
+        param = format("%s.%s",param,storeKey)
 
-        return format("%s.%s",section,storeKey);
+        return new Promise((resolve,reject) => {
+            if (param in this.gitConfigCache) {
+                resolve(this.gitConfigCache[param]);
+                return;
+            }
+
+            this.getConfigObject().then((config) => {
+                return config.getStringBuf("webdeploy." + param);
+
+            }).then((buf) => {
+                var value = buf.toString('utf8');
+                try {
+                    value = JSON.parse(value);
+                } catch (ex) {
+                    // leave value as-is if parsing fails
+                }
+
+                this.gitConfigCache[param] = value;
+                resolve(value);
+
+            }, (err) => {
+                if (err.errno == -3) {
+                    resolve(null);
+                }
+                else {
+                    reject(err);
+                }
+
+            }).catch(reject);
+        });
     }
 }
 
 module.exports = {
     RepoTree
-}
+};

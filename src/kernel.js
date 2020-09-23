@@ -80,7 +80,7 @@ class Kernel {
             throw new WebdeployError("Deploy config was not found in target tree config");
         }
 
-        const depends = await this.tree.getStorageConfig(DEPENDS_CONFIG_KEY);
+        const depends = this.tree.getStorageConfig(DEPENDS_CONFIG_KEY);
         this.graph = new DependencyGraph(depends);
         this.prevGraph = new ConstDependencyGraph(depends);
 
@@ -106,7 +106,7 @@ class Kernel {
 
         // Save dependency graph and finalize project tree.
 
-        await this.tree.writeStorageConfig(DEPENDS_CONFIG_KEY,this.graph.getStorageRepr());
+        this.tree.writeStorageConfig(DEPENDS_CONFIG_KEY,this.graph.getStorageRepr());
         await this.tree.finalize();
     }
 

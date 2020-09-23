@@ -566,6 +566,10 @@ class TreeBase {
 
     /**
      * Deletes the deploy record associated with the tree.
+     *
+     * @param {boolean} purgeTree
+     *  Purges the parent tree record as well. This will effectively purge all
+     *  deployments.
      */
     purgeDeploy(purgeTree) {
         const stmts = [];
@@ -637,44 +641,30 @@ class TreeBase {
     /**
      * Gets a configuration value from the tree's storage configuration.
      *
-     * @param {string} param
-     *  The config parameter to look up.
+     * @param {string} key
+     *  The config record to look up.
      *
-     * @return {Promise<string>}
-     *  Returns a Promise that resolves to a string containing the config
-     *  parameter value.
+     * @return {object}
+     *  Returns the object extracted from the configuration store. Null is
+     *  returned if there is no deployment or if the storage didn't have such a
+     *  record.
      */
-    getStorageConfig(param) {
+    getStorageConfig(key) {
+        if (!this.deployId) {
+            return null;
+        }
+
         var stmt = storage.prepareCache(
             'tree.getStorageConfig',
             `SELECT value FROM deploy_storage WHERE name = ? AND deploy_id = ?`
         );
 
-        var row = stmt.get(param,this.deployId);
+        var row = stmt.get(key,this.deployId);
         if (!row) {
-            return this.getStorageConfigAlt(...arguments);
+            return null;
         }
 
-        try {
-            var value = JSON.parse(row.value);
-        } catch (ex) {
-            return Promise.reject(ex);
-        }
-
-        return Promise.resolve(value);
-    }
-
-    /**
-     * Provides an alternative, fallback implementation for reading a
-     * configuration value from the tree storage configuration.
-     *
-     * @param {string} param
-     *  The config parameter to lookup.
-     *
-     * @return {Promise<string>}
-     */
-    getStorageConfigAlt(param) {
-        return Promise.reject(new WebdeployError("No such configuration parameter: '" + param + ""));
+        return JSON.parse(row.value);
     }
 
     /**
@@ -684,12 +674,10 @@ class TreeBase {
      *  The name of the config parameter.
      * @param {*} value
      *  The config parameter value.
-     *
-     * @return {Promise}
      */
     writeStorageConfig(param,value) {
         if (!this.deployId) {
-            return Promise.resolve();
+            return;
         }
 
         var stmt = storage.prepareCache(
@@ -699,42 +687,7 @@ class TreeBase {
                UPDATE SET value=excluded.value`
         );
 
-        var err = false;
-
-        try {
-            stmt.run(param,JSON.stringify(value),this.deployId);
-        } catch (ex) {
-            const { SqliteError } = require('better-sqlite3');
-
-            if (ex instanceof SqliteError) {
-                err = true;
-            }
-            else {
-                throw ex;
-            }
-        }
-
-        // Fallback to alternate storage mechanism if write fails.
-        if (err) {
-            return this.writeStorageConfigAlt(...arguments);
-        }
-
-        return Promise.resolve();
-    }
-
-    /**
-     * Provides an alternative, fallback implementation for writing a
-     * configuration value to the tree's storage configuration.
-     *
-     * @param {string} param
-     *  The name of the config parameter.
-     * @param {*} value
-     *  The config parameter value.
-     *
-     * @return {Promise}
-     */
-    writeStorageConfigAlt(param,value) {
-        return Promise.reject(new WebdeployError("Writing to storage configuration is not supported"));
+        stmt.run(param,JSON.stringify(value),this.deployId);
     }
 
     /**
@@ -744,11 +697,10 @@ class TreeBase {
      * @return {Promise}
      *  Returns a Promise that resolves when the operation is complete.
      */
-    finalize() {
-        return this.finalizeImpl().then(() => {
-            this.saveTreeRecord();
-            this.saveDeployConfig();
-        });
+    async finalize() {
+        await this.finalizeImpl();
+        this.saveTreeRecord();
+        this.saveDeployConfig();
     }
 
     /**
@@ -757,11 +709,11 @@ class TreeBase {
      * @return {Promise}
      *  Returns a Promise that resolves when the operation is complete.
      */
-    finalizeImpl() {
-        return Promise.resolve();
+    async finalizeImpl() {
+
     }
 }
 
 module.exports = {
     TreeBase
-}
+};

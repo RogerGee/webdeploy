@@ -449,8 +449,8 @@ class DeployContext {
      *
      * @return {Promise}
      */
-    writeCacheProperty(key,value) {
-        return this.tree.writeStorageConfig(this._makeCacheKey(key),value);
+    async writeCacheProperty(key,value) {
+        this.tree.writeStorageConfig(this._makeCacheKey(key),value);
     }
 
     /**
@@ -458,9 +458,10 @@ class DeployContext {
      *
      * @param {string} key
      *
-     * @return {Promise}
+     * @return {object}
+     *  Returns the cached object, or null if it wasn't found.
      */
-    readCacheProperty(key) {
+    async readCacheProperty(key) {
         return this.tree.getStorageConfig(this._makeCacheKey(key));
     }
 
