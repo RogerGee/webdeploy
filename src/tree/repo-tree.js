@@ -194,9 +194,10 @@ class RepoTree extends TreeBase {
     }
 
     // Implements TreeBase.getMTime().
-    getMTime(blobPath) {
-        // A RepoTree cannot provide a modified timestamp so we always return 0.
-        return Promise.resolve(0);
+    async getMTime(blobPath) {
+        // A RepoTree cannot provide a modified timestamp so we always return
+        // 0. The implementation of isBlobModified() will ignore this value.
+        return 0
     }
 
     // Implements TreeBase.getStorageConfigAlt().

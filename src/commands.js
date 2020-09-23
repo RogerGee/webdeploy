@@ -122,9 +122,7 @@ function createTreeDecide(repoOrTreePath,options) {
  * @param {string} repo
  *  The path to the git repository to load.
  * @param {object} options
- *  The list of options to pass to the commands.
- * @param {string} options.type
- *  One of the commands.types enumerators.
+ *  Combined options to pass to the TreeBase and Kernel instances.
  *
  * @return {Promise}
  *  Returns a Promise that resolves when the operation completes or rejects when
@@ -135,14 +133,7 @@ function deployRepository(repo,options) {
     // RepoTree.
     options.buildPath = "";
 
-    // Isolate options that we provide to the repo tree.
-    const treeOptions = {
-        deployPath: options.deployPath,
-        deployBranch: options.deployBranch,
-        deployTag: options.deployTag
-    };
-
-    return createRepoTree(repo,treeOptions).then((tree) => {
+    return createRepoTree(repo,options).then((tree) => {
         const kernel = new Kernel(tree,options);
         return kernel.execute();
     });
@@ -154,9 +145,7 @@ function deployRepository(repo,options) {
  * @param {string} treePath
  *  The path to the tree to deploy.
  * @param {object} options
- *  The list of options to pass to the commands.
- * @param {string} options.type
- *  One of the commands.types enumerators.
+ *  Combined options to pass to the TreeBase and Kernel instances.
  *
  * @return {Promise}
  *  Returns a Promise that resolves when the operation completes or rejects when
@@ -166,12 +155,11 @@ function deployLocal(treePath,options) {
     // Set build path for local deployment. For PathTree instances, this is
     // always the same as the path to the tree.
     options.buildPath = treePath;
+    if (!options.deployPath) {
+        options.deployPath = treePath;
+    }
 
-    const treeOptions = {
-        deployPath: treePath
-    };
-
-    return createPathTree(treePath,treeOptions).then((tree) => {
+    return createPathTree(treePath,options).then((tree) => {
         const kernel = new Kernel(tree,options);
         return kernel.execute();
     });
@@ -223,15 +211,14 @@ function configdef(repoOrTreePath,key,value) {
     };
 
     return createTreeDecide(repoOrTreePath,options).then((tree) => {
-        var record = tree.getTreeRecord();
         if (value) {
             if (!tree.writeTreeRecord(key,value)) {
                 throw new WebdeployError("Key '"+key+"' is not a valid default setting");
             }
         }
         else {
-            var treeRecord = tree.getTreeRecord();
-            if (key in treeRecord) {
+            var record = tree.getTreeRecord();
+            if (key in record) {
                 if (treeRecord[key]) {
                     logger.log(treeRecord[key]);
                 }
@@ -252,8 +239,6 @@ function config(repoOrTreePath,deployPath,key,value) {
     };
 
     return createTreeDecide(repoOrTreePath,options).then((tree) => {
-        var record = tree.getTreeRecord();
-
         if (value) {
             if (!tree.writeDeployConfig(key,value)) {
                 throw new WebdeployError("Key '"+key+"' is not a valid deployment setting");
@@ -374,10 +359,11 @@ commander.command("purge [deploy-path]")
 
 commander.command("deploy [path]")
     .description("runs the deploy task on a webdeploy project")
-    .option("-f, --force","Force full deploy without consulting dependencies")
     .option("-p, --deploy-path [path]","Denotes the deploy path destination on disk")
     .option("-b, --deploy-branch [branch]","Denotes repository branch to deploy")
     .option("-t, --deploy-tag [tag]","Denotes the repository tag to deploy")
+    .option("-f, --force","Force full deploy without consulting dependencies")
+    .option("-n, --no-record","Prevent creation of deployment save records")
     .action((sourcePath,cmd) => {
         if (cmd.deployBranch && cmd.deployTag) {
             throw new WebdeployError("Invalid arguments: specify one of deploy-branch and deploy-tag");
@@ -390,6 +376,11 @@ commander.command("deploy [path]")
             deployTag: cmd.deployTag,
             deployPath: resolveDeployPath(cmd.deployPath)
         };
+
+        if (!cmd.record) {
+            options.createTree = false;
+            options.createDeployment = false;
+        }
 
         var localPath = resolveSourcePath(sourcePath);
 
@@ -409,6 +400,7 @@ commander.command("build [path]")
     .option("-p, --prod","Perform production build")
     .option("-d, --dev","Perform development build (default)")
     .option("-f, --force","Force full build without consulting dependencies")
+    .option("-n, --no-record","Prevent creation of deployment save records")
     .action((sourcePath,cmd) => {
         if (cmd.prod && cmd.dev) {
             logger.error("webdeploy: build: Please specify one of *prod* or *dev*.".bold);
@@ -420,6 +412,11 @@ commander.command("build [path]")
             type: Kernel.TYPES.BUILD,
             force: cmd.force ? true : false
         };
+
+        if (!cmd.record) {
+            options.createTree = false;
+            options.createDeployment = false;
+        }
 
         var localPath = resolveSourcePath(sourcePath);
 

@@ -103,6 +103,9 @@ class TreeBase {
      * @param {string} [options.deployBranch]
      *  The deploy branch for the tree deployment. If not specified, then the
      *  default deploy branch from the tree record will be used.
+     * @param {boolean} [options.createTree]
+     *  Indicates whether a tree record should be created for the tree. This
+     *  defaults to true.
      * @param {boolean} [options.createDeployment]
      *  Indicates whether the tree should create a deployment record. This
      *  defaults to true.
@@ -437,11 +440,7 @@ class TreeBase {
      * Saves the tree record info to disk.
      */
     saveTreeRecord() {
-        if (!this.treeRecord) {
-            throw new WebdeployError("Tree does not exist");
-        }
-
-        if (!this.dirty.treeRecord) {
+        if (!this.treeRecord || !this.dirty.treeRecord) {
             return;
         }
 
@@ -689,6 +688,10 @@ class TreeBase {
      * @return {Promise}
      */
     writeStorageConfig(param,value) {
+        if (!this.deployId) {
+            return Promise.resolve();
+        }
+
         var stmt = storage.prepareCache(
             'tree.writeStorageConfig',
             `INSERT INTO deploy_storage (name,value,deploy_id) VALUES (?,?,?)
