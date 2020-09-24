@@ -175,13 +175,17 @@ class TreeBase {
 
         const deployPath = this.option('deployPath') || this.treeRecord.deployPath || treePath;
         const deployBranch = this.option('deployBranch') || this.treeRecord.deployBranch;
+        const createDeploy = ( this.option('createDeployment') !== false );
 
-        if (!deployPath && this.option('createDeployment') !== false) {
+        if (!deployPath && createDeploy) {
             throw new WebdeployError("Deployment config missing 'deployPath'");
         }
 
-        if (this.option('createDeployment') !== false) {
-            this.setDeployment(deployPath,deployBranch);
+        if (deployPath) {
+            this.setDeployment(deployPath,deployBranch,!createDeploy);
+        }
+        else {
+            this.deployConfig = Object.assign({},DEFAULT_DEPLOY_CONFIG);
         }
     }
 
@@ -192,7 +196,7 @@ class TreeBase {
      * @param {string} deployPath
      * @param {string} deployBranch
      */
-    setDeployment(deployPath,deployBranch) {
+    setDeployment(deployPath,deployBranch,readonly) {
         // Ensure a deploy record exists for the tree/deploy-path pair and
         // (while we're at it) load the deploy config. We only ensure a deploy
         // record if 'createDeployment' is false.
@@ -212,11 +216,14 @@ class TreeBase {
 
         this.deployConfig = Object.assign({},DEFAULT_DEPLOY_CONFIG);
         if (!row) {
-            const stmt = storage.prepare(
-                `INSERT INTO deploy (tree_id,deploy_path,deploy_branch) VALUES (?,?,?)`
-            );
-            const info = stmt.run(this.treeRecord.id,deployPath,deployBranch);
-            this.deployId = info.lastInsertRowid;
+            if (!readonly) {
+                const stmt = storage.prepare(
+                    `INSERT INTO deploy (tree_id,deploy_path,deploy_branch) VALUES (?,?,?)`
+                );
+                const info = stmt.run(this.treeRecord.id,deployPath,deployBranch);
+                this.deployId = info.lastInsertRowid;
+            }
+
             this.deployConfig.deployPath = deployPath;
             this.deployConfig.deployBranch = deployBranch;
         }
