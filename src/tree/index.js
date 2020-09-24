@@ -130,7 +130,7 @@ class TreeBase {
      */
     init() {
         const defaults = {};
-        var stmt, info, row;
+        let stmt, info, row;
 
         // Ensure a tree record exists. We normalize the tree path so that the
         // record is shared between 'path' and 'repo' tree variants.
@@ -167,22 +167,37 @@ class TreeBase {
             this.treeRecord = row;
         }
 
+        this.dirty.treeRecord = false;
+
         // Determine the deploy path and deploy branch. These values are chosen
         // from options first; if not found, then we look at defaults from the
         // tree record.
 
-        let deployPath = this.option('deployPath') || this.treeRecord.deployPath || treePath;
+        const deployPath = this.option('deployPath') || this.treeRecord.deployPath || treePath;
         const deployBranch = this.option('deployBranch') || this.treeRecord.deployBranch;
 
         if (!deployPath && this.option('createDeployment') !== false) {
             throw new WebdeployError("Deployment config missing 'deployPath'");
         }
 
+        if (this.option('createDeployment') !== false) {
+            this.setDeployment(deployPath,deployBranch);
+        }
+    }
+
+    /**
+     * Sets the deployment for the tree. Note that this is called during tree
+     * initialization and should only be called to change the deployment.
+     *
+     * @param {string} deployPath
+     * @param {string} deployBranch
+     */
+    setDeployment(deployPath,deployBranch) {
         // Ensure a deploy record exists for the tree/deploy-path pair and
         // (while we're at it) load the deploy config. We only ensure a deploy
         // record if 'createDeployment' is false.
 
-        stmt = storage.prepare(
+        const stmt = storage.prepare(
             `SELECT
                id,
                deploy_path,
@@ -193,21 +208,15 @@ class TreeBase {
              WHERE
                deploy_path = ? AND tree_id = ?`
         );
-        row = stmt.get(deployPath,this.treeRecord.id);
+        const row = stmt.get(deployPath,this.treeRecord.id);
 
         this.deployConfig = Object.assign({},DEFAULT_DEPLOY_CONFIG);
         if (!row) {
-            if (this.option('createDeployment') === false) {
-                this.deployId = null;
-            }
-            else {
-                stmt = storage.prepare(
-                    `INSERT INTO deploy (tree_id,deploy_path,deploy_branch) VALUES (?,?,?)`
-                );
-                info = stmt.run(this.treeRecord.id,deployPath,deployBranch);
-                this.deployId = info.lastInsertRowid;
-            }
-
+            const stmt = storage.prepare(
+                `INSERT INTO deploy (tree_id,deploy_path,deploy_branch) VALUES (?,?,?)`
+            );
+            const info = stmt.run(this.treeRecord.id,deployPath,deployBranch);
+            this.deployId = info.lastInsertRowid;
             this.deployConfig.deployPath = deployPath;
             this.deployConfig.deployBranch = deployBranch;
         }
@@ -231,7 +240,6 @@ class TreeBase {
             }
         }
 
-        this.dirty.treeRecord = false;
         this.dirty.deployConfig = false;
     }
 

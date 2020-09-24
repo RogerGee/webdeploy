@@ -319,6 +319,20 @@ function purge(repoOrTreePath,deployPath,purgeAll) {
     });
 }
 
+async function repoUpdate1(sourcePath,cmd) {
+    const delim = require("path").delimiter;
+    const repoPath = resolveSourcePath(sourcePath);
+    const tree = await createRepoTree(repoPath,{ createDeployment:false });
+
+    let paths = [];
+    if (cmd.paths) {
+        paths = cmd.paths.split(delim);
+    }
+
+    await tree.update_1(paths);
+    await tree.finalize();
+}
+
 commander.version(VERSION,"-v, --version");
 
 commander.command("configdef <key> [value]")
@@ -428,6 +442,14 @@ commander.command("build [path]")
             logger.log("*[DONE]*");
 
         }, webdeploy_fail).catch(webdeploy_fail);
+    });
+
+commander.command("repo-update1 [path]")
+    .description("updates a project tree from an older webdeploy version to latest (repositories only)")
+    .option("-p, --paths [paths]","Indicates one or more deploy paths to check (separated by path.sep)")
+    .option("--dry-run","Just report changes without making them")
+    .action((sourcePath,cmd) => {
+        repoUpdate1(sourcePath,cmd).catch(webdeploy_fail);
     });
 
 module.exports = {

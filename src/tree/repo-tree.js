@@ -435,45 +435,87 @@ class RepoTree extends TreeBase {
         });
     }
 
-    getStorageConfig_Old(param) {
-        // Gets a config value from the git-config. This is the way older
-        // versions of webdeploy used to keep track of deployments. We've kept
-        // this for migration purposes.
+    async update_1(paths) {
+        const cfg = await this.getConfigObject();
 
-        var deployPath = this.getDeployConfig('deployPath');
-        var storeKey = prepareConfigPath(deployPath);
-        param = format("%s.%s",param,storeKey)
+        // Try to populate tree record from "webdeploy" section.
+        let ent;
+        try {
+            ent = await cfg.getEntry("webdeploy.deployBranch");
+            this.writeTreeRecord("deployBranch",ent.value());
+            cfg.deleteEntry("webdeploy.deployBranch");
 
-        return new Promise((resolve,reject) => {
-            if (param in this.gitConfigCache) {
-                resolve(this.gitConfigCache[param]);
-                return;
+        } catch (ex) {
+
+        }
+
+        try {
+            ent = await cfg.getEntry("webdeploy.deployPath");
+            this.writeTreeRecord("deployPath",ent.value());
+            cfg.deleteEntry("webdeploy.deployPath");
+
+        } catch (ex) {
+
+        }
+
+        try {
+            ent = await cfg.getEntry("webdeploy.targetTree");
+            this.writeTreeRecord("targetTree",ent.value());
+            cfg.deleteEntry("webdeploy.targetTree");
+
+        } catch (ex) {
+
+        }
+
+        const treeRecord = this.getTreeRecord();
+        const { DependencyGraph } = require("../depends");
+
+        for (let i = 0;i < paths.length;++i) {
+            const deployPath = paths[i];
+            const storeKey = prepareConfigPath(deployPath);
+            let deployConfig = {};
+            let del = [];
+
+            try {
+                const name = format("webdeploy.cache.lastDeploy.%s",storeKey);
+                ent = await cfg.getEntry(name);
+                deployConfig["lastRevision"] = ent.value();
+                del.push(name);
+
+            } catch (ex) {
+
             }
 
-            this.getConfigObject().then((config) => {
-                return config.getStringBuf("webdeploy." + param);
+            let depends;
 
-            }).then((buf) => {
-                var value = buf.toString('utf8');
-                try {
-                    value = JSON.parse(value);
-                } catch (ex) {
-                    // leave value as-is if parsing fails
-                }
+            try {
+                const name = format("webdeploy.cache.depends.%s",storeKey);
+                ent = await cfg.getEntry(name);
+                depends = new DependencyGraph(JSON.parse(ent.value()));
+                del.push(name);
 
-                this.gitConfigCache[param] = value;
-                resolve(value);
+            } catch (ex) {
 
-            }, (err) => {
-                if (err.errno == -3) {
-                    resolve(null);
-                }
-                else {
-                    reject(err);
-                }
+            }
 
-            }).catch(reject);
-        });
+            if (Object.keys(deployConfig).length > 0) {
+                this.setDeployment(deployPath,treeRecord.deployBranch);
+
+                Object.keys(deployConfig).forEach((key) => {
+                    this.writeDeployConfig(key,deployConfig[key]);
+                });
+
+                this.saveDeployConfig();
+            }
+
+            if (depends) {
+                this.writeStorageConfig("cache.depends",depends.getStorageRepr());
+            }
+
+            for (let j = 0;j < del.length;++j) {
+                cfg.deleteEntry(del[j]);
+            }
+        }
     }
 }
 
