@@ -68,12 +68,7 @@ class DeployContext {
         this.callbacks = callbacks;
         this.currentPlugin = null;
 
-        // Create map for faster target lookup.
-        this.targets.forEach((target) => {
-            this.map[target.getSourceTargetPath()] = target;
-        })
-
-        this.setTargetsDeployPath();
+        this._setupTargets();
     }
 
     /**
@@ -100,22 +95,6 @@ class DeployContext {
     }
 
     /**
-     * Sets the deployment path for each target.
-     *
-     * @param {boolean} force
-     *  By default, the deploy path is only set on targets that do *not* have a
-     *  deploy path set. If force is set to true, this behavior is overridden to
-     *  where the deploy path is unconditionally set.
-     */
-    setTargetsDeployPath(force) {
-        for (var i = 0;i < this.targets.length;++i) {
-            if (!this.targets[i].hasDeployPath() || force) {
-                this.targets[i].setDeployPath(this.deployPath);
-            }
-        }
-    }
-
-    /**
      * Creates an external sub-builder to use for recursive builds.
      *
      * @return {module:builder~Builder}
@@ -130,10 +109,9 @@ class DeployContext {
      *
      * @return {Promise}
      */
-    executeBuilder() {
-        return this.builder.execute().then(() => {
-            this.setTargetsDeployPath();
-        });
+    async executeBuilder() {
+        await this.builder.execute();
+        this._setupTargets();
     }
 
     /**
@@ -142,10 +120,9 @@ class DeployContext {
      *
      * @return {Promise}
      */
-    executeExternalBuilder(builder) {
-        return this.builder.executeAndMerge(builder).then(() => {
-            this.setTargetsDeployPath();
-        });
+    async executeExternalBuilder(builder) {
+        await this.builder.executeAndMerge(builder);
+        this._setupTargets();
     }
 
     /**
@@ -467,6 +444,16 @@ class DeployContext {
 
     _makeCacheKey(key) {
         return format("cache.custom.%s",key);
+    }
+
+    _setupTargets() {
+        for (var i = 0;i < this.targets.length;++i) {
+            const target = this.targets[i];
+            this.map[target.getSourceTargetPath()] = target;
+            if (!target.hasDeployPath()) {
+                target.setDeployPath(this.deployPath);
+            }
+        }
     }
 }
 
