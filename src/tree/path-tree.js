@@ -84,6 +84,28 @@ class PathTree extends TreeBase {
         return false;
     }
 
+    // Implements TreeBase.testBlob().
+    async testBlob(blobPath) {
+        blobPath = this.makePath(blobPath);
+        blobPath = path.join(this.basePath,blobPath);
+
+        const lstat = promisify(fs.lstat);
+
+        try {
+            const stats = await lstat(blobPath);
+            if (stats.isFile()) {
+                return true;
+            }
+
+        } catch (ex) {
+            if (ex.code != "ENOENT") {
+                throw ex;
+            }
+        }
+
+        return false;
+    }
+
     // Implements TreeBase.walk().
     async walk(callback,options) {
         options = options || {};

@@ -110,6 +110,19 @@ class RepoTree extends TreeBase {
         return false;
     }
 
+    // Implements TreeBase.testBlob().
+    async testBlob(blobPath) {
+        const tree = await this.getTargetTree();
+        try {
+            const entry = await tree.getEntry(blobPath);
+            return entry.isBlob();
+        } catch (ex) {
+
+        }
+
+        return false;
+    }
+
     // Implements TreeBase.walk().
     async walk(callback,options) {
         if (options) {

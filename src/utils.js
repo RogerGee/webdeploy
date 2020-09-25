@@ -201,3 +201,42 @@ module.exports.runNPM = function(args,cwd,hasStdout,callback) {
 
     return proc.stdout;
 };
+
+/**
+ * Executes PNPM.
+ *
+ * @param {string[]} args
+ * @param {string} cwd
+ * @param {boolean} hasStdout
+ * @param {function} donefn
+ * @param {function} errfn
+ *
+ * @returns {stream.Readable}
+ */
+module.exports.runPNPM = function(args,cwd,hasStdout,callback) {
+    const command = process.platform == 'win32' ? 'pnpm.cmd' : 'pnpm';
+
+    const stdio = ['ignore','ignore','inherit'];
+    if (hasStdout) {
+        stdio[1] = 'pipe';
+    }
+
+    const proc = child_process.spawn(command,args,{
+        cwd,
+        stdio
+    });
+
+    proc.on('exit', (code,signal) => {
+        if (signal) {
+            callback(new WebdeployError("The 'pnpm' subprocess exited with signal '%s'",signal));
+        }
+        else if (code != 0) {
+            callback(new WebdeployError("The 'pnpm' subprocess exited non-zero"));
+        }
+        else {
+            callback();
+        }
+    });
+
+    return proc.stdout;
+};

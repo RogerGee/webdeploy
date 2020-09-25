@@ -247,10 +247,13 @@ class TreeBase {
             });
         }
 
-        // Set target tree. This is always loaded from the tree record.
-        this.deployConfig.targetTree = normalizeTargetTree(this.treeRecord.targetTree);
+        // Set target tree. This is always loaded from the tree record if
+        // available.
+        if (this.treeRecord) {
+            this.deployConfig.targetTree = normalizeTargetTree(this.treeRecord.targetTree);
+        }
 
-        // Override deploy config with options.
+        // Override deploy config with instance options.
         for (let key in this.deployConfig) {
             const value = this.option(key);
             if (value) {
@@ -341,13 +344,24 @@ class TreeBase {
      * Determines if the specified path exists as a subtree in the project tree.
      *
      * @param {string} treePath
-     *  The path denoting the tree to test. The path is relative to the target
-     *  tree or base path
+     *  The path to test. The path is relative to the target tree or base path.
      *
      * @return {Promise<boolean>}
      */
     testTree(treePath) {
-        throw new WebdeployError("TreeBase.getBlob() must be implemented");
+        throw new WebdeployError("TreeBase.testTree() must be implemented");
+    }
+
+    /**
+     * Determines if the specified path exists as a blob in the project tree.
+     *
+     * @param {string} treePath
+     *  The path to test. The path is relative to the target tree or base path.
+     *
+     * @return {Promise<boolean>}
+     */
+    testBlob(blobPath) {
+        throw new WebdeployError("TreeBase.testBlob() must be implemented");
     }
 
     /**

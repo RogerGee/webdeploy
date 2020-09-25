@@ -10,7 +10,7 @@ const path = require("path");
 const storage = require("./storage");
 const logger = require("./logger");
 const { promisify } = require("util");
-const { mkdirParents, flattenPath, runNPM } = require("./utils");
+const { mkdirParents, flattenPath, runNPM, runPNPM } = require("./utils");
 const { WebdeployError } = require("./error");
 
 const HOMEDIR = os.homedir();
@@ -39,6 +39,39 @@ class PackageFile {
             this.readStream.on("error",reject);
         });
     }
+}
+
+async function check_lockfile_npm(tree) {
+    const lockfile = "package-lock.json";
+
+    if (!(await tree.testBlob(lockfile))) {
+        return false;
+    }
+
+    return {
+        lockfile,
+        install: promisify(runNPM),
+        args: [
+            "ci"
+        ]
+    };
+}
+
+async function check_lockfile_pnpm(tree) {
+    const lockfile = "pnpm-lock.yaml";
+
+    if (!(await tree.testBlob(lockfile))) {
+        return false;
+    }
+
+    return {
+        lockfile,
+        install: promisify(runPNPM),
+        args: [
+            "install",
+            "--frozen-lockfile"
+        ]
+    };
 }
 
 /**
@@ -190,12 +223,21 @@ class Subsystem {
             dir = await this._findNodeModulesPath(tree.getPath());
         }
         else {
+            const stat = promisify(fs.stat);
+
             dir = this.makePath(NODE_MODULES_SUBPATH,"PROJ"+flattenPath(tree.getPath()));
 
             try {
-                const stats = await promisify(fs.stat)(dir);
+                let stats = await stat(dir);
                 if (!stats.isDirectory()) {
-                    throw new WebdeployError("Project cannot load: '%s' must be a directory",dir);
+                    throw new WebdeployError("Node modules: '%s' must be a directory",dir);
+                }
+
+                let filepath = path.join(dir,"package.json");
+
+                stats = await stat(filepath);
+                if (!stats.isFile()) {
+                    throw new WebdeployError("Node modules: '%s' must be a regular file",filepath);
                 }
 
                 await this._installNodeModules(tree,dir,true);
@@ -205,12 +247,13 @@ class Subsystem {
                     throw ex;
                 }
 
-                // Create node_modules under path using package.json and
-                // package-lock.json.
+                // Create node_modules folder.
                 if (!(await this._installNodeModules(tree,dir,false))) {
                     dir = false;
                 }
             }
+
+            dir = path.join(dir,"node_modules");
         }
 
         return dir;
@@ -251,38 +294,47 @@ class Subsystem {
     }
 
     async _installNodeModules(tree,dir,incremental) {
-        // Skip if package and package-lock were not modified.
-        if (incremental
-            && !(await tree.isBlobModified("package.json"))
-            && !(await tree.isBlobModified("package-lock.json")))
-        {
-            return true;
-        }
+        const packageFiles = [];
 
-        // Load files needed for node_modules deployment.
-        const files = [];
         try {
-            files.push(
-                new PackageFile(
-                    await tree.getBlob("package.json"),
-                    path.join(dir,"package.json")
-                )
-            );
-            files.push(
-                new PackageFile(
-                    await tree.getBlob("package-lock.json"),
-                    path.join(dir,"package-lock.json")
-                )
-            );
+            const destPath = path.join(dir,"package.json");
+            const stream = await tree.getBlob("package.json");
+            packageFiles.push(new PackageFile(stream,destPath));
         } catch (ex) {
-            // If package files were not found then we ignore node_modules.
+            // Skip installing node_modules if the repository has no
+            // package.json.
             return false;
         }
 
+        let info;
+
+        // Figure out which kind of node_modules installation we'll do based on
+        // the lockfile found in the project tree.
+        info = await check_lockfile_npm(tree);
+        if (!info) {
+            info = await check_lockfile_pnpm(tree);
+        }
+        if (!info) {
+            return false;
+        }
+
+        // Skip if lockfile is not modified.
+        if (incremental && !(await tree.isBlobModified(info.lockfile))) {
+            return true;
+        }
+
+        // Ensure directory exists if this is our first time.
         if (!incremental) {
-            // Ensure directory exists.
             await mkdirParents(dir,this.makePath());
         }
+
+        // Add lockfile to required files.
+        packageFiles.push(
+            new PackageFile(
+                await tree.getBlob(info.lockfile),
+                path.join(dir,info.lockfile)
+            )
+        );
 
         if (incremental) {
             logger.log("Updating node_modules...");
@@ -292,18 +344,13 @@ class Subsystem {
         }
         logger.pushIndent();
 
-        for (let i = 0;i < files.length;++i) {
-            await files[i].writeOut();
+        // Write out files to node_modules directory.
+        for (let i = 0;i < packageFiles.length;++i) {
+            await packageFiles[i].writeOut();
         }
 
-        const args = [
-            "install",
-            "-s",
-            "--no-audit",
-            "--no-bin-links"
-        ];
-
-        await promisify(runNPM)(args,dir,false);
+        // Execute install command.
+        await info.install(info.args,dir,false);
 
         logger.log("*Done*");
         logger.popIndent();
