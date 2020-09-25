@@ -51,7 +51,7 @@ storage.once('load', function() {
 });
 
 const DEFAULT_DEPLOY_CONFIG = {
-    targetTree: null,
+    targetTree: "",
     deployPath: null,
     deployBranch: null,
     deployTag: null,
@@ -151,17 +151,15 @@ class TreeBase {
         row = stmt.get(treePath);
 
         if (!row) {
-            if (this.option("createTree") === false) {
-                return;
+            if (this.option("createTree") !== false) {
+                info = storage.prepare(`INSERT INTO tree (path) VALUES (?)`).run(treePath);
+                this.treeRecord = {
+                    id: info.lastInsertRowid,
+                    targetTree: null,
+                    deployPath: null,
+                    deployBranch: null
+                };
             }
-
-            info = storage.prepare(`INSERT INTO tree (path) VALUES (?)`).run(treePath);
-            this.treeRecord = {
-                id: info.lastInsertRowid,
-                targetTree: null,
-                deployPath: null,
-                deployBranch: null
-            };
         }
         else {
             this.treeRecord = row;
@@ -173,9 +171,20 @@ class TreeBase {
         // from options first; if not found, then we look at defaults from the
         // tree record.
 
-        const deployPath = this.option('deployPath') || this.treeRecord.deployPath || treePath;
-        const deployBranch = this.option('deployBranch') || this.treeRecord.deployBranch;
+        let deployPath = this.option("deployPath");
+        let deployBranch = this.option("deployBranch");
         const createDeploy = ( this.option('createDeployment') !== false );
+
+        if (!deployPath && this.treeRecord) {
+            deployPath = this.treeRecord.deployPath;
+        }
+        if (!deployPath) {
+            deployPath = treePath;
+        }
+
+        if (!deployBranch && this.treeRecord) {
+            deployBranch = this.treeRecord.deployBranch;
+        }
 
         if (!deployPath && createDeploy) {
             throw new WebdeployError("Deployment config missing 'deployPath'");
@@ -197,22 +206,24 @@ class TreeBase {
      * @param {string} deployBranch
      */
     setDeployment(deployPath,deployBranch,readonly) {
-        // Ensure a deploy record exists for the tree/deploy-path pair and
-        // (while we're at it) load the deploy config. We only ensure a deploy
-        // record if 'createDeployment' is false.
+        let row = false;
 
-        const stmt = storage.prepare(
-            `SELECT
-               id,
-               deploy_path,
-               deploy_branch,
-               last_revision
-             FROM
-               deploy
-             WHERE
-               deploy_path = ? AND tree_id = ?`
-        );
-        const row = stmt.get(deployPath,this.treeRecord.id);
+        // Ensure a deploy record exists if we have a tree unless 'readonly'.
+        if (this.treeRecord) {
+            const stmt = storage.prepare(
+                `SELECT
+                   id,
+                   deploy_path,
+                   deploy_branch,
+                   last_revision
+                 FROM
+                   deploy
+                 WHERE
+                   deploy_path = ? AND tree_id = ?`
+            );
+
+            row = stmt.get(deployPath,this.treeRecord.id);
+        }
 
         this.deployConfig = Object.assign({},DEFAULT_DEPLOY_CONFIG);
         if (!row) {
