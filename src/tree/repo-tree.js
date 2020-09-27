@@ -175,7 +175,7 @@ class RepoTree extends TreeBase {
     async isBlobModified(blobPath,mtime) {
         const prevCommit = await this.getPreviousCommit();
         if (!prevCommit) {
-            return false;
+            return true;
         }
 
         const prevTree = await this.getTargetTree(prevCommit);
