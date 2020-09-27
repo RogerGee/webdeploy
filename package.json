@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://tccl-apps/git/webdeploy/webdeploy.git"
+    "url": "git+https://github.com/RogerGee/webdeploy.git"
   },
   "scripts": {
     "generate-docs": "jsdoc -d doc/jsdocs -c jsdoc.conf.json README.md -r"
@@ -16,15 +16,15 @@
     "webdeploy": "./webdeploy.js"
   },
   "engines": {
-    "node": ">=9.0.0"
+    "node": ">=10.0.0"
   },
   "dependencies": {
-    "better-sqlite3": "^5.4.3",
-    "colors": "^1.4.0",
-    "commander": "^5.0.0",
-    "minimatch": "^3.0.4",
-    "nodegit": "^0.26.2",
-    "require-from-string": "^2.0.2",
-    "tar": "^4.4.13"
+    "better-sqlite3": "5.4.3",
+    "colors": "1.4.0",
+    "commander": "5.1.0",
+    "minimatch": "3.0.4",
+    "nodegit": "0.26.5",
+    "require-from-string": "2.0.2",
+    "tar": "4.4.13"
   }
 }
