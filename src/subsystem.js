@@ -16,6 +16,11 @@ const { WebdeployError } = require("./error");
 const HOMEDIR = os.homedir();
 const DEFAULT_ROOT = path.join(HOMEDIR,".webdeploy");
 
+const CONFIG_KEYS = [
+    "pluginDirectories",
+    "storageFile"
+];
+
 const PROXY_FILE = ".webdeploy.proxy.js";
 const PROXY_CODE = `
 // webdeploy proxy snippet
@@ -198,7 +203,7 @@ class Subsystem {
 
             // Merge file-based configuration into the global config.
 
-            for (let key in this) {
+            for (let key in CONFIG_KEYS) {
                 if (key in configPayload) {
                     if (Array.isArray(this[key])) {
                         this[key] = this[key].concat(configPayload[key]);
