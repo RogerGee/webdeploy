@@ -7,6 +7,7 @@
 const fs = require("fs");
 const pathModule = require("path");
 const child_process = require("child_process");
+const { WebdeployError } = require("./error");
 
 function getPathParents(path,base) {
     var parsed = pathModule.parse(path);
