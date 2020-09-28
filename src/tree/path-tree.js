@@ -6,7 +6,7 @@
 
 const fs = require("fs");
 const path = require("path");
-
+const { promisify } = require("util");
 const { TreeBase } = require("./");
 const { WebdeployError } = require("../error");
 
@@ -41,6 +41,11 @@ class PathTree extends TreeBase {
         return this.basePath;
     }
 
+    // Implements TreeBase.isLocal().
+    isLocal() {
+        return true;
+    }
+
     // Implements TreeBase.getBlob().
     getBlob(blobPath) {
         blobPath = this.makePath(blobPath);
@@ -57,73 +62,88 @@ class PathTree extends TreeBase {
         });
     }
 
+    // Implements TreeBase.testTree().
+    async testTree(treePath) {
+        treePath = this.makePath(treePath);
+        treePath = path.join(this.basePath,treePath);
+
+        const lstat = promisify(fs.lstat);
+
+        try {
+            const stats = await lstat(treePath);
+            if (stats.isDirectory()) {
+                return true;
+            }
+
+        } catch (ex) {
+            if (ex.code != "ENOENT") {
+                throw ex;
+            }
+        }
+
+        return false;
+    }
+
+    // Implements TreeBase.testBlob().
+    async testBlob(blobPath) {
+        blobPath = this.makePath(blobPath);
+        blobPath = path.join(this.basePath,blobPath);
+
+        const lstat = promisify(fs.lstat);
+
+        try {
+            const stats = await lstat(blobPath);
+            if (stats.isFile()) {
+                return true;
+            }
+
+        } catch (ex) {
+            if (ex.code != "ENOENT") {
+                throw ex;
+            }
+        }
+
+        return false;
+    }
+
     // Implements TreeBase.walk().
-    walk(callback,options) {
+    async walk(callback,options) {
         options = options || {};
 
-        var basePath = this.makeBasePath(options.basePath);
+        const readdir = promisify(fs.readdir);
+        const lstat = promisify(fs.lstat);
+        const basePath = this.makeBasePath(options.basePath);
 
-        return new Promise((resolve,reject) => {
-            let outstanding = 1;
-            let rejected = false;
+        const stk = [basePath];
 
-            function attemptResolution() {
-                if (--outstanding <= 0) {
-                    resolve();
+        while (stk.length > 0) {
+            const dirname = stk.pop();
+            const files = await readdir(dirname);
+            const targetPath = path.relative(basePath,dirname);
+
+            for (let i = 0;i < files.length;++i) {
+                const filePath = path.join(dirname,files[i]);
+
+                const stat = await lstat(filePath);
+                if (stat.isFile()) {
+                    await callback(
+                        {
+                            filePath,
+                            targetPath,
+                            targetName: files[i]
+                        },
+                        () => {
+                            return fs.createReadStream(filePath);
+                        }
+                    );
+                }
+                else if (stat.isDirectory()) {
+                    if (!options.filter || options.filter(files[i])) {
+                        stk.push(filePath);
+                    }
                 }
             }
-
-            function walkRecursive(dirname) {
-                fs.readdir(
-                    dirname,
-                    (err,files) => {
-                        if (err) {
-                            reject(err);
-                            rejected = true;
-                        }
-                        if (rejected) {
-                            return;
-                        }
-
-                        let targetPath = path.relative(basePath,dirname);
-
-                        for (let i = 0;i < files.length;++i) {
-                            let filePath = path.join(dirname,files[i]);
-
-                            let stat = fs.lstatSync(filePath);
-                            if (stat.isFile()) {
-                                try {
-                                    callback(
-                                        {
-                                            filePath,
-                                            targetPath,
-                                            targetName: files[i]
-                                        },
-                                        () => {
-                                            return fs.createReadStream(filePath);
-                                        }
-                                    );
-                                } catch (ex) {
-                                    reject(ex);
-                                    rejected = true;
-                                    return;
-                                }
-                            }
-                            else if (stat.isDirectory()) {
-                                if (!options.filter || options.filter(files[i])) {
-                                    outstanding += 1;
-                                    walkRecursive(filePath);
-                                }
-                            }
-                        }
-
-                        attemptResolution();
-                    }
-                );
-            }
-
-            walkRecursive(basePath);
-        });
+        }
     }
 
     // Implements TreeBase.isBlobModified().
@@ -160,78 +180,6 @@ class PathTree extends TreeBase {
                 else {
                     resolve(stats.mtime);
                 }
-            });
-        });
-    }
-
-    // Implements TreeBase.getStorageConfigAlt().
-    getStorageConfigAlt(param) {
-        if (!this.storageConfig) {
-            var filePath = path.join(this.basePath,STORAGE_FILE_NAME);
-
-            return new Promise((resolve,reject) => {
-                fs.readFile(filePath,{ encoding:'utf8' },(err,data) => {
-                    if (!err) {
-                        try {
-                            this.storageConfig = JSON.parse(data);
-
-                            if (param in this.storageConfig) {
-                                resolve(this.storageConfig[param]);
-                                return;
-                            }
-
-                        } catch (ex) {
-                            reject(ex);
-                        }
-                    }
-                    else if (err.code != 'ENOENT') {
-                        reject(err);
-                        return;
-                    }
-
-                    this.storageConfig = {};
-                    resolve(null);
-                });
-            });
-        }
-
-        if (this.storageConfig && param in this.storageConfig) {
-            return Promise.resolve(this.storageConfig[param]);
-        }
-
-        return Promise.resolve(null);
-    }
-
-    // Implements TreeBase.writeStorageConfigAlt().
-    writeStorageConfigAlt(param,value) {
-        if (!this.storageConfig) {
-            this.storageConfig = {};
-        }
-
-        this.storageConfig[param] = value;
-
-        return Promise.resolve();
-    }
-
-    // Implements TreeBase.finalizeImpl().
-    finalizeImpl() {
-        if (!this.storageConfig) {
-            this.storageConfig = {};
-        }
-
-        if (Object.keys(this.storageConfig).length === 0) {
-            return Promise.resolve();
-        }
-
-        var filePath = path.join(this.basePath,STORAGE_FILE_NAME);
-        var text = JSON.stringify(this.storageConfig);
-        var options = {
-            encoding: 'utf8'
-        };
-
-        return new Promise((resolve,reject) => {
-            fs.writeFile(filePath,text,options,(err) => {
-                err ? reject(err) : resolve();
             });
         });
     }

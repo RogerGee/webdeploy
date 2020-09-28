@@ -8,8 +8,6 @@ const { format } = require("util");
 const Database = require("better-sqlite3");
 const EventEmitter = require("events");
 
-const sysconfig = require("./sysconfig");
-
 const CONFIG_TABLE =
       `CREATE TABLE config (
          config_key TEXT,
@@ -43,9 +41,12 @@ class StorageDatabase extends EventEmitter {
      * Loads the storage database instance so that it is ready for use. This
      * method is always called during bootstrapping and should not be called
      * directly.
+     *
+     * @param {string} storageFile
+     *  The file containing the SQLite database.
      */
-    load() {
-        this.db = new Database(sysconfig.storageFile);
+    load(storageFile) {
+        this.db = new Database(storageFile);
 
         // Install config schema.
         this.ensureSchema('config',CONFIG_TABLE);

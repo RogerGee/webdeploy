@@ -51,7 +51,7 @@ storage.once('load', function() {
 });
 
 const DEFAULT_DEPLOY_CONFIG = {
-    targetTree: null,
+    targetTree: "",
     deployPath: null,
     deployBranch: null,
     deployTag: null,
@@ -103,6 +103,9 @@ class TreeBase {
      * @param {string} [options.deployBranch]
      *  The deploy branch for the tree deployment. If not specified, then the
      *  default deploy branch from the tree record will be used.
+     * @param {boolean} [options.createTree]
+     *  Indicates whether a tree record should be created for the tree. This
+     *  defaults to true.
      * @param {boolean} [options.createDeployment]
      *  Indicates whether the tree should create a deployment record. This
      *  defaults to true.
@@ -126,14 +129,13 @@ class TreeBase {
      * is used.
      */
     init() {
-        var defaults = {};
-        var stmt, info, row;
-        var path = this.getPath();
+        const defaults = {};
+        let stmt, info, row;
 
         // Ensure a tree record exists. We normalize the tree path so that the
         // record is shared between 'path' and 'repo' tree variants.
 
-        var treePath = normalizeTreePath(path);
+        const treePath = normalizeTreePath(this.getPath());
 
         stmt = storage.prepare(
             `SELECT
@@ -149,60 +151,87 @@ class TreeBase {
         row = stmt.get(treePath);
 
         if (!row) {
-            if (this.option("createTree") === false) {
-                return;
+            if (this.option("createTree") !== false) {
+                info = storage.prepare(`INSERT INTO tree (path) VALUES (?)`).run(treePath);
+                this.treeRecord = {
+                    id: info.lastInsertRowid,
+                    targetTree: null,
+                    deployPath: null,
+                    deployBranch: null
+                };
             }
-
-            info = storage.prepare(`INSERT INTO tree (path) VALUES (?)`).run(treePath);
-            this.treeRecord = {
-                id: info.lastInsertRowid,
-                targetTree: null,
-                deployPath: null,
-                deployBranch: null
-            };
         }
         else {
             this.treeRecord = row;
         }
 
+        this.dirty.treeRecord = false;
+
         // Determine the deploy path and deploy branch. These values are chosen
         // from options first; if not found, then we look at defaults from the
         // tree record.
 
-        var deployPath = this.option('deployPath') || this.treeRecord.deployPath || treePath;
-        var deployBranch = this.option('deployBranch') || this.treeRecord.deployBranch;
+        let deployPath = this.option("deployPath");
+        let deployBranch = this.option("deployBranch");
+        const createDeploy = ( this.option('createDeployment') !== false );
 
-        if (!deployPath && this.option('createDeployment') !== false) {
+        if (!deployPath && this.treeRecord) {
+            deployPath = this.treeRecord.deployPath;
+        }
+        if (!deployPath) {
+            deployPath = treePath;
+        }
+
+        if (!deployBranch && this.treeRecord) {
+            deployBranch = this.treeRecord.deployBranch;
+        }
+
+        if (!deployPath && createDeploy) {
             throw new WebdeployError("Deployment config missing 'deployPath'");
         }
 
-        // Ensure a deploy record exists for the tree/deploy-path pair and
-        // (while we're at it) load the deploy config. We only ensure a deploy
-        // record if 'createDeployment' is false.
+        if (deployPath) {
+            this.setDeployment(deployPath,deployBranch,!createDeploy);
+        }
+        else {
+            this.deployConfig = Object.assign({},DEFAULT_DEPLOY_CONFIG);
+        }
+    }
 
-        stmt = storage.prepare(
-            `SELECT
-               id,
-               deploy_path,
-               deploy_branch,
-               last_revision
-             FROM
-               deploy
-             WHERE
-               deploy_path = ? AND tree_id = ?`
-        );
-        row = stmt.get(deployPath,this.treeRecord.id);
+    /**
+     * Sets the deployment for the tree. Note that this is called during tree
+     * initialization and should only be called to change the deployment.
+     *
+     * @param {string} deployPath
+     * @param {string} deployBranch
+     */
+    setDeployment(deployPath,deployBranch,readonly) {
+        let row = false;
+
+        // Ensure a deploy record exists if we have a tree unless 'readonly'.
+        if (this.treeRecord) {
+            const stmt = storage.prepare(
+                `SELECT
+                   id,
+                   deploy_path,
+                   deploy_branch,
+                   last_revision
+                 FROM
+                   deploy
+                 WHERE
+                   deploy_path = ? AND tree_id = ?`
+            );
+
+            row = stmt.get(deployPath,this.treeRecord.id);
+        }
 
         this.deployConfig = Object.assign({},DEFAULT_DEPLOY_CONFIG);
         if (!row) {
-            if (this.option('createDeployment') === false) {
-                this.deployId = null;
-            }
-            else {
-                stmt = storage.prepare(
+            if (!readonly) {
+                const stmt = storage.prepare(
                     `INSERT INTO deploy (tree_id,deploy_path,deploy_branch) VALUES (?,?,?)`
                 );
-                info = stmt.run(this.treeRecord.id,deployPath,deployBranch);
+                const info = stmt.run(this.treeRecord.id,deployPath,deployBranch);
                 this.deployId = info.lastInsertRowid;
             }
 
@@ -218,18 +247,20 @@ class TreeBase {
             });
         }
 
-        // Set target tree. This is always loaded from the tree record.
-        this.deployConfig.targetTree = normalizeTargetTree(this.treeRecord.targetTree);
+        // Set target tree. This is always loaded from the tree record if
+        // available.
+        if (this.treeRecord) {
+            this.deployConfig.targetTree = normalizeTargetTree(this.treeRecord.targetTree);
+        }
 
-        // Override deploy config with options.
+        // Override deploy config with instance options.
         for (let key in this.deployConfig) {
-            var value = this.option(key);
+            const value = this.option(key);
             if (value) {
                 this.deployConfig[key] = value;
             }
         }
 
-        this.dirty.treeRecord = false;
         this.dirty.deployConfig = false;
     }
 
@@ -277,6 +308,16 @@ class TreeBase {
     }
 
     /**
+     * Determines if the tree represents a local project. A local project is one
+     * that has a working tree.
+     *
+     * @return {boolean}
+     */
+    isLocal() {
+        throw new WebdeployError("TreeBase.isLocal() must be implemented");
+    }
+
+    /**
      * Gets the path to the tree relative to the current working directory.
      *
      * @return {string}
@@ -300,12 +341,35 @@ class TreeBase {
     }
 
     /**
+     * Determines if the specified path exists as a subtree in the project tree.
+     *
+     * @param {string} treePath
+     *  The path to test. The path is relative to the target tree or base path.
+     *
+     * @return {Promise<boolean>}
+     */
+    testTree(treePath) {
+        throw new WebdeployError("TreeBase.testTree() must be implemented");
+    }
+
+    /**
+     * Determines if the specified path exists as a blob in the project tree.
+     *
+     * @param {string} treePath
+     *  The path to test. The path is relative to the target tree or base path.
+     *
+     * @return {Promise<boolean>}
+     */
+    testBlob(blobPath) {
+        throw new WebdeployError("TreeBase.testBlob() must be implemented");
+    }
+
+    /**
      * Walks the tree recursively and calls the callback.
      *
-     * @param {Function} callback
-     *  Function with signature: callback(path,name,streamFunc)
-     *   The 'streamFunc' parameter is a function that creates a stream for the
-     *   blob entry.
+     * @param {function} callback
+     *  Function with signature: async callback(path,name,streamFunc)
+     *  The callback resolves before the next file is visited.
      * @param {object} options
      * @param {Function} options.filter
      *  Function like 'filter(path)' such that 'filter(path) => false' heads off
@@ -416,11 +480,7 @@ class TreeBase {
      * Saves the tree record info to disk.
      */
     saveTreeRecord() {
-        if (!this.treeRecord) {
-            throw new WebdeployError("Tree does not exist");
-        }
-
-        if (!this.dirty.treeRecord) {
+        if (!this.treeRecord || !this.dirty.treeRecord) {
             return;
         }
 
@@ -546,6 +606,10 @@ class TreeBase {
 
     /**
      * Deletes the deploy record associated with the tree.
+     *
+     * @param {boolean} purgeTree
+     *  Purges the parent tree record as well. This will effectively purge all
+     *  deployments.
      */
     purgeDeploy(purgeTree) {
         const stmts = [];
@@ -568,6 +632,26 @@ class TreeBase {
         }
 
         if (purgeTree && this.exists()) {
+            if (!this.hasDeployment()) {
+                stmts.push(
+                    storage.prepare(
+                        `DELETE FROM deploy_storage
+                         WHERE
+                           deploy_id IN (SELECT id FROM deploy WHERE tree_id = ?)`
+                    )
+                );
+                vals.push([this.treeRecord.id]);
+
+                stmts.push(
+                    storage.prepare(
+                        `DELETE FROM deploy
+                         WHERE
+                           tree_id = ?`
+                    )
+                );
+                vals.push([this.treeRecord.id]);
+            }
+
             stmts.push(
                 storage.prepare(
                     `DELETE FROM tree WHERE id = ?`
@@ -597,44 +681,30 @@ class TreeBase {
     /**
      * Gets a configuration value from the tree's storage configuration.
      *
-     * @param {string} param
-     *  The config parameter to look up.
+     * @param {string} key
+     *  The config record to look up.
      *
-     * @return {Promise<string>}
-     *  Returns a Promise that resolves to a string containing the config
-     *  parameter value.
+     * @return {object}
+     *  Returns the object extracted from the configuration store. Null is
+     *  returned if there is no deployment or if the storage didn't have such a
+     *  record.
      */
-    getStorageConfig(param) {
+    getStorageConfig(key) {
+        if (!this.deployId) {
+            return null;
+        }
+
         var stmt = storage.prepareCache(
             'tree.getStorageConfig',
             `SELECT value FROM deploy_storage WHERE name = ? AND deploy_id = ?`
         );
 
-        var row = stmt.get(param,this.deployId);
+        var row = stmt.get(key,this.deployId);
         if (!row) {
-            return this.getStorageConfigAlt(...arguments);
+            return null;
         }
 
-        try {
-            var value = JSON.parse(row.value);
-        } catch (ex) {
-            return Promise.reject(ex);
-        }
-
-        return Promise.resolve(value);
-    }
-
-    /**
-     * Provides an alternative, fallback implementation for reading a
-     * configuration value from the tree storage configuration.
-     *
-     * @param {string} param
-     *  The config parameter to lookup.
-     *
-     * @return {Promise<string>}
-     */
-    getStorageConfigAlt(param) {
-        return Promise.reject(new WebdeployError("No such configuration parameter: '" + param + ""));
+        return JSON.parse(row.value);
     }
 
     /**
@@ -644,10 +714,12 @@ class TreeBase {
      *  The name of the config parameter.
      * @param {*} value
      *  The config parameter value.
-     *
-     * @return {Promise}
      */
     writeStorageConfig(param,value) {
+        if (!this.deployId) {
+            return;
+        }
+
         var stmt = storage.prepareCache(
             'tree.writeStorageConfig',
             `INSERT INTO deploy_storage (name,value,deploy_id) VALUES (?,?,?)
@@ -655,42 +727,7 @@ class TreeBase {
                UPDATE SET value=excluded.value`
         );
 
-        var err = false;
-
-        try {
-            stmt.run(param,JSON.stringify(value),this.deployId);
-        } catch (ex) {
-            const { SqliteError } = require('better-sqlite3');
-
-            if (ex instanceof SqliteError) {
-                err = true;
-            }
-            else {
-                throw ex;
-            }
-        }
-
-        // Fallback to alternate storage mechanism if write fails.
-        if (err) {
-            return this.writeStorageConfigAlt(...arguments);
-        }
-
-        return Promise.resolve();
-    }
-
-    /**
-     * Provides an alternative, fallback implementation for writing a
-     * configuration value to the tree's storage configuration.
-     *
-     * @param {string} param
-     *  The name of the config parameter.
-     * @param {*} value
-     *  The config parameter value.
-     *
-     * @return {Promise}
-     */
-    writeStorageConfigAlt(param,value) {
-        return Promise.reject(new WebdeployError("Writing to storage configuration is not supported"));
+        stmt.run(param,JSON.stringify(value),this.deployId);
     }
 
     /**
@@ -700,11 +737,10 @@ class TreeBase {
      * @return {Promise}
      *  Returns a Promise that resolves when the operation is complete.
      */
-    finalize() {
-        return this.finalizeImpl().then(() => {
-            this.saveTreeRecord();
-            this.saveDeployConfig();
-        });
+    async finalize() {
+        await this.finalizeImpl();
+        this.saveTreeRecord();
+        this.saveDeployConfig();
     }
 
     /**
@@ -713,11 +749,11 @@ class TreeBase {
      * @return {Promise}
      *  Returns a Promise that resolves when the operation is complete.
      */
-    finalizeImpl() {
-        return Promise.resolve();
+    async finalizeImpl() {
+
     }
 }
 
 module.exports = {
     TreeBase
-}
+};

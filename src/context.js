@@ -5,23 +5,24 @@
  */
 
 const pathModule = require("path");
+const subsystem = require("./subsystem");
 const { format } = require("util");
-
 const { Builder } = require("./builder");
-const { makeOutputTarget } = require("./target");
+const { Target } = require("./target");
 const { lookupDeployPlugin } = require("./audit");
+const { Plugin } = require("./plugin");
+const { WebdeployError } = require("./error");
 
-function resolveDeployPlugin(plugin) {
-    // If the object does not have the correct interface, then assume it is a
-    // description and look up the required plugin.
-    if (!plugin.exec) {
-        return lookupDeployPlugin({
-            pluginId: plugin.id,
-            pluginVersion: plugin.version
-        });
+function resolve_deploy_plugin(plugin) {
+    if (plugin instanceof Plugin) {
+        return plugin;
     }
 
-    return plugin;
+    if (typeof plugin !== "string") {
+        throw new WebdeployError("Cannot execute deploy plugin: %s",JSON.stringify(plugin));
+    }
+
+    return lookupDeployPlugin(plugin);
 }
 
 /**
@@ -48,8 +49,9 @@ class DeployContext {
      *  The git tree instance associated with the deployment.
      * @param {module:depends~ConstDependencyGraph} prevGraph
      *  The previous dependency graph state.
+     * @param {object} callbacks
      */
-    constructor(deployPath,builder,tree,prevGraph) {
+    constructor(deployPath,builder,tree,prevGraph,callbacks) {
         this.deployPath = deployPath;
         this.builder = builder;
 
@@ -62,14 +64,11 @@ class DeployContext {
         this.prevGraph = prevGraph;
         this.tree = tree; // git.Tree
         this.logger = require("./logger");
+        this.nodeModules = subsystem.nodeModules;
+        this.callbacks = callbacks;
         this.currentPlugin = null;
 
-        // Create map for faster target lookup.
-        this.targets.forEach((target) => {
-            this.map[target.getSourceTargetPath()] = target;
-        })
-
-        this.setTargetsDeployPath();
+        this._setupTargets();
     }
 
     /**
@@ -96,22 +95,6 @@ class DeployContext {
     }
 
     /**
-     * Sets the deployment path for each target.
-     *
-     * @param {boolean} force
-     *  By default, the deploy path is only set on targets that do *not* have a
-     *  deploy path set. If force is set to true, this behavior is overridden to
-     *  where the deploy path is unconditionally set.
-     */
-    setTargetsDeployPath(force) {
-        for (var i = 0;i < this.targets.length;++i) {
-            if (!this.targets[i].hasDeployPath() || force) {
-                this.targets[i].setDeployPath(this.deployPath);
-            }
-        }
-    }
-
-    /**
      * Creates an external sub-builder to use for recursive builds.
      *
      * @return {module:builder~Builder}
@@ -126,10 +109,9 @@ class DeployContext {
      *
      * @return {Promise}
      */
-    executeBuilder() {
-        return this.builder.execute().then(() => {
-            this.setTargetsDeployPath();
-        });
+    async executeBuilder() {
+        await this.builder.execute();
+        this._setupTargets();
     }
 
     /**
@@ -138,10 +120,9 @@ class DeployContext {
      *
      * @return {Promise}
      */
-    executeExternalBuilder(builder) {
-        return this.builder.executeAndMerge(builder).then(() => {
-            this.setTargetsDeployPath();
-        });
+    async executeExternalBuilder(builder) {
+        await this.builder.executeAndMerge(builder);
+        this._setupTargets();
     }
 
     /**
@@ -174,12 +155,33 @@ class DeployContext {
             }
         }
 
-        var target = makeOutputTarget(newTargetPath);
+        var target = new Target(newTargetPath);
         target.setDeployPath(this.deployPath);
         if (isOutputTarget) {
             this.targets.push(target);
             this.map[newTargetPath] = target;
         }
+        return target;
+    }
+
+    /**
+     * Creates a new target from the given path in the project tree.
+     *
+     * @param {string} targetPath
+     * @param {boolean} isOutputTarget
+     *  If true, then the target is added to the list of output targets.
+     *
+     * @return {Promise<module:target~Target}
+     */
+    async createTargetFromTree(targetPath,isOutputTarget) {
+        const blob = await this.tree.getBlob(targetPath);
+        const target = new Target(targetPath,null,blob);
+
+        if (isOutputTarget) {
+            this.targets.push(target);
+            this.map[targetPath] = target;
+        }
+
         return target;
     }
 
@@ -200,8 +202,9 @@ class DeployContext {
      *  The callback to invoke.
      */
     forEachTarget(callback) {
-        for (let i = 0;i < this.targets.length;++i) {
-            callback(this.targets[i]);
+        const targets = this.targets.slice();
+        for (let i = 0;i < targets.length;++i) {
+            callback(targets[i]);
         }
     }
 
@@ -220,6 +223,24 @@ class DeployContext {
         }
 
         return false;
+    }
+
+    /**
+     * Determines if the specified input target is out of date with respect to
+     * the indicated output target file.
+     *
+     * @param {string} inputTargetPath
+     *  The path to the input target to check.
+     * @param {string} outputTargetPath
+     *  The path to the output target to use to determine if the input target is
+     *  out of date.
+     *
+     * @return {Promise<boolean>}
+     */
+    async isTargetOutOfDate(inputTargetPath,outputTargetPath) {
+        const mtime = await this.tree.getMTime(outputTargetPath);
+
+        return await this.tree.isBlobModified(inputTargetPath,mtime);
     }
 
     /**
@@ -330,6 +351,30 @@ class DeployContext {
     }
 
     /**
+     * Calls .pass() on a target and adds it to the set of output targets. The
+     * old target is removed (if it was a current output target). This is the
+     * preferred way to invoke .pass().
+     *
+     * @param {module:target~Target} target
+     * @param {string} name
+     * @param {string} path
+     *
+     * @return {module:target~Target}
+     */
+    passTarget(target,name,path) {
+        const newTarget = target.pass(name,path);
+
+        this.graph.addConnection(target.getSourceTargetPath(),
+                                 newTarget.getSourceTargetPath());
+
+        this.removeTargets(target);
+        this.targets.push(newTarget);
+        newTarget.setDeployPath(this.deployPath);
+
+        return newTarget;
+    }
+
+    /**
      * Executes the specified deploy plugin.
      *
      * @param {object} plugin
@@ -340,7 +385,7 @@ class DeployContext {
      * @return {Promise}
      */
     execute(plugin,settings) {
-        plugin = resolveDeployPlugin(plugin);
+        plugin = resolve_deploy_plugin(plugin);
         this.currentPlugin = plugin;
 
         return plugin.exec(this,settings || {});
@@ -356,11 +401,20 @@ class DeployContext {
      *
      * @return {Promise}
      */
-    chain(nextPlugin,settings) {
-        var plugin = resolveDeployPlugin(nextPlugin);
+    async chain(nextPlugin,settings) {
+        const plugin = resolve_deploy_plugin(nextPlugin);
+
+        if (this.callbacks.beforeChain) {
+            this.callbacks.beforeChain(this.currentPlugin,plugin);
+        }
+
         this.currentPlugin = plugin;
 
-        return plugin.exec(this,settings || {});
+        await plugin.exec(this,settings || {});
+
+        if (this.callbacks.afterChain) {
+            this.callbacks.afterChain(plugin);
+        }
     }
 
     /**
@@ -372,8 +426,8 @@ class DeployContext {
      *
      * @return {Promise}
      */
-    writeCacheProperty(key,value) {
-        return this.tree.writeStorageConfig(this._makeCacheKey(key),value);
+    async writeCacheProperty(key,value) {
+        this.tree.writeStorageConfig(this._makeCacheKey(key),value);
     }
 
     /**
@@ -381,14 +435,25 @@ class DeployContext {
      *
      * @param {string} key
      *
-     * @return {Promise}
+     * @return {object}
+     *  Returns the cached object, or null if it wasn't found.
      */
-    readCacheProperty(key) {
+    async readCacheProperty(key) {
         return this.tree.getStorageConfig(this._makeCacheKey(key));
     }
 
     _makeCacheKey(key) {
         return format("cache.custom.%s",key);
+    }
+
+    _setupTargets() {
+        for (var i = 0;i < this.targets.length;++i) {
+            const target = this.targets[i];
+            this.map[target.getSourceTargetPath()] = target;
+            if (!target.hasDeployPath()) {
+                target.setDeployPath(this.deployPath);
+            }
+        }
     }
 }
 
