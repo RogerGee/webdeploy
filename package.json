@@ -5,6 +5,10 @@
   "main": "webdeploy.js",
   "author": "Roger Gee",
   "license": "MIT",
+  "files": [
+    "webdeploy.js",
+    "src/**/*.js"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RogerGee/webdeploy.git"

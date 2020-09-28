@@ -372,7 +372,7 @@ commander.command("purge [deploy-path]")
     });
 
 commander.command("deploy [path]")
-    .description("runs the deploy task on a webdeploy project")
+    .description("builds and deploys a remote webdeploy project")
     .option("-p, --deploy-path [path]","Denotes the deploy path destination on disk")
     .option("-b, --deploy-branch [branch]","Denotes repository branch to deploy")
     .option("-t, --deploy-tag [tag]","Denotes the repository tag to deploy")
@@ -410,7 +410,7 @@ commander.command("deploy [path]")
     });
 
 commander.command("build [path]")
-    .description("runs the build task on a webdeploy project")
+    .description("builds a local webdeploy project")
     .option("-p, --prod","Perform production build")
     .option("-d, --dev","Perform development build (default)")
     .option("-f, --force","Force full build without consulting dependencies")
