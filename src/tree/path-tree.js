@@ -115,16 +115,35 @@ class PathTree extends TreeBase {
         const basePath = this.makeBasePath(options.basePath);
 
         const stk = [basePath];
-
         while (stk.length > 0) {
+            let files;
             const dirname = stk.pop();
-            const files = await readdir(dirname);
             const targetPath = path.relative(basePath,dirname);
 
+            try {
+                files = await readdir(dirname);
+            } catch (err) {
+                if (err instanceof Error && err.code == "EACCES") {
+                    continue;
+                }
+
+                throw err;
+            }
+
             for (let i = 0;i < files.length;++i) {
+                let stat;
                 const filePath = path.join(dirname,files[i]);
 
-                const stat = await lstat(filePath);
+                try {
+                    stat = await lstat(filePath);
+                } catch (err) {
+                    if (err instanceof Error && err.code == "EACCES") {
+                        continue;
+                    }
+
+                    throw err;
+                }
+
                 if (stat.isFile()) {
                     await callback(
                         {
