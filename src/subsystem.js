@@ -254,7 +254,7 @@ class Subsystem {
 
                 // Create node_modules folder.
                 if (!(await this._installNodeModules(tree,dir,false))) {
-                    dir = false;
+                    return false;
                 }
             }
 
