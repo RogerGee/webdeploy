@@ -417,8 +417,7 @@ commander.command("build [path]")
     .option("-n, --no-record","Prevent creation of deployment save records")
     .action((sourcePath,cmd) => {
         if (cmd.prod && cmd.dev) {
-            logger.error("webdeploy: build: Please specify one of *prod* or *dev*.".bold);
-            return;
+            throw new WebdeployError("Invalid arguments: specify one of *prod* or *dev*.");
         }
 
         var options = {
