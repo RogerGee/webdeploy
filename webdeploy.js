@@ -12,11 +12,10 @@ const { commander, webdeploy_fail } = require("./src/commands");
 async function main() {
     try {
         await subsystem.load();
+        commander.parse(process.argv);
     } catch (err) {
         webdeploy_fail(err);
     }
-
-    commander.parse(process.argv);
 }
 
 // Run the program.
