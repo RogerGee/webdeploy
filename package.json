@@ -1,6 +1,6 @@
 {
   "name": "@webdeploy/core",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "A utility for building and deploying websites from git repositories",
   "main": "webdeploy.js",
   "author": "Roger Gee",
